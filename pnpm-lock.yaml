@@ -235,6 +235,22 @@ importers:
         specifier: workspace:*
         version: link:../paragraph
 
+  packages/plugins/font-size:
+    dependencies:
+      '@hte/core':
+        specifier: workspace:*
+        version: link:../../core
+      zod:
+        specifier: ^4.0.0
+        version: 4.6.7
+    devDependencies:
+      '@hte/bold':
+        specifier: workspace:*
+        version: link:../bold
+      '@hte/paragraph':
+        specifier: workspace:*
+        version: link:../paragraph
+
   packages/plugins/paragraph:
     dependencies:
       '@hte/core':
