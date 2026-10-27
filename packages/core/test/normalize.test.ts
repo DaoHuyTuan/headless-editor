@@ -6,7 +6,7 @@ import type { AnyPlugin, PluginContext } from '../src/plugin/types'
 import type { Doc, ElementNode, Node, Selection } from '../src/model/types'
 import { applyOp } from '../src/ops/apply'
 import { invertOp } from '../src/ops/invert'
-import { Editor } from '../src/editor'
+import type { Editor } from '../src/editor'
 import { Transaction } from '../src/transaction/transaction'
 import { doc, el, sel, stripIds, txt } from '../src/testing/builders'
 import { testBold, testParagraph } from './fixtures'
@@ -18,7 +18,7 @@ const testCode = definePlugin({ name: 'code', node: { kind: 'block', content: 't
 const base: AnyPlugin[] = [testParagraph, testBold, testItalic, testLink, testHr, testCode]
 
 const ctx = (plugin: AnyPlugin): PluginContext<any, any> => ({
-  editor: new Editor(),
+  editor: {} as Editor,
   name: plugin.name,
   options: plugin.spec.options ?? {},
   getState: () => undefined,

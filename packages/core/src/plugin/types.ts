@@ -102,7 +102,17 @@ type SpecOf<T> = T extends { readonly spec: infer S } ? S : T
 export type OptionsOf<T> = SpecOf<T> extends PluginSpec<string, infer _D, infer O, infer _C, infer _S> ? O : NoOptions
 export type DataOf<T> = SpecOf<T> extends PluginSpec<string, infer D, infer _O, infer _C, infer _S> ? D : Data
 export type StateOf<T> = SpecOf<T> extends PluginSpec<string, infer _D, infer _O, infer _C, infer S> ? S : undefined
-export type CommandsOfPlugin<T> = SpecOf<T> extends { commands?: (ctx: never) => infer C } ? C : NoOptions
+type IsAny<T> = 0 extends 1 & T ? true : false
+
+/** Commands of a plugin (or spec). A plugin typed `any`/`AnyPlugin` contributes none instead of collapsing to `any`. */
+export type CommandsOfPlugin<T> =
+  IsAny<T> extends true
+    ? NoOptions
+    : SpecOf<T> extends { commands?: (ctx: never) => infer C }
+      ? IsAny<C> extends true
+        ? NoOptions
+        : C
+      : NoOptions
 
 type UnionToIntersection<U> = (U extends unknown ? (x: U) => void : never) extends (x: infer I) => void ? I : never
 

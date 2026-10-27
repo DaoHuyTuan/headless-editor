@@ -6,13 +6,13 @@ import { definePlugin } from '../src/plugin/define'
 import { Registry } from '../src/plugin/registry'
 import type { AnyPlugin, PluginContext } from '../src/plugin/types'
 import type { Doc } from '../src/model/types'
-import { Editor } from '../src/editor'
+import type { Editor } from '../src/editor'
 import { Transaction } from '../src/transaction/transaction'
 import { doc, el, stripIds, txt } from '../src/testing/builders'
 import { testBold, testParagraph } from './fixtures'
 
 const ctx = (plugin: AnyPlugin): PluginContext<any, any> => ({
-  editor: new Editor(),
+  editor: {} as Editor,
   name: plugin.name,
   options: plugin.spec.options ?? {},
   getState: () => undefined,

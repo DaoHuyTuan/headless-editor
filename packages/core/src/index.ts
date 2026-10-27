@@ -69,3 +69,17 @@ export type { TransactionMeta } from './transaction/transaction'
 export type { Fragment } from './transaction/fragment'
 export { normalize } from './normalize'
 export { coerceDoc } from './load'
+export { Editor } from './editor'
+export type {
+  BoundCommands,
+  EditorCommands,
+  EditorEvent,
+  EditorEventName,
+  EditorOptions,
+  EditorPlugins,
+  EditorView,
+} from './editor'
+export { eventToKeyName, normalizeKeyName } from './keymap'
+export type { Platform } from './keymap'
+export { corePlugin } from './core-plugin'
+export { historyPlugin } from './history'
