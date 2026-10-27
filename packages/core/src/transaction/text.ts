@@ -13,8 +13,9 @@ function pathEquals(a: Path, b: Path): boolean {
   return a.length === b.length && a.every((v, i) => v === b[i])
 }
 
+/** Orders the points: callers may pass a backward selection or an unordered range. */
 function asRange(at: Selection | Range): Range {
-  return 'anchor' in at ? toRange(at) : at
+  return toRange('anchor' in at ? at : { anchor: at.start, focus: at.end })
 }
 
 function caret(point: Point): Selection {

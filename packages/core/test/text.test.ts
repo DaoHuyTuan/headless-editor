@@ -104,6 +104,27 @@ describe('deleteRange', () => {
     ed.dispatch(ed.createTransaction().deleteRange({ start: { path: [0, 0], offset: 1 }, end: { path: [0, 2], offset: 1 } }))
     expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p('af'))))
   })
+
+  it('orders a reversed cross-block range (same result as the ordered one)', () => {
+    const ordered = setup(doc(p('ab'), p('cd'), p('ef'), p('gh')))
+    ordered.dispatch(
+      ordered.createTransaction().deleteRange({ start: { path: [0, 0], offset: 1 }, end: { path: [2, 0], offset: 1 } }),
+    )
+    const reversed = setup(doc(p('ab'), p('cd'), p('ef'), p('gh')))
+    reversed.dispatch(
+      reversed.createTransaction().deleteRange({ start: { path: [2, 0], offset: 1 }, end: { path: [0, 0], offset: 1 } }),
+    )
+    expect(stripIds(reversed.getJSON())).toEqual(stripIds(ordered.getJSON()))
+    expect(stripIds(reversed.getJSON())).toEqual(stripIds(doc(p('af'), p('gh'))))
+    expect(reversed.state.selection).toEqual(caret([0, 0], 1))
+  })
+
+  it('insertText orders a reversed cross-block range', () => {
+    const ed = setup(doc(p('ab'), p('cd')), caret([0, 0], 0))
+    ed.dispatch(ed.createTransaction().insertText('X', { start: { path: [1, 0], offset: 1 }, end: { path: [0, 0], offset: 1 } }))
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p('aXd'))))
+    expect(ed.state.selection).toEqual(caret([0, 0], 2))
+  })
 })
 
 describe('deleteBackward / deleteForward', () => {
