@@ -1,0 +1,15 @@
+{
+  "name": "@hte/bold",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@hte/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@hte/paragraph": "workspace:*"
+  }
+}

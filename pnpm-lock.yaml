@@ -188,6 +188,16 @@ importers:
         specifier: ^1.0.0
         version: 1.1.0
 
+  packages/plugins/bold:
+    dependencies:
+      '@hte/core':
+        specifier: workspace:*
+        version: link:../../core
+    devDependencies:
+      '@hte/paragraph':
+        specifier: workspace:*
+        version: link:../paragraph
+
   packages/plugins/paragraph:
     dependencies:
       '@hte/core':
