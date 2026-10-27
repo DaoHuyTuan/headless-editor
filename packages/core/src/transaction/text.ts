@@ -1,7 +1,7 @@
 import { createId } from '../model/id'
-import { editableTextEntries } from '../model/editable'
+import { editableTextEntries, isOpaque } from '../model/editable'
 import { getNode, isElement, isText, sameMarkSet } from '../model/node'
-import { comparePoint, nextPath, parentPath, pointEquals, toRange } from '../model/path'
+import { comparePath, comparePoint, isAncestorPath, nextPath, parentPath, pointEquals, toRange } from '../model/path'
 import type { ElementNode, Mark, Path, Point, Range, Selection, TextNode } from '../model/types'
 import { marksAtTr, marksOfRange } from './marks'
 import type { Transaction } from './transaction'
@@ -75,34 +75,82 @@ function removeTextBetween(tr: Transaction, start: Point, end: Point): void {
 }
 
 /**
+ * The block a range edge at `path` belongs to: the outermost opaque (unknown or atom) block-level
+ * element containing it, else the nearest block.
+ */
+function edgeBlockOf(tr: Transaction, path: Path): Path {
+  for (let depth = 1; depth < path.length; depth++) {
+    const p = path.slice(0, depth)
+    const node = getNode(tr.doc, p)
+    if (isElement(node) && isOpaque(node, tr.registry) && tr.registry.node(node.type)?.kind !== 'inline') return p
+  }
+  return blockPathOf(tr, path)
+}
+
+/**
+ * The editable caret nearest to `at` (where a removed block was): the start of the first editable
+ * text at or after it, else the end of the last one before it. With no editable text left, an
+ * empty default block is inserted at `at`.
+ */
+function nearestEditablePoint(tr: Transaction, at: Path): Point {
+  let before: Point | null = null
+  for (const [t, p] of editableTextEntries(tr.doc, tr.registry)) {
+    if (comparePath(p, at) >= 0) return { path: p, offset: 0 }
+    before = { path: p, offset: t.text.length }
+  }
+  if (before) return before
+  tr.insertNode(at, { id: createId(), type: tr.registry.defaultBlock, data: {}, children: [{ text: '', marks: [] }] })
+  return { path: [...at, 0], offset: 0 }
+}
+
+/**
  * Deletes `range` and collapses the selection at its start. Across sibling blocks the start
  * block keeps its id: its tail and the end block's head are removed, the blocks in between are
  * removed, and the end block is merged into the start block.
+ *
+ * An opaque edge block (unknown type or atom: no caret can be inside it) counts as fully inside the
+ * range: it is removed whole and nothing is merged into or out of it. When the start edge is
+ * opaque, the caret lands at the nearest editable point instead.
  */
 export function deleteRange(tr: Transaction, range: Range): boolean {
   const { start, end } = asRange(range)
   if (comparePoint(start, end) === 0) return false
-  const startBlock = blockPathOf(tr, start.path)
-  const endBlock = blockPathOf(tr, end.path)
-  if (pathEquals(startBlock, endBlock) || !pathEquals(parentPath(startBlock), parentPath(endBlock))) {
-    // Same block, or blocks that are not siblings (not produced in M1): text-only deletion.
+  const startBlock = edgeBlockOf(tr, start.path)
+  const endBlock = edgeBlockOf(tr, end.path)
+  const opaqueAt = (p: Path) => isOpaque(getNode(tr.doc, p) as ElementNode, tr.registry)
+  const startOpaque = opaqueAt(startBlock)
+  const endOpaque = opaqueAt(endBlock)
+  const siblings = pathEquals(parentPath(startBlock), parentPath(endBlock))
+  if (pathEquals(startBlock, endBlock)) {
+    if (startOpaque) tr.removeNode(startBlock)
+    else removeTextBetween(tr, start, end)
+  } else if (!siblings) {
+    // Blocks that are not siblings (no nested containers yet): text-only deletion, then opaque
+    // edges whole (end first: removing it cannot shift the start).
     removeTextBetween(tr, start, end)
+    if (endOpaque && !isAncestorPath(endBlock, startBlock)) tr.removeNode(endBlock)
+    if (startOpaque && !isAncestorPath(startBlock, endBlock)) tr.removeNode(startBlock)
   } else {
-    removeTextBetween(tr, start, lastPoint(blockTexts(tr, startBlock))!)
-    removeTextBetween(tr, firstPoint(blockTexts(tr, endBlock))!, end)
+    if (!startOpaque) removeTextBetween(tr, start, lastPoint(blockTexts(tr, startBlock))!)
+    if (!endOpaque) removeTextBetween(tr, firstPoint(blockTexts(tr, endBlock))!, end)
     const k = startBlock.length - 1
-    for (let i = endBlock[k]! - 1; i > startBlock[k]!; i--) tr.removeNode([...parentPath(startBlock), i])
-    const merged = nextPath(startBlock)
-    const node = getNode(tr.doc, merged) as ElementNode
-    const position = ((getNode(tr.doc, startBlock) as ElementNode).children ?? []).length
-    tr.apply({
-      type: 'merge_node',
-      path: merged,
-      position,
-      properties: { id: node.id, type: node.type, data: node.data },
-    })
+    const parent = parentPath(startBlock)
+    const from = startBlock[k]! + (startOpaque ? 0 : 1)
+    const to = endBlock[k]! - (endOpaque ? 0 : 1)
+    for (let i = to; i >= from; i--) tr.removeNode([...parent, i])
+    if (!startOpaque && !endOpaque) {
+      const merged = nextPath(startBlock)
+      const node = getNode(tr.doc, merged) as ElementNode
+      const position = ((getNode(tr.doc, startBlock) as ElementNode).children ?? []).length
+      tr.apply({
+        type: 'merge_node',
+        path: merged,
+        position,
+        properties: { id: node.id, type: node.type, data: node.data },
+      })
+    }
   }
-  tr.setSelection(caret(start))
+  tr.setSelection(caret(startOpaque ? nearestEditablePoint(tr, startBlock) : start))
   return true
 }
 
@@ -115,9 +163,8 @@ export function insertText(tr: Transaction, text: string, at?: Selection | Range
   const stored = tr.storedMarks
   // Typing over a range keeps the marks of its first covered character (read before deleting).
   const replaced = stored ? null : marksOfRange(tr.doc, range, tr.registry)
-  deleteRange(tr, range)
+  const point = deleteRange(tr, range) ? tr.selection!.anchor : range.start
   tr.setStoredMarks(stored)
-  const point = range.start
   const marks = replaced ?? insertionMarks(tr, point)
   tr.setStoredMarks(null)
   if (text === '') {
@@ -259,8 +306,7 @@ export function splitBlock(tr: Transaction): boolean {
   const sel = tr.selection
   if (!sel) return false
   const range = toRange(sel)
-  deleteRange(tr, range)
-  const point = range.start
+  const point = deleteRange(tr, range) ? tr.selection!.anchor : range.start
   const blockPath = blockPathOf(tr, point.path)
   const blockNode = getNode(tr.doc, blockPath) as ElementNode
   const block = readBlock(tr, blockPath)

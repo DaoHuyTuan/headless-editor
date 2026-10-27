@@ -140,6 +140,57 @@ describe('normalize: core rules', () => {
     expect(run(d).doc).toBe(d)
   })
 
+  describe('rule 9 hoists a nested atom block instead of unwrapping it', () => {
+    const atomBlock = definePlugin({ name: 'atomBlock', node: { kind: 'block', atom: true } })
+    const plugins = [...base, atomBlock]
+    const atom = () => el('atomBlock', { src: 'x.png' }, txt('alt'))
+
+    it.each([
+      [
+        'in the middle (the block is split around it)',
+        () => doc(el('paragraph', txt('a'), atom(), txt('b'))),
+        sel([0, 2], 1),
+        () => doc(el('paragraph', txt('a')), atom(), el('paragraph', txt('b'))),
+        sel([2, 0], 1),
+      ],
+      [
+        'at the start (moved before the block)',
+        () => doc(el('paragraph', atom(), txt('ab'))),
+        sel([0, 1], 1),
+        () => doc(atom(), el('paragraph', txt('ab'))),
+        sel([1, 0], 1),
+      ],
+      [
+        'at the end (moved after the block)',
+        () => doc(el('paragraph', txt('ab'), atom())),
+        sel([0, 0], 1),
+        () => doc(el('paragraph', txt('ab')), atom()),
+        sel([0, 0], 1),
+      ],
+      [
+        'inside a nested block (unwrapped first)',
+        () => doc(el('paragraph', txt('a'), el('paragraph', txt('b'), atom(), txt('c')), txt('d'))),
+        sel([0, 1, 2], 1),
+        () => doc(el('paragraph', txt('ab')), atom(), el('paragraph', txt('cd'))),
+        sel([2, 0], 1),
+      ],
+    ])('%s', (_, input, selection, expected, expectedSel) => {
+      const d = input()
+      const tr = run(d, plugins, selection)
+      expect(stripIds(tr.doc)).toEqual(stripIds(expected()))
+      expect(tr.selection).toEqual(expectedSel)
+      expect(tr.ops.reduce(applyOp, d)).toEqual(tr.doc)
+      expect([...tr.ops].reverse().map(invertOp).reduce(applyOp, tr.doc)).toEqual(d)
+      expect(run(tr.doc, plugins).ops).toEqual([])
+    })
+
+    it('keeps the atom node itself (same id and data)', () => {
+      const image = atom()
+      const tr = run(doc(el('paragraph', txt('a'), image, txt('b'))), plugins)
+      expect(tr.doc.children[1]).toEqual(image)
+    })
+  })
+
   it('emits every change as ops: replaying them reproduces the result and inverting restores the input', () => {
     const d = rawDoc(
       txt('root'),

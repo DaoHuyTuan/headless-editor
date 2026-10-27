@@ -448,6 +448,63 @@ describe('opaque elements (unknown types and atoms)', () => {
     expect(before.commands.deleteForward()).toBe(false)
   })
 
+  describe('deleteRange with an opaque edge block', () => {
+    const atomBlock = definePlugin({ name: 'atomBlock', node: { kind: 'block', atom: true } })
+    const setupEdge = (content: Doc, selection?: Selection) =>
+      createTestEditor({ plugins: [testParagraph, testBold, atomBlock], doc: content, selection })
+    const range = (a: number[], ao: number, f: number[], fo: number) => ({
+      start: { path: a, offset: ao },
+      end: { path: f, offset: fo },
+    })
+
+    it.each([
+      ['an unknown block', () => widget('T')],
+      ['an atom block', () => el('atomBlock', txt('alt'))],
+    ])('removes %s at the end of the range whole', (_, opaque) => {
+      const ed = setupEdge(doc(p('ab'), opaque(), p('cd')))
+      const tr = ed.createTransaction()
+      expect(() => tr.deleteRange(range([0, 0], 1, [1, 0], 1))).not.toThrow()
+      ed.dispatch(tr)
+      expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p('a'), p('cd'))))
+      expect(ed.state.selection).toEqual(caret([0, 0], 1))
+    })
+
+    it('removes an opaque start block whole; the caret goes to where the deletion ended', () => {
+      const ed = setupEdge(doc(p('ab'), widget('T'), p('cd')))
+      ed.dispatch(ed.createTransaction().deleteRange(range([1, 0], 0, [2, 0], 1)))
+      expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p('ab'), p('d'))))
+      expect(ed.state.selection).toEqual(caret([1, 0], 0))
+    })
+
+    it('removes blocks in between too', () => {
+      const ed = setupEdge(doc(p('ab'), p('cd'), el('atomBlock'), p('ef')))
+      ed.dispatch(ed.createTransaction().deleteRange(range([0, 0], 1, [2, 0], 0)))
+      expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p('a'), p('ef'))))
+      expect(ed.state.selection).toEqual(caret([0, 0], 1))
+    })
+
+    it('with both edges opaque and nothing editable left, leaves an empty default block with the caret', () => {
+      const ed = setupEdge(doc(widget('T'), el('atomBlock', txt('alt'))))
+      ed.dispatch(ed.createTransaction().deleteRange(range([0, 0], 0, [1, 0], 1)))
+      expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p(''))))
+      expect(ed.state.selection).toEqual(caret([0, 0], 0))
+    })
+
+    it('both edges opaque: the caret goes to the end of the previous editable text when none follows', () => {
+      const ed = setupEdge(doc(p('ab'), widget('T'), el('atomBlock')))
+      ed.dispatch(ed.createTransaction().deleteRange(range([1, 0], 0, [2, 0], 0)))
+      expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p('ab'))))
+      expect(ed.state.selection).toEqual(caret([0, 0], 2))
+    })
+
+    it('insertText over a range starting in an opaque block types at the new caret', () => {
+      const ed = setupEdge(doc(widget('T'), p('cd')))
+      ed.dispatch(ed.createTransaction().insertText('X', range([0, 0], 0, [1, 0], 1)))
+      expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p('Xd'))))
+      expect(ed.state.selection).toEqual(caret([0, 0], 1))
+    })
+  })
+
   it('isActive and mark commands ignore texts inside unknown elements', () => {
     const ed = setupOpaque(doc(p(txt('ab', 'bold')), widget('plain'), p(txt('cd', 'bold'))), sel([0, 0], 0, [2, 0], 2))
     expect(ed.isActive('bold')).toBe(true)

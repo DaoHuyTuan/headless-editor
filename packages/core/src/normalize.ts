@@ -1,5 +1,6 @@
 import { createId } from './model/id'
 import { getNode, isElement, isText, nodeEntries, sameMarkSet } from './model/node'
+import { nextPath } from './model/path'
 import type { ElementNode, Mark, Node, Path, Point, TextNode } from './model/types'
 import { transformPath } from './ops/transform'
 import type { Registry } from './plugin/registry'
@@ -91,12 +92,16 @@ function fixElement(tr: Transaction, node: ElementNode, path: Path): boolean {
 
   // Rule 9: a block holding inline content (or text) has no block children: a nested block is
   // unwrapped (its children are lifted into this block at its position). Repeated passes handle
-  // deeper nesting. Unknown types are not blocks here (rule 7 leaves them alone).
+  // deeper nesting. Unknown types are not blocks here (rule 7 leaves them alone). An atom block
+  // has no editable children to lift, so it is hoisted out whole instead (see `hoist`).
   if (spec.kind === 'block' && (spec.content === 'inline' || spec.content === 'text')) {
     for (let i = 0; i < children.length; i++) {
       const c = children[i]!
-      if (isText(c) || registry.node(c.type)?.kind !== 'block') continue
-      unwrap(tr, c, [...path, i])
+      if (isText(c)) continue
+      const childSpec = registry.node(c.type)
+      if (childSpec?.kind !== 'block') continue
+      if (childSpec.atom) hoist(tr, node, path, i)
+      else unwrap(tr, c, [...path, i])
       return true
     }
   }
@@ -156,6 +161,23 @@ function unwrap(tr: Transaction, node: ElementNode, at: Path): void {
     tr.apply({ type: 'move_node', path: [...parent, i + k, 0], newPath: [...parent, i + k] })
   }
   tr.removeNode([...parent, i + kids.length])
+}
+
+/**
+ * Moves the atom child `i` of the block at `path` out next to that block, keeping text order: at
+ * the start it goes before the block, at the end after it; in the middle the block is first split
+ * after the atom (the right half gets a fresh id) and the atom then goes between the halves.
+ */
+function hoist(tr: Transaction, block: ElementNode, path: Path, i: number): void {
+  const count = (block.children ?? []).length
+  if (i === 0) {
+    tr.apply({ type: 'move_node', path: [...path, 0], newPath: path })
+    return
+  }
+  if (i < count - 1) {
+    tr.apply({ type: 'split_node', path, position: i + 1, properties: { id: createId(), type: block.type, data: block.data } })
+  }
+  tr.apply({ type: 'move_node', path: [...path, i], newPath: nextPath(path) })
 }
 
 function fixMarks(tr: Transaction, text: TextNode, path: Path): boolean {
