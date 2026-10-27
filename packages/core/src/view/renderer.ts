@@ -74,7 +74,8 @@ export class Renderer {
   private readonly leafText = new WeakMap<Element, TextNode>()
 
   constructor(
-    private readonly root: HTMLElement,
+    /** The contenteditable root the document renders into. */
+    readonly root: HTMLElement,
     private readonly editor: Editor,
   ) {
     this.doc = root.ownerDocument
