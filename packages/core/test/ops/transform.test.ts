@@ -16,6 +16,22 @@ import { doc, el, txt } from '../../src/testing/builders'
 const P = (path: Path, offset: number) => ({ path, offset })
 const anyNode: Node = el('paragraph', txt(''))
 
+describe('transformSelection with a node selection', () => {
+  const s = { anchor: P([0, 0], 1), focus: P([0, 0], 1), node: [1] }
+  it('maps node through transformPath', () => {
+    expect(transformSelection(s, { type: 'insert_node', path: [0], node: anyNode })).toEqual({
+      anchor: P([1, 0], 1),
+      focus: P([1, 0], 1),
+      node: [2],
+    })
+  })
+  it('drops node when it is removed, keeping the mapped caret', () => {
+    const out = transformSelection(s, { type: 'remove_node', path: [1], node: anyNode })
+    expect(out).toEqual({ anchor: P([0, 0], 1), focus: P([0, 0], 1) })
+    expect(out).not.toHaveProperty('node')
+  })
+})
+
 describe('transformPath', () => {
   it('insert_node', () => {
     expect(transformPath([0, 1], { type: 'insert_node', path: [0], node: anyNode })).toEqual([1, 1])

@@ -55,6 +55,42 @@ export function isEditablePoint(doc: ReadableRoot, types: NodeTypes, point: Poin
   return true
 }
 
+export function isNodeSelection(sel: Selection | null | undefined): sel is Selection & { node: Path } {
+  return !!sel && sel.node !== undefined
+}
+
+/** Whether `path` addresses an opaque element (atom or unknown type) of `doc`. */
+export function isOpaqueAt(doc: ReadableRoot, types: NodeTypes, path: Path): boolean {
+  if (path.length === 0) return false
+  let node: Node
+  try {
+    node = getNode(doc, path)
+  } catch {
+    return false
+  }
+  return !isText(node) && isOpaque(node, types)
+}
+
+/**
+ * A node selection of the opaque element at `path`; its caret is at the end of the last editable
+ * text before the element, else the start of the first one after it. Throws when the element is
+ * not opaque, or when the doc has no editable text to anchor the caret.
+ */
+export function nodeSelection(doc: ReadableRoot, types: NodeTypes, path: Path): Selection {
+  if (!isOpaqueAt(doc, types, path)) throw new Error(`No opaque element at [${path}]`)
+  let point: Point | null = null
+  for (const [t, p] of editableTextEntries(doc, types)) {
+    const c = comparePath(p, path)
+    if (c < 0) point = { path: p, offset: t.text.length }
+    else if (c > 0) {
+      point ??= { path: p, offset: 0 }
+      break
+    }
+  }
+  if (!point) throw new Error(`No editable text to anchor a node selection of [${path}]`)
+  return { anchor: point, focus: point, node: [...path] }
+}
+
 /** A caret at the start of the first editable text of `doc`, or null when it has none. */
 export function firstEditableCaret(doc: ReadableRoot, types: NodeTypes): Selection | null {
   for (const [, path] of editableTextEntries(doc, types)) {

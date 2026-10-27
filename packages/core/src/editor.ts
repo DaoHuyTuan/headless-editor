@@ -4,7 +4,7 @@ import { normalizeKeyName, type Platform } from './keymap'
 import { parseHTML } from './html/parse'
 import { serializeHTML } from './html/serialize'
 import { coerceDoc } from './load'
-import { firstEditableCaret, isEditablePoint } from './model/editable'
+import { firstEditableCaret, isEditablePoint, isOpaqueAt } from './model/editable'
 import { deepEqualJson, getNode, isElement } from './model/node'
 import { comparePoint } from './model/path'
 import type { Data, Doc, ElementNode, Json, Selection } from './model/types'
@@ -379,7 +379,10 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     // A missing selection, or one that does not resolve to editable text, starts at the first editable text.
     const sel = tr.selection
     const valid =
-      sel && isEditablePoint(tr.doc, this.registry, sel.anchor) && isEditablePoint(tr.doc, this.registry, sel.focus)
+      sel &&
+      isEditablePoint(tr.doc, this.registry, sel.anchor) &&
+      isEditablePoint(tr.doc, this.registry, sel.focus) &&
+      (!sel.node || isOpaqueAt(tr.doc, this.registry, sel.node))
     if (!valid) tr.setSelection(firstEditableCaret(tr.doc, this.registry))
     return tr
   }

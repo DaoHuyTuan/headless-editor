@@ -76,6 +76,7 @@ export class Transaction {
     return this
   }
 
+  /** No-op when equal to the current selection (anchor, focus and `node` compared). */
   setSelection(sel: Selection | null): this {
     if (selectionEquals(sel, this._selection)) return this
     this.apply({ type: 'set_selection', selection: sel, prevSelection: this._selection })
@@ -150,6 +151,16 @@ export class Transaction {
 
   deleteForward(unit: DeleteUnit = 'character'): this {
     textEdit.deleteForward(this, unit)
+    return this
+  }
+
+  /**
+   * Inserts the block-level `node` at the selection (replacing a selected node or an empty block,
+   * else before/after/splitting the caret's block); the caret ends in the editable text after it.
+   * Invalid data leaves the tr `rejected`.
+   */
+  insertBlockNode(node: ElementNode): this {
+    textEdit.insertBlockNode(this, node)
     return this
   }
 

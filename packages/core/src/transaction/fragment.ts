@@ -3,7 +3,7 @@ import { createId } from '../model/id'
 import { getNode, isElement, isText, nodeEntries } from '../model/node'
 import { comparePoint, parentPath } from '../model/path'
 import type { DeepReadonly, Doc, ElementNode, Json, Node, Path, Point, Range, Selection, TextNode } from '../model/types'
-import { blockPathOf, deleteRange, splitBlockAt } from './text'
+import { blockPathOf, deleteRange, replaceSelectedNode, splitBlockAt } from './text'
 import type { Transaction } from './transaction'
 
 /**
@@ -64,7 +64,9 @@ function sliceNode(node: Node, from: Edge, to: Edge): Node {
  * slice of the deepest node containing both points: a part of a single text, inline content of one
  * block, or a list of blocks whose partial edge blocks are trimmed but keep their type and data.
  */
-export function getFragment(doc: DeepReadonly<Doc>, range: Range): Fragment {
+export function getFragment(doc: DeepReadonly<Doc>, range: Range, node?: Path): Fragment {
+  // A node selection copies the selected node whole (pass `selection.node`).
+  if (node) return [sliceNode(getNode(doc, node), null, null)]
   const { start, end } = ordered(range)
   if (comparePoint(start, end) === 0) return []
   let depth = 0
@@ -181,11 +183,13 @@ function insertBlocks(tr: Transaction, point: Point, blocks: Node[], rightId: st
  * an empty fragment only deletes (true when something was deleted).
  */
 export function insertFragment(tr: Transaction, fragment: Fragment, at?: Range | Selection): boolean {
+  // A selected node is removed first; the content goes in at the (mapped) caret.
+  const removedNode = !at && replaceSelectedNode(tr, 'delete')
   const target = at ?? tr.selection
   if (!target) return false
   const range = ordered(target)
   const deleted = deleteRange(tr, range)
-  if (fragment.length === 0) return deleted
+  if (fragment.length === 0) return deleted || removedNode
   const point = range.start
 
   const used = new Set<string>()

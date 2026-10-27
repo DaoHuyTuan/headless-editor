@@ -42,6 +42,12 @@ export interface Point {
 export interface Selection {
   anchor: Point
   focus: Point
+  /**
+   * Node selection: the opaque element (atom or unknown type) at this path is selected. `anchor`
+   * and `focus` are then a collapsed caret at the nearest editable point before it (the end of the
+   * previous editable text), or after it when there is none before. Absent for a text selection.
+   */
+  node?: Path
 }
 
 /** Ordered: start <= end. */

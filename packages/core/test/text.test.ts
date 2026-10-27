@@ -427,25 +427,29 @@ describe('opaque elements (unknown types and atoms)', () => {
     expect(ed.state.selection).toEqual(caret([1, 0], 0))
   })
 
-  it('Backspace at the start of a block after an unknown block does nothing', () => {
+  it('Backspace at the start of a block after an unknown block selects it (doc unchanged)', () => {
     const ed = setupOpaque(doc(widget('Title'), p('body')), caret([1, 0], 0))
     const before = ed.state.doc
-    expect(ed.commands.deleteBackward()).toBe(false)
+    expect(ed.commands.deleteBackward()).toBe(true)
     expect(ed.state.doc).toBe(before)
+    expect(ed.state.selection).toEqual({ ...caret([1, 0], 0), node: [0] })
   })
 
-  it('Delete at the end of a block before an unknown block does nothing', () => {
+  it('Delete at the end of a block before an unknown block selects it (doc unchanged)', () => {
     const ed = setupOpaque(doc(p('body'), widget('Tail')), caret([0, 0], 4))
     const before = ed.state.doc
-    expect(ed.commands.deleteForward()).toBe(false)
+    expect(ed.commands.deleteForward()).toBe(true)
     expect(ed.state.doc).toBe(before)
+    expect(ed.state.selection).toEqual({ ...caret([0, 0], 4), node: [1] })
   })
 
-  it('Backspace / Delete next to an atom block do nothing', () => {
+  it('Backspace / Delete next to an atom block select it', () => {
     const after = setupOpaque(doc(el('image'), p('body')), caret([1, 0], 0))
-    expect(after.commands.deleteBackward()).toBe(false)
+    expect(after.commands.deleteBackward()).toBe(true)
+    expect(after.state.selection).toEqual({ ...caret([1, 0], 0), node: [0] })
     const before = setupOpaque(doc(p('body'), el('image')), caret([0, 0], 4))
-    expect(before.commands.deleteForward()).toBe(false)
+    expect(before.commands.deleteForward()).toBe(true)
+    expect(before.state.selection).toEqual({ ...caret([0, 0], 4), node: [1] })
   })
 
   describe('deleteRange with an opaque edge block', () => {

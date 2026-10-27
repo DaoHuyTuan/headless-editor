@@ -34,6 +34,8 @@ export {
   toRange,
 } from './model/path'
 export { createId, setIdGenerator } from './model/id'
+export { isNodeSelection, nodeSelection } from './model/editable'
+export { findPathById } from './model/find'
 export type { Operation } from './ops/types'
 export { applyOp } from './ops/apply'
 export { invertOp } from './ops/invert'

@@ -224,7 +224,7 @@ function rehomeSelection(tr: Transaction, siblings: Node[], parent: Path, i: num
   if (!target) return
   const move = (pt: Point) => (inside(pt.path) ? target : pt)
   // Applied as an op directly so stored marks are kept (Transaction.setSelection clears them).
-  tr.apply({ type: 'set_selection', selection: { anchor: move(sel.anchor), focus: move(sel.focus) }, prevSelection: sel })
+  tr.apply({ type: 'set_selection', selection: { ...sel, anchor: move(sel.anchor), focus: move(sel.focus) }, prevSelection: sel })
 }
 
 function isInlineContent(n: Node, registry: Registry): boolean {

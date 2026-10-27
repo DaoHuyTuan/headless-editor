@@ -1,4 +1,5 @@
 import { sanitizeFragment } from './content/sanitize'
+import { isNodeSelection } from './model/editable'
 import type { Data, Path } from './model/types'
 import { definePlugin } from './plugin/define'
 import type { Command, InputIntent } from './plugin/types'
@@ -19,7 +20,10 @@ function intentText(intent: InputIntent): string | null {
 /** Inserts the intent's text into `intent.range` (or the selection). Without text, does nothing (false). */
 function insertIntentText(tr: Transaction, intent: InputIntent): boolean {
   const text = intentText(intent)
-  return text === null ? false : insertText(tr, text, intent.range ?? undefined)
+  if (text === null) return false
+  // With a node selection the model selection is authoritative (the DOM range is only its caret):
+  // typing replaces the selected node.
+  return insertText(tr, text, isNodeSelection(tr.selection) ? undefined : (intent.range ?? undefined))
 }
 
 /** Default `beforeinput` handling: inputType → edit on the tr. Returning false leaves the intent unhandled. */

@@ -123,5 +123,10 @@ export function transformPoint(point: Point, op: Operation, affinity: Affinity =
 export function transformSelection(sel: Selection, op: Operation, affinity: Affinity = 'forward'): Selection | null {
   const anchor = transformPoint(sel.anchor, op, affinity)
   const focus = transformPoint(sel.focus, op, affinity)
-  return anchor && focus ? { anchor, focus } : null
+  if (!anchor || !focus) return null
+  const out: Selection = { anchor, focus }
+  // A removed selected node drops `node`: the mapped caret remains.
+  const node = sel.node && transformPath(sel.node, op)
+  if (node) out.node = node
+  return out
 }

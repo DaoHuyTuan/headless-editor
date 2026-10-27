@@ -1,5 +1,5 @@
 import { createId } from '../model/id'
-import { editableTextEntries, isOpaque } from '../model/editable'
+import { editableTextEntries, isNodeSelection, isOpaque, nodeSelection } from '../model/editable'
 import { getNode, isElement, isText, sameMarkSet } from '../model/node'
 import { comparePath, comparePoint, isAncestorPath, nextPath, parentPath, pointEquals, toRange } from '../model/path'
 import type { ElementNode, Mark, Path, Point, Range, Selection, TextNode } from '../model/types'
@@ -154,8 +154,102 @@ export function deleteRange(tr: Transaction, range: Range): boolean {
   return true
 }
 
+function emptyDefaultBlock(tr: Transaction, text = '', marks: Mark[] = []): ElementNode {
+  return { id: createId(), type: tr.registry.defaultBlock, data: {}, children: [{ text, marks }] }
+}
+
+/**
+ * The start of the first editable text after the node at `path` (texts inside it excluded); when
+ * none follows, an empty default block is inserted right after the node and its start returned.
+ */
+function caretAfterNode(tr: Transaction, path: Path): Point {
+  for (const [, p] of editableTextEntries(tr.doc, tr.registry)) {
+    if (comparePath(p, path) > 0) return { path: p, offset: 0 }
+  }
+  const at = nextPath(path)
+  tr.insertNode(at, emptyDefaultBlock(tr))
+  return { path: [...at, 0], offset: 0 }
+}
+
+/** What to do with a node-selected element (see `replaceSelectedNode`). */
+export type NodeSelectionEdit = 'delete' | 'split' | { text: string } | { node: ElementNode }
+
+/**
+ * Every edit of a node selection, in one place. Returns false (nothing done) without a node selection.
+ * - `'delete'`: removes the node; the caret is the selection's anchor, mapped.
+ * - `'split'`: inserts an empty default block after the node; the caret goes into it.
+ * - `{ text }`: replaces the node with a default block holding `text` (stored marks); caret after it.
+ * - `{ node }`: replaces the node with `node` (validated: false when rejected); the caret is at the
+ *   start of the editable text following it (an empty default block is added when none follows).
+ */
+export function replaceSelectedNode(tr: Transaction, mode: NodeSelectionEdit): boolean {
+  const sel = tr.selection
+  if (!isNodeSelection(sel)) return false
+  const path = sel.node
+  if (mode === 'delete') {
+    tr.removeNode(path)
+    // The removal mapped the selection (dropping `node`); collapse it explicitly.
+    const mapped = tr.selection
+    tr.setSelection(mapped && caret(mapped.anchor))
+    return true
+  }
+  if (mode === 'split') {
+    const at = nextPath(path)
+    tr.insertNode(at, emptyDefaultBlock(tr))
+    tr.setSelection(caret({ path: [...at, 0], offset: 0 }))
+    return true
+  }
+  const replacement = 'text' in mode ? emptyDefaultBlock(tr, mode.text, tr.storedMarks ?? []) : mode.node
+  tr.insertNode(nextPath(path), replacement)
+  if (tr.rejected !== null) return false
+  tr.removeNode(path)
+  tr.setSelection(caret('text' in mode ? { path: [...path, 0], offset: mode.text.length } : caretAfterNode(tr, path)))
+  return true
+}
+
+/**
+ * Inserts the block-level `node` at the selection: it replaces a selected node or an empty block;
+ * at offset 0 of a block it goes before it, at its end after it, else the block is split at the caret
+ * (a range selection is deleted first). The caret ends at the start of the editable text following
+ * the node, in an empty default block added when none follows. False without a selection or when
+ * `node` is rejected (the tr stays rejected).
+ */
+export function insertBlockNode(tr: Transaction, node: ElementNode): boolean {
+  if (isNodeSelection(tr.selection)) return replaceSelectedNode(tr, { node })
+  const sel = tr.selection
+  if (!sel) return false
+  const range = toRange(sel)
+  const point = deleteRange(tr, range) ? tr.selection!.anchor : range.start
+  const blockPath = blockPathOf(tr, point.path)
+  const blockNode = getNode(tr.doc, blockPath) as ElementNode
+  const block = readBlock(tr, blockPath)
+  const offset = toBlockOffset(block, point)
+  const empty = (blockNode.children ?? []).every((c) => isText(c) && c.text === '')
+  let at: Path
+  if (empty) {
+    tr.insertNode(blockPath, node)
+    if (tr.rejected !== null) return false
+    tr.removeNode(nextPath(blockPath))
+    at = blockPath
+  } else if (offset === 0) {
+    at = blockPath
+  } else if (offset === block.text.length) {
+    at = nextPath(blockPath)
+  } else {
+    splitBlockAt(tr, point, blockPath, { id: createId(), type: blockNode.type, data: blockNode.data })
+    at = nextPath(blockPath)
+  }
+  if (!empty) {
+    tr.insertNode(at, node)
+    if (tr.rejected !== null) return false
+  }
+  tr.setSelection(caret(caretAfterNode(tr, at)))
+  return true
+}
+
 /** Deletes the selection (or `at`), then inserts `text` with the insertion marks; the caret ends after it. */
 export function insertText(tr: Transaction, text: string, at?: Selection | Range): boolean {
+  if (!at && isNodeSelection(tr.selection)) return replaceSelectedNode(tr, text === '' ? 'delete' : { text })
   const target = at ?? tr.selection
   if (!target) return false
   const range = asRange(target)
@@ -254,7 +348,7 @@ function targetOffset(text: string, offset: number, unit: DeleteUnit, backward: 
 
 /**
  * The sibling element of `blockPath` in the given direction, when it holds editable text. Opaque
- * siblings (unknown types, atoms) give null: Backspace/Delete next to them does nothing.
+ * siblings (unknown types, atoms) give null: Backspace/Delete node-selects them instead.
  */
 function adjacentBlock(tr: Transaction, blockPath: Path, backward: boolean): Path | null {
   const k = blockPath.length - 1
@@ -268,7 +362,19 @@ function adjacentBlock(tr: Transaction, blockPath: Path, backward: boolean): Pat
   return blockTexts(tr, path).length > 0 ? path : null
 }
 
+/** The sibling of `blockPath` in the given direction when it is an opaque element (atom or unknown). */
+function adjacentOpaque(tr: Transaction, blockPath: Path, backward: boolean): Path | null {
+  const k = blockPath.length - 1
+  const index = blockPath[k]! + (backward ? -1 : 1)
+  if (index < 0) return null
+  const parent = parentPath(blockPath)
+  const siblings = parent.length === 0 ? tr.doc.children : ((getNode(tr.doc, parent) as ElementNode).children ?? [])
+  const sibling = siblings[index]
+  return sibling && isElement(sibling) && isOpaque(sibling, tr.registry) ? [...parent, index] : null
+}
+
 function deleteDirection(tr: Transaction, unit: DeleteUnit, backward: boolean): boolean {
+  if (isNodeSelection(tr.selection)) return replaceSelectedNode(tr, 'delete')
   const sel = tr.selection
   if (!sel) return false
   if (!pointEquals(sel.anchor, sel.focus)) return deleteRange(tr, toRange(sel))
@@ -278,6 +384,12 @@ function deleteDirection(tr: Transaction, unit: DeleteUnit, backward: boolean): 
   const offset = toBlockOffset(block, point)
   const atEdge = backward ? offset === 0 : offset === block.text.length
   if (atEdge) {
+    // An opaque neighbour is selected first (a second Backspace/Delete removes it).
+    const opaque = adjacentOpaque(tr, blockPath, backward)
+    if (opaque) {
+      tr.setSelection(nodeSelection(tr.doc, tr.registry, opaque))
+      return true
+    }
     const other = adjacentBlock(tr, blockPath, backward)
     if (!other) return false
     const texts = blockTexts(tr, other)
@@ -303,6 +415,7 @@ export function deleteForward(tr: Transaction, unit: DeleteUnit = 'character'): 
  * block with `data {}`. The caret ends at the start of the new block.
  */
 export function splitBlock(tr: Transaction): boolean {
+  if (isNodeSelection(tr.selection)) return replaceSelectedNode(tr, 'split')
   const sel = tr.selection
   if (!sel) return false
   const range = toRange(sel)
@@ -340,7 +453,7 @@ export function splitBlockAt(tr: Transaction, point: Point, blockPath: Path, pro
   return { path: [...newBlock, ...point.path.slice(blockPath.length).map(() => 0)], offset: 0 }
 }
 
-/** Selects from the start of the first editable text to the end of the last one in the doc. */
+/** Selects from the start of the first editable text to the end of the last one in the doc (a text selection: no `node`). */
 export function selectAll(tr: Transaction): boolean {
   const texts = [...editableTextEntries(tr.doc, tr.registry)]
   const anchor = firstPoint(texts)
