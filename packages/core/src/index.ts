@@ -37,3 +37,31 @@ export type { Operation } from './ops/types'
 export { applyOp } from './ops/apply'
 export { invertOp } from './ops/invert'
 export { transformPath, transformPoint, transformSelection } from './ops/transform'
+export type {
+  AnyPlugin,
+  AnyPluginSpec,
+  Command,
+  CommandFactory,
+  CommandMap,
+  CommandsOf,
+  CommandsOfPlugin,
+  DataOf,
+  DOMEventName,
+  DOMOutputSpec,
+  InputIntent,
+  MarkDOM,
+  MarkSpec,
+  NodeSpec,
+  NoOptions,
+  OptionsOf,
+  ParseRule,
+  Plugin,
+  PluginContext,
+  PluginSpec,
+  StateOf,
+} from './plugin/types'
+export { definePlugin } from './plugin/define'
+export { DEFAULT_PRIORITY, Registry } from './plugin/registry'
+export type { RegisteredMark, RegisteredNode, ValidateResult } from './plugin/registry'
+export type { EditorState } from './state'
+export type { Fragment } from './transaction/fragment'
