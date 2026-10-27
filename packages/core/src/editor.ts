@@ -1,6 +1,8 @@
 import { corePlugin } from './core-plugin'
 import { historyPlugin } from './history'
 import { normalizeKeyName, type Platform } from './keymap'
+import { parseHTML } from './html/parse'
+import { serializeHTML } from './html/serialize'
 import { coerceDoc } from './load'
 import { deepEqualJson, getNode, isElement, textEntries } from './model/node'
 import { comparePoint } from './model/path'
@@ -50,7 +52,6 @@ interface Committed {
 }
 
 const MAX_APPEND_ROUNDS = 10
-const HTML_UNAVAILABLE = 'HTML import/export is not available yet'
 const VIEW_UNAVAILABLE = 'View is not available yet'
 
 function detectPlatform(): Platform {
@@ -211,8 +212,9 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     return this._state.doc
   }
 
+  /** Serializes the document with the plugins' current options (no DOM needed). */
   getHTML(): string {
-    throw new Error(HTML_UNAVAILABLE)
+    return serializeHTML(this._state.doc, this.registry, (name) => this.pluginOptions.get(name))
   }
 
   /** Replaces the document; the caret goes to the start of the first text. Not added to history. */
@@ -284,8 +286,8 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
 
   /** A normalized tr that replaces the whole document with `content`. */
   private contentTransaction(content: Doc | string, selection?: Selection): Transaction {
-    if (typeof content === 'string') throw new Error(HTML_UNAVAILABLE)
-    const doc = coerceDoc(content, this.registry)
+    const raw = typeof content === 'string' ? { type: 'doc', children: parseHTML(content, this.registry) } : content
+    const doc = coerceDoc(raw, this.registry)
     const tr = this.createTransaction()
     tr.meta.origin = 'load'
     tr.meta.addToHistory = false

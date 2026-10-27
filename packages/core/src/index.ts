@@ -72,6 +72,8 @@ export { isMarkActive, marksAt } from './transaction/marks'
 export type { MarkStateView } from './transaction/marks'
 export { normalize } from './normalize'
 export { coerceDoc } from './load'
+export { parseHTML } from './html/parse'
+export { serializeHTML } from './html/serialize'
 export { Editor } from './editor'
 export type {
   BoundCommands,

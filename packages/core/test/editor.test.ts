@@ -323,12 +323,12 @@ describe('Editor', () => {
     expect(update.mock.calls[0]![0].tr.meta).toMatchObject({ origin: 'load', addToHistory: false })
   })
 
-  it('HTML is not available yet', () => {
-    const ed = createTestEditor({ plugins: [testParagraph] })
-    expect(() => ed.getHTML()).toThrow('HTML import/export is not available yet')
-    expect(() => ed.setContent('<p>a</p>')).toThrow('HTML import/export is not available yet')
+  it('getHTML works without a DOM; HTML content needs one', () => {
+    const ed = createTestEditor({ plugins: [testParagraph], doc: doc(el('paragraph', txt('a'))) })
+    expect(ed.getHTML()).toBe('<p>a</p>')
+    expect(() => ed.setContent('<p>a</p>')).toThrow('parseHTML requires a DOM (DOMParser)')
     expect(() => new Editor({ plugins: [testParagraph], content: '<p>a</p>' })).toThrow(
-      'HTML import/export is not available yet',
+      'parseHTML requires a DOM (DOMParser)',
     )
   })
 
