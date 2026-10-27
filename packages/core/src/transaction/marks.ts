@@ -84,6 +84,14 @@ function coveredTexts(doc: Doc, range: Range): Covered[] {
 }
 
 /**
+ * Marks of the first character `range` covers (what typing over the range keeps), or null when it
+ * covers no characters. Unlike the caret rule, a range replacement keeps the replaced content's marks.
+ */
+export function marksOfRange(doc: Doc, range: Range | Selection): Mark[] | null {
+  return coveredTexts(doc, ordered(range))[0]?.node.marks ?? null
+}
+
+/**
  * Collapsed (or covering no characters) → `marksAt`; a range → every text with at least one
  * covered character has a matching mark.
  */

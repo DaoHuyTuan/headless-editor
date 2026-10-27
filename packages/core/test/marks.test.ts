@@ -85,6 +85,24 @@ describe('stored marks', () => {
     expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p(txt('abx', 'bold'), 'cd'))))
   })
 
+  it('typing over a selected bold run after plain text keeps bold', () => {
+    const ed = setup(doc(p('a', txt('bc', 'bold'))), sel([0, 1], 0, [0, 1], 2))
+    ed.commands.insertText('x')
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p('a', txt('x', 'bold')))))
+  })
+
+  it('the equivalent selection starting at the end of the plain text keeps bold too', () => {
+    const ed = setup(doc(p('a', txt('bc', 'bold'))), sel([0, 0], 1, [0, 1], 2))
+    ed.commands.insertText('x')
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p('a', txt('x', 'bold')))))
+  })
+
+  it('typing over a range starting in plain text gives plain text', () => {
+    const ed = setup(doc(p('ab', txt('cd', 'bold'))), sel([0, 0], 1, [0, 1], 1))
+    ed.commands.insertText('x')
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p('ax', txt('d', 'bold')))))
+  })
+
   it('setMark / unsetMark on a caret change stored marks', () => {
     const ed = setup(doc(p(txt('ab', 'italic'))), sel([0, 0], 1))
     ed.commands.setMark('bold')

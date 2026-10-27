@@ -2,7 +2,7 @@ import { createId } from '../model/id'
 import { getNode, isElement, isText, sameMarkSet, textEntries } from '../model/node'
 import { comparePath, comparePoint, nextPath, parentPath, pointEquals, toRange } from '../model/path'
 import type { ElementNode, Mark, Path, Point, Range, Selection, TextNode } from '../model/types'
-import { marksAtTr } from './marks'
+import { marksAtTr, marksOfRange } from './marks'
 import type { Transaction } from './transaction'
 
 /** Text editing algorithms. Every change is an operation on `tr`; each returns whether it did anything. */
@@ -110,10 +110,12 @@ export function insertText(tr: Transaction, text: string, at?: Selection | Range
   const range = asRange(target)
   // Deleting moves the selection, which clears stored marks; keep them for the insertion.
   const stored = tr.storedMarks
+  // Typing over a range keeps the marks of its first covered character (read before deleting).
+  const replaced = stored ? null : marksOfRange(tr.doc, range)
   deleteRange(tr, range)
   tr.setStoredMarks(stored)
   const point = range.start
-  const marks = insertionMarks(tr, point)
+  const marks = replaced ?? insertionMarks(tr, point)
   tr.setStoredMarks(null)
   if (text === '') {
     tr.setSelection(caret(point))
