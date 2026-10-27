@@ -9,7 +9,7 @@ import { comparePoint } from './model/path'
 import type { Data, Doc, ElementNode, Json, Selection } from './model/types'
 import { normalize } from './normalize'
 import { Registry } from './plugin/registry'
-import type { AnyPlugin, Command, CommandsOf, InputIntent, PluginContext } from './plugin/types'
+import type { AnyPlugin, Command, CommandsOf, DOMEventName, InputIntent, PluginContext } from './plugin/types'
 import type { EditorState } from './state'
 import { isMarkActive } from './transaction/marks'
 import { Transaction } from './transaction/transaction'
@@ -195,6 +195,15 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     for (const plugin of this.registry.plugins) {
       const handler = plugin.spec.onBeforeInput
       if (handler && handler(intent, this.getContext(plugin))) return true
+    }
+    return false
+  }
+
+  /** Asks each plugin's `handleDOMEvents[type]` by priority; true when one of them handled `event`. */
+  handleDOMEvent(type: DOMEventName, event: Event): boolean {
+    for (const plugin of this.registry.plugins) {
+      const handler = plugin.spec.handleDOMEvents?.[type]
+      if (handler && handler(event, this.getContext(plugin))) return true
     }
     return false
   }

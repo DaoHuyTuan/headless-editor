@@ -1,0 +1,56 @@
+body {
+  margin: 0;
+  font: 16px/1.5 system-ui, sans-serif;
+  color: #1a1a1a;
+  background: #fafafa;
+}
+.app {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 16px;
+}
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.tabs button[aria-selected='true'],
+.toolbar button[data-active='true'] {
+  background: #1a1a1a;
+  color: #fff;
+}
+.toolbar {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+button {
+  border: 1px solid #ccc;
+  background: #fff;
+  border-radius: 4px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.editor {
+  min-height: 200px;
+  padding: 12px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fff;
+  outline: none;
+  white-space: pre-wrap;
+}
+.editor:focus {
+  border-color: #4a7dff;
+}
+.editor p {
+  margin: 0 0 8px;
+}
+.code pre {
+  padding: 8px;
+  background: #fff;
+  border: 1px solid #ccc;
+  overflow: auto;
+  font-size: 13px;
+}

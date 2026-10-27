@@ -3,6 +3,7 @@ import { pointEquals } from '../model/path'
 import type { Selection } from '../model/types'
 import type { EditorState } from '../state'
 import { readDomSelection, writeDomSelection } from './dom-selection'
+import { attachInput } from './input'
 import { Renderer } from './renderer'
 
 export interface InputRecord {
@@ -46,6 +47,7 @@ export class EditorView {
 
     this.disposers.push(editor.on('transaction', ({ editor: ed }) => this.update(ed.state)))
     this.listen(root.ownerDocument, 'selectionchange', () => this.onSelectionChange())
+    this.attach(attachInput)
   }
 
   /** The last 20 input events, oldest first. */
@@ -88,6 +90,23 @@ export class EditorView {
     this.disposers.push(() => target.removeEventListener(type, fn, options))
   }
 
+  /**
+   * Makes the model selection match the DOM selection when it is inside the root, dispatching a
+   * selection-only tr if they differ. Input handlers call it first: `selectionchange` is async.
+   */
+  syncSelection(): void {
+    if (this.destroyed || this.composing) return
+    const domSel = this.domSelection()
+    const anchor = domSel?.anchorNode
+    if (!domSel || !anchor || !this.root.contains(anchor)) return
+    const sel = readDomSelection(this.renderer, domSel)
+    // Also covers the async selectionchange fired after our own writes: it maps back to the model.
+    if (!sel || sameSelection(sel, this.editor.state.selection)) return
+    const tr = this.editor.createTransaction()
+    tr.setSelection(sel).setMeta('origin', 'selection').setMeta('addToHistory', false)
+    this.editor.dispatch(tr)
+  }
+
   // --- internals ---
 
   private domSelection(): globalThis.Selection | null {
@@ -113,15 +132,6 @@ export class EditorView {
   }
 
   private onSelectionChange(): void {
-    if (this.destroyed || this.writingSelection || this.composing) return
-    const domSel = this.domSelection()
-    const anchor = domSel?.anchorNode
-    if (!domSel || !anchor || !this.root.contains(anchor)) return
-    const sel = readDomSelection(this.renderer, domSel)
-    // Also covers the async selectionchange fired after our own writes: it maps back to the model.
-    if (!sel || sameSelection(sel, this.editor.state.selection)) return
-    const tr = this.editor.createTransaction()
-    tr.setSelection(sel).setMeta('origin', 'selection').setMeta('addToHistory', false)
-    this.editor.dispatch(tr)
+    if (!this.writingSelection) this.syncSelection()
   }
 }
