@@ -43,6 +43,11 @@ export type BoundCommands<C> = {
 
 export type EditorCommands<P extends readonly AnyPlugin[]> = BoundCommands<CommandsOf<EditorPlugins<P>>>
 
+interface Committed {
+  tr: Transaction
+  selectionChanged: boolean
+}
+
 const MAX_APPEND_ROUNDS = 10
 const HTML_UNAVAILABLE = 'HTML import/export is not available yet'
 const VIEW_UNAVAILABLE = 'View is not available yet'
@@ -77,6 +82,8 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
   private readonly keymaps: { plugin: AnyPlugin; bindings: Map<string, () => boolean> }[] = []
   private readonly listeners = new Map<EditorEventName, Set<(e: EditorEvent) => void>>()
   private destroyed = false
+  /** True while `dispatch` runs the pipeline (before events are emitted). */
+  private computing = false
 
   constructor(options: EditorOptions<P>) {
     this.dev = options.dev ?? false
@@ -123,25 +130,52 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     return this.bindCommands(false)
   }
 
+  /**
+   * Runs the pipeline for `tr` and every appendTransaction round, committing state as it goes,
+   * then emits events for each committed tr in order (listeners see the final state).
+   * Dispatching from a listener is a normal nested dispatch; dispatching while the pipeline is
+   * computing (filter/append/state.apply/normalize hooks) throws in dev and is dropped otherwise.
+   */
   dispatch(tr: Transaction): void {
     if (this.destroyed) return
-    const before = this._state
-    if (!this.applyTransaction(tr)) return
-    let pending = [tr]
-    let roundBefore = before
-    for (let round = 0; round < MAX_APPEND_ROUNDS && pending.length > 0; round++) {
-      const appended: Transaction[] = []
-      const roundStart = this._state
-      for (const plugin of this.registry.plugins) {
-        const append = plugin.spec.appendTransaction
-        if (!append) continue
-        const next = append(pending, roundBefore, this._state)
-        if (!next) continue
-        if (next.meta.origin === undefined) next.meta.origin = 'plugin'
-        if (this.applyTransaction(next)) appended.push(next)
+    if (this.computing) {
+      if (this.dev) throw new Error('Cannot dispatch during transaction processing')
+      return
+    }
+    const committed: Committed[] = []
+    this.computing = true
+    try {
+      const before = this._state
+      const first = this.applyTransaction(tr)
+      if (!first) return
+      committed.push(first)
+      let pending = [tr]
+      let roundBefore = before
+      for (let round = 0; round < MAX_APPEND_ROUNDS && pending.length > 0; round++) {
+        const appended: Transaction[] = []
+        const roundStart = this._state
+        for (const plugin of this.registry.plugins) {
+          const append = plugin.spec.appendTransaction
+          if (!append) continue
+          const next = append(pending, roundBefore, this._state)
+          if (!next) continue
+          if (next.meta.origin === undefined) next.meta.origin = 'plugin'
+          const done = this.applyTransaction(next)
+          if (done) {
+            committed.push(done)
+            appended.push(next)
+          }
+        }
+        pending = appended
+        roundBefore = roundStart
       }
-      pending = appended
-      roundBefore = roundStart
+    } finally {
+      this.computing = false
+    }
+    for (const { tr: t, selectionChanged } of committed) {
+      this.emit('transaction', t)
+      if (t.docChanged) this.emit('update', t)
+      if (selectionChanged) this.emit('selectionUpdate', t)
     }
   }
 
@@ -263,18 +297,18 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     return tr
   }
 
-  /** Steps 1–5 of the dispatch pipeline. Returns false when the tr was dropped. */
-  private applyTransaction(tr: Transaction): boolean {
+  /** Steps 1–4 of the dispatch pipeline (events are emitted by `dispatch`). Null when dropped. */
+  private applyTransaction(tr: Transaction): Committed | null {
     if (tr.rejected) {
       if (this.dev) throw new Error(tr.rejected)
-      return false
+      return null
     }
     if (tr.before !== this._state) {
       if (this.dev) throw new Error('Transaction was created from an outdated state')
-      return false
+      return null
     }
     for (const plugin of this.registry.plugins) {
-      if (plugin.spec.filterTransaction && !plugin.spec.filterTransaction(tr, this._state)) return false
+      if (plugin.spec.filterTransaction && !plugin.spec.filterTransaction(tr, this._state)) return null
     }
     if (tr.docChanged) normalize(tr, this.contextFn)
 
@@ -285,11 +319,7 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
       if (spec) pluginStates.set(plugin.name, spec.apply(tr, prev.pluginStates.get(plugin.name)))
     }
     this._state = { doc: tr.doc, selection: tr.selection, storedMarks: tr.storedMarks, pluginStates }
-
-    this.emit('transaction', tr)
-    if (tr.docChanged) this.emit('update', tr)
-    if (!selectionEquals(prev.selection, tr.selection)) this.emit('selectionUpdate', tr)
-    return true
+    return { tr, selectionChanged: !selectionEquals(prev.selection, tr.selection) }
   }
 
   private emit(event: EditorEventName, tr: Transaction): void {

@@ -4,6 +4,9 @@ import { definePlugin } from '../src/plugin/define'
 import { Editor } from '../src/editor'
 import { Transaction } from '../src/transaction/transaction'
 import type { Command } from '../src/plugin/types'
+import type { Doc, ElementNode } from '../src/model/types'
+import { nodeEntries } from '../src/model/node'
+import type { EditorState } from '../src/state'
 import { createTestEditor, doc, el, sel, stripIds, txt } from '../src/testing/index'
 import { testBold, testParagraph } from './fixtures'
 
@@ -52,6 +55,26 @@ describe('Editor', () => {
   it('createTestEditor resets ids to a counter', () => {
     const ed = createTestEditor({ plugins: [testParagraph], doc: doc() })
     expect(ed.getJSON().children[0]!.id).toBe('n1')
+  })
+
+  it('createTestEditor re-ids content deterministically; runtime ids never collide', () => {
+    const allIds = (d: Doc): string[] => [...nodeEntries(d)].flatMap(([n]) => ('id' in n ? [n.id] : []))
+    const first = createTestEditor({
+      plugins: [testParagraph],
+      doc: doc(el('paragraph', txt('a')), el('paragraph', txt('b'))),
+    })
+    expect(allIds(first.getJSON())).toEqual(['n1', 'n2'])
+    const second = createTestEditor({
+      plugins: [testParagraph],
+      doc: doc(el('paragraph', txt('c')), el('paragraph', txt('d')), el('paragraph', txt('e'))),
+    })
+    expect(allIds(second.getJSON())).toEqual(['n1', 'n2', 'n3'])
+    const tr = second.createTransaction()
+    tr.insertNode([3], { type: 'paragraph', data: {}, children: [txt('f')] } as unknown as ElementNode)
+    second.dispatch(tr)
+    const ids = allIds(second.getJSON())
+    expect(ids).toEqual(['n1', 'n2', 'n3', 'n4'])
+    expect(new Set(ids).size).toBe(ids.length)
   })
 
   it('runs commands with options and plugin state; can() never dispatches', () => {
@@ -150,6 +173,80 @@ describe('Editor', () => {
     expect(ed.state.doc.children[0]!.children).toEqual([txt('>xab')])
     expect(seen).toHaveLength(2)
     expect(seen[1]!.meta.origin).toBe('plugin')
+  })
+
+  it('emits events only after the tr and all appended trs are committed, in order', () => {
+    const append = definePlugin({
+      name: 'append',
+      appendTransaction: (trs, _old, newState) => {
+        if (!trs.some((t) => t.meta.origin !== 'plugin')) return null
+        const t = new Transaction(newState, trs[0]!.registry)
+        t.apply({ type: 'insert_text', path: [0, 0], offset: 0, text: '>' })
+        return t
+      },
+    })
+    const ed = createTestEditor({ plugins: [testParagraph, append], doc: doc(el('paragraph', txt('ab'))) })
+    const log: [string, Transaction, string][] = []
+    const text = () => (ed.state.doc.children[0]!.children![0] as { text: string }).text
+    ed.on('transaction', ({ tr }) => log.push(['transaction', tr, text()]))
+    ed.on('update', ({ tr }) => log.push(['update', tr, text()]))
+    const tr1 = insertTextTr(ed, 'x')
+    ed.dispatch(tr1)
+    expect(log.map(([e]) => e)).toEqual(['transaction', 'update', 'transaction', 'update'])
+    expect(log[0]![1]).toBe(tr1)
+    expect(log[2]![1]).not.toBe(tr1)
+    expect(log[2]![1].meta.origin).toBe('plugin')
+    // Every listener call sees the final state.
+    expect(log.every(([, , t]) => t === '>xab')).toBe(true)
+  })
+
+  it('allows dispatching from a listener as a nested dispatch', () => {
+    const seen: { trs: Transaction[]; old: EditorState; next: EditorState }[] = []
+    const spy = definePlugin({
+      name: 'spy',
+      appendTransaction: (trs, old, next) => {
+        seen.push({ trs, old, next })
+        return null
+      },
+    })
+    const ed = createTestEditor({ plugins: [testParagraph, spy], doc: doc(el('paragraph', txt('ab'))) })
+    let once = false
+    ed.on('update', ({ editor }) => {
+      if (once) return
+      once = true
+      const tr = editor.createTransaction()
+      tr.apply({ type: 'insert_text', path: [0, 0], offset: 0, text: 'y' })
+      editor.dispatch(tr)
+    })
+    expect(() => ed.dispatch(insertTextTr(ed, 'x'))).not.toThrow()
+    expect(ed.state.doc.children[0]!.children).toEqual([txt('yxab')])
+    expect(seen).toHaveLength(2)
+    for (const { trs, old, next } of seen) {
+      expect(trs[0]!.before).toBe(old)
+      expect(trs[trs.length - 1]!.doc).toBe(next.doc)
+    }
+    expect(seen[1]!.old).toBe(seen[0]!.next)
+  })
+
+  it('throws when dispatching while the pipeline is computing (dev)', () => {
+    let editor: Editor | null = null
+    const bad = definePlugin({
+      name: 'bad',
+      appendTransaction: (_trs, _old, next) => {
+        const t = new Transaction(next, _trs[0]!.registry)
+        t.apply({ type: 'insert_text', path: [0, 0], offset: 0, text: '!' })
+        editor!.dispatch(t)
+        return null
+      },
+    })
+    const ed = createTestEditor({ plugins: [testParagraph, bad], doc: doc(el('paragraph', txt('ab'))) })
+    editor = ed
+    expect(() => ed.dispatch(insertTextTr(ed, 'x'))).toThrow('Cannot dispatch during transaction processing')
+
+    const prod = new Editor({ plugins: [testParagraph, bad], content: doc(el('paragraph', txt('ab'))) })
+    editor = prod
+    prod.dispatch(insertTextTr(prod, 'x'))
+    expect(prod.state.doc.children[0]!.children).toEqual([txt('xab')])
   })
 
   it('appendTransaction stops after 10 rounds', () => {
