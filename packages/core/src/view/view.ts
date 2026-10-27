@@ -5,6 +5,7 @@ import { transformPath } from '../ops/transform'
 import type { Operation } from '../ops/types'
 import type { EditorState } from '../state'
 import type { Transaction } from '../transaction/transaction'
+import { attachClipboard } from './clipboard'
 import { attachComposition } from './composition'
 import { readDomSelection, writeDomSelection } from './dom-selection'
 import { attachInput } from './input'
@@ -105,6 +106,7 @@ export class EditorView {
     this.attach(attachInput)
     this.attach(attachComposition)
     this.attach(attachMutation)
+    this.attach(attachClipboard)
   }
 
   /** The last 20 input events, oldest first. */

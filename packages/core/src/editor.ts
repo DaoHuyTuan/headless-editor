@@ -11,6 +11,7 @@ import { normalize } from './normalize'
 import { Registry } from './plugin/registry'
 import type { AnyPlugin, Command, CommandsOf, DOMEventName, InputIntent, PluginContext } from './plugin/types'
 import type { EditorState } from './state'
+import type { Fragment } from './transaction/fragment'
 import { isMarkActive } from './transaction/marks'
 import { Transaction } from './transaction/transaction'
 import { EditorView } from './view/view'
@@ -206,6 +207,15 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
       if (handler && handler(event, this.getContext(plugin))) return true
     }
     return false
+  }
+
+  /** Runs each plugin's `transformPasted` on `fragment`, by priority. */
+  transformPasted(fragment: Fragment): Fragment {
+    for (const plugin of this.registry.plugins) {
+      const transform = plugin.spec.transformPasted
+      if (transform) fragment = transform(fragment, this.getContext(plugin))
+    }
+    return fragment
   }
 
   on(event: EditorEventName, fn: (e: EditorEvent) => void): () => void {
