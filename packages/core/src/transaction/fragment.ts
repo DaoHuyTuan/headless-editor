@@ -1,7 +1,7 @@
 import { createId } from '../model/id'
 import { getNode, isElement, isText, nodeEntries } from '../model/node'
 import { comparePoint, parentPath } from '../model/path'
-import type { Doc, ElementNode, Json, Node, Path, Point, Range, Selection, TextNode } from '../model/types'
+import type { DeepReadonly, Doc, ElementNode, Json, Node, Path, Point, Range, Selection, TextNode } from '../model/types'
 import { blockPathOf, deleteRange, splitBlockAt } from './text'
 import type { Transaction } from './transaction'
 
@@ -63,12 +63,12 @@ function sliceNode(node: Node, from: Edge, to: Edge): Node {
  * slice of the deepest node containing both points: a part of a single text, inline content of one
  * block, or a list of blocks whose partial edge blocks are trimmed but keep their type and data.
  */
-export function getFragment(doc: Doc, range: Range): Fragment {
+export function getFragment(doc: DeepReadonly<Doc>, range: Range): Fragment {
   const { start, end } = ordered(range)
   if (comparePoint(start, end) === 0) return []
   let depth = 0
   while (depth < start.path.length && depth < end.path.length && start.path[depth] === end.path[depth]) depth++
-  const ancestor = depth === 0 ? doc : getNode(doc, start.path.slice(0, depth))
+  const ancestor = depth === 0 ? (doc as Doc) : getNode(doc, start.path.slice(0, depth))
   // Paths point at texts, so a shared full path means both points are in one text.
   if (depth > 0 && isText(ancestor as Node)) {
     const text = ancestor as TextNode

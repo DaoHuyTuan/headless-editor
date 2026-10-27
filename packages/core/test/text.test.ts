@@ -137,9 +137,9 @@ describe('deleteBackward / deleteForward', () => {
 
   it('returns false with nothing before the first block', () => {
     const ed = setup(doc(p('ab'), p('cd')), caret([0, 0], 0))
-    const before = ed.getJSON()
+    const before = ed.state.doc
     expect(ed.commands.deleteBackward()).toBe(false)
-    expect(ed.getJSON()).toBe(before)
+    expect(ed.state.doc).toBe(before)
   })
 
   it('returns false with nothing after the last block', () => {
@@ -361,9 +361,9 @@ describe('onBeforeInput defaults', () => {
     ['insertText', null],
   ])('%s without any text is unhandled and deletes nothing', (inputType, dataTransfer) => {
     const ed = setup(doc(p('a teh b')), caret([0, 0], 0))
-    const before = ed.getJSON()
+    const before = ed.state.doc
     expect(ed.handleIntent({ inputType, data: null, range: sel([0, 0], 2, [0, 0], 5), dataTransfer })).toBe(false)
-    expect(ed.getJSON()).toBe(before)
+    expect(ed.state.doc).toBe(before)
   })
 
   it.each([

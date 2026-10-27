@@ -227,8 +227,9 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     }
   }
 
+  /** A deep copy of the document: changing it never affects the editor. */
   getJSON(): Doc {
-    return this._state.doc
+    return structuredClone(this._state.doc) as Doc
   }
 
   /** Serializes the document with the plugins' current options (no DOM needed). */

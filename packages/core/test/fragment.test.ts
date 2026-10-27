@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { definePlugin } from '../src/plugin/define'
-import type { Doc, ElementNode, Node, Range, Selection } from '../src/model/types'
+import type { DeepReadonly, Doc, ElementNode, Node, Range, Selection } from '../src/model/types'
 import { getFragment, isElement, nodeEntries, type Fragment } from '../src/index'
 import { createTestEditor, doc, el, sel, stripIds, txt } from '../src/testing/index'
 import { testBold, testParagraph } from './fixtures'
@@ -19,7 +19,7 @@ function range(startPath: number[], startOffset: number, endPath: number[], endO
   return { start: { path: startPath, offset: startOffset }, end: { path: endPath, offset: endOffset } }
 }
 
-function elementIds(d: Doc): string[] {
+function elementIds(d: DeepReadonly<Doc>): string[] {
   return [...nodeEntries(d)].filter(([n]) => isElement(n)).map(([n]) => (n as ElementNode).id)
 }
 

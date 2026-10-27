@@ -1,7 +1,8 @@
-import type { Doc, Mark, Selection } from './model/types'
+import type { DeepReadonly, Doc, Mark, Selection } from './model/types'
 
 export interface EditorState {
-  readonly doc: Doc
+  /** Shared with the renderer and history: never mutate it (use `editor.getJSON()` for a copy). */
+  readonly doc: DeepReadonly<Doc>
   readonly selection: Selection | null
   readonly storedMarks: Mark[] | null
   readonly pluginStates: ReadonlyMap<string, unknown>

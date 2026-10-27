@@ -1,5 +1,6 @@
 export type {
   Data,
+  DeepReadonly,
   Doc,
   ElementNode,
   Json,

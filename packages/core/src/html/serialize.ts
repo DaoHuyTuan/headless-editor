@@ -1,5 +1,5 @@
 import { deepEqualJson, isText } from '../model/node'
-import type { Doc, Json, Mark, Node } from '../model/types'
+import type { DeepReadonly, Doc, Json, Mark, Node } from '../model/types'
 import type { Registry } from '../plugin/registry'
 import type { DOMOutputSpec, MarkDOM } from '../plugin/types'
 
@@ -88,7 +88,11 @@ function sameMark(a: Mark, b: Mark): boolean {
  * (`Invalid HTML tag name "…"` / `Invalid HTML attribute name "…"`). Which URL schemes (e.g.
  * `javascript:`) and event-handler attributes a plugin emits is that plugin's responsibility.
  */
-export function serializeHTML(doc: Doc, registry: Registry, pluginOptions: (name: string) => unknown): string {
+export function serializeHTML(
+  doc: DeepReadonly<Doc>,
+  registry: Registry,
+  pluginOptions: (name: string) => unknown,
+): string {
   const renderNodes = (nodes: Node[]): string => {
     let out = ''
     // Open mark wrappers: the mark and its closing tag.
@@ -128,5 +132,5 @@ export function serializeHTML(doc: Doc, registry: Registry, pluginOptions: (name
     return renderSpec(render(node, { options: pluginOptions(registered.plugin.name) }), content)
   }
 
-  return doc.children.map(renderElement).join('')
+  return (doc as Doc).children.map(renderElement).join('')
 }

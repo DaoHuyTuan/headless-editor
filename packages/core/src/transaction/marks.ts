@@ -1,6 +1,6 @@
 import { deepEqualJson, getNode, isText, textEntries } from '../model/node'
 import { comparePoint, nextPath, parentPath } from '../model/path'
-import type { Data, Doc, Json, Mark, Path, Point, Range, Selection, TextNode } from '../model/types'
+import type { Data, DeepReadonly, Doc, Json, Mark, Path, Point, Range, Selection, TextNode } from '../model/types'
 import type { Registry } from '../plugin/registry'
 import type { EditorState } from '../state'
 import type { Transaction } from './transaction'
@@ -41,7 +41,7 @@ function sortMarks(marks: Mark[], registry: Registry): Mark[] {
  * The marks of the text at `point`. At offset 0 of a text whose previous sibling is a text, the
  * caret belongs to the end of that previous text.
  */
-function marksAtPoint(doc: Doc, point: Point): Mark[] {
+function marksAtPoint(doc: DeepReadonly<Doc>, point: Point): Mark[] {
   const node = getNode(doc, point.path)
   if (!isText(node)) throw new Error(`Expected a text node at [${point.path}]`)
   const index = point.path[point.path.length - 1]!
@@ -73,7 +73,7 @@ interface Covered {
 }
 
 /** Texts in `range` with the character span the range covers in each (non-empty spans only). */
-function coveredTexts(doc: Doc, range: Range): Covered[] {
+function coveredTexts(doc: DeepReadonly<Doc>, range: Range): Covered[] {
   const out: Covered[] = []
   for (const [node, path] of textEntries(doc, range)) {
     const from = pathEquals(path, range.start.path) ? range.start.offset : 0
@@ -87,7 +87,7 @@ function coveredTexts(doc: Doc, range: Range): Covered[] {
  * Marks of the first character `range` covers (what typing over the range keeps), or null when it
  * covers no characters. Unlike the caret rule, a range replacement keeps the replaced content's marks.
  */
-export function marksOfRange(doc: Doc, range: Range | Selection): Mark[] | null {
+export function marksOfRange(doc: DeepReadonly<Doc>, range: Range | Selection): Mark[] | null {
   return coveredTexts(doc, ordered(range))[0]?.node.marks ?? null
 }
 

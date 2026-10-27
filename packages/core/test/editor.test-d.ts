@@ -1,6 +1,7 @@
 import { describe, expectTypeOf, it } from 'vitest'
 import { definePlugin } from '../src/plugin/define'
 import type { AnyPlugin, Command, CommandsOf, CommandsOfPlugin } from '../src/plugin/types'
+import type { Doc } from '../src/model/types'
 import { Editor } from '../src/editor'
 import { createTestEditor } from '../src/testing/index'
 import { testParagraph } from './fixtures'
@@ -44,6 +45,19 @@ describe('Editor types', () => {
     expectTypeOf(ed.commands.take).toEqualTypeOf<(n: number) => boolean>()
     // @ts-expect-error unknown command
     ed.commands.nope
+  })
+
+  it('state.doc is deeply readonly; getJSON() returns a mutable Doc', () => {
+    const ed = createTestEditor({ plugins: [testParagraph] })
+    const block = ed.state.doc.children[0]!
+    // @ts-expect-error readonly children
+    ed.state.doc.children.push(block)
+    // @ts-expect-error readonly data
+    block.data.x = 1
+    // @ts-expect-error readonly nested children
+    block.children!.pop()
+    expectTypeOf(ed.getJSON()).toEqualTypeOf<Doc>()
+    ed.getJSON().children[0]!.data.x = 1
   })
 
   it('a typed editor is usable where Editor is expected', () => {

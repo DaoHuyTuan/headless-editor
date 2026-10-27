@@ -52,6 +52,23 @@ describe('Editor', () => {
     expect(ed.state.selection).toEqual(sel([0, 0], 2))
   })
 
+  it('getJSON returns a copy: mutating it does not change the editor', () => {
+    const ed = createTestEditor({ plugins: [testParagraph, testBold], doc: doc(el('paragraph', txt('ab', 'bold'))) })
+    const state = ed.state
+    const html = ed.getHTML()
+    const snapshot = structuredClone(ed.state.doc)
+    const json = ed.getJSON()
+    expect(json).toEqual(snapshot)
+    json.children[0]!.data.x = 1
+    json.children[0]!.children!.push({ text: 'zz', marks: [] })
+    ;(json.children[0]!.children![0] as { text: string; marks: unknown[] }).text = 'changed'
+    ;(json.children[0]!.children![0] as { text: string; marks: unknown[] }).marks.length = 0
+    json.children.push({ id: 'x', type: 'paragraph', data: {}, children: [] })
+    expect(ed.state).toBe(state)
+    expect(ed.state.doc).toEqual(snapshot)
+    expect(ed.getHTML()).toBe(html)
+  })
+
   it('createTestEditor resets ids to a counter', () => {
     const ed = createTestEditor({ plugins: [testParagraph], doc: doc() })
     expect(ed.getJSON().children[0]!.id).toBe('n1')

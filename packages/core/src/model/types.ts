@@ -25,6 +25,13 @@ export interface Doc {
   children: ElementNode[]
 }
 
+/** `T` with every property and array readonly, recursively (a compile-time guard only). */
+export type DeepReadonly<T> = T extends (infer U)[]
+  ? ReadonlyArray<DeepReadonly<U>>
+  : T extends object
+    ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
+    : T
+
 export type Path = number[]
 
 export interface Point {

@@ -46,7 +46,8 @@ export class Transaction {
   constructor(state: EditorState, registry: Registry) {
     this.before = state
     this.registry = registry
-    this._doc = state.doc
+    // Operations never mutate a doc (they copy along the changed path), so sharing it is safe.
+    this._doc = state.doc as Doc
     this._selection = state.selection
     this._storedMarks = state.storedMarks
   }

@@ -1,5 +1,8 @@
 import { comparePath } from './path'
-import type { Doc, ElementNode, Json, Mark, Node, Path, Range, TextNode } from './types'
+import type { DeepReadonly, Doc, ElementNode, Json, Mark, Node, Path, Range, TextNode } from './types'
+
+/** A doc or element to read from (e.g. the readonly `editor.state.doc`); readers never mutate it. */
+export type ReadableRoot = DeepReadonly<Doc | ElementNode>
 
 export function isText(n: Node): n is TextNode {
   return typeof (n as TextNode).text === 'string'
@@ -13,8 +16,8 @@ function childrenOf(n: Doc | Node): Node[] {
   return 'text' in n && typeof n.text === 'string' ? [] : ((n as ElementNode | Doc).children ?? [])
 }
 
-export function getNode(root: Doc | ElementNode, path: Path): Node {
-  let cur: Doc | Node = root
+export function getNode(root: ReadableRoot, path: Path): Node {
+  let cur = root as Doc | Node
   for (const i of path) {
     const next: Node | undefined = childrenOf(cur)[i]
     if (!next) throw new Error(`Invalid path [${path}]`)
@@ -23,15 +26,15 @@ export function getNode(root: Doc | ElementNode, path: Path): Node {
   return cur as Node
 }
 
-export function getParent(root: Doc | ElementNode, path: Path): Doc | ElementNode {
+export function getParent(root: ReadableRoot, path: Path): Doc | ElementNode {
   if (path.length === 0) throw new Error('Invalid path []')
-  const p = path.length === 1 ? root : getNode(root, path.slice(0, -1))
+  const p = path.length === 1 ? (root as Doc | ElementNode) : getNode(root, path.slice(0, -1))
   if (isText(p as Node)) throw new Error(`Invalid path [${path}]`)
   return p as Doc | ElementNode
 }
 
 /** Pre-order traversal of every node below the root (root excluded). */
-export function* nodeEntries(root: Doc | ElementNode): Generator<[Node, Path]> {
+export function* nodeEntries(root: ReadableRoot): Generator<[Node, Path]> {
   function* walk(parent: Doc | Node, base: Path): Generator<[Node, Path]> {
     const kids = childrenOf(parent)
     for (let i = 0; i < kids.length; i++) {
@@ -40,10 +43,10 @@ export function* nodeEntries(root: Doc | ElementNode): Generator<[Node, Path]> {
       yield* walk(kids[i]!, path)
     }
   }
-  yield* walk(root, [])
+  yield* walk(root as Doc | ElementNode, [])
 }
 
-export function* textEntries(root: Doc | ElementNode, range?: Range): Generator<[TextNode, Path]> {
+export function* textEntries(root: ReadableRoot, range?: Range): Generator<[TextNode, Path]> {
   for (const [n, p] of nodeEntries(root)) {
     if (!isText(n)) continue
     if (range && (comparePath(p, range.start.path) < 0 || comparePath(p, range.end.path) > 0)) continue

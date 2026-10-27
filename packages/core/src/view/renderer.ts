@@ -1,7 +1,7 @@
 import type { Editor } from '../editor'
 import { checkAttrName, checkTag, isAttrs, kebab } from '../html/serialize'
 import { deepEqualJson, isText, sameMarkSet } from '../model/node'
-import type { Doc, ElementNode, Node, Path, TextNode } from '../model/types'
+import type { DeepReadonly, Doc, ElementNode, Node, Path, TextNode } from '../model/types'
 import type { DOMOutputSpec } from '../plugin/types'
 
 const ID_ATTR = 'data-hte-id'
@@ -89,11 +89,12 @@ export class Renderer {
     this.rootHolder = { hole: root, before: null, anchor: null, kids: [] }
   }
 
-  render(doc: Doc, opts: RenderOptions = {}): void {
+  render(doc: DeepReadonly<Doc>, opts: RenderOptions = {}): void {
     const pass: RenderPass = { next: new Map(), skipLeaf: opts.skipLeaf, skipPath: opts.skipPath }
     this._rendering = true
     try {
-      this.reconcile(this.rootHolder, doc.children, [], pass)
+      // Read-only: the renderer keeps references to the nodes but never changes them.
+      this.reconcile(this.rootHolder, (doc as Doc).children, [], pass)
       this.byId = pass.next
     } finally {
       this._rendering = false
