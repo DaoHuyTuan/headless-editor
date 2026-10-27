@@ -354,11 +354,10 @@ describe('Editor', () => {
     expect(noHistory.registry.plugins.map((p) => p.name)).toEqual(['paragraph', 'core'])
   })
 
-  it('has no view yet; destroy stops events', () => {
+  it('has no view until mounted; destroy stops events', () => {
     const ed = createTestEditor({ plugins: [testParagraph], doc: doc(el('paragraph', txt('ab'))) })
     expect(ed.view).toBeNull()
-    expect(() => ed.mount({} as HTMLElement)).toThrow('View is not available yet')
-    expect(() => ed.unmount()).toThrow('View is not available yet')
+    expect(() => ed.unmount()).not.toThrow()
     const fn = vi.fn()
     ed.on('transaction', fn)
     ed.destroy()

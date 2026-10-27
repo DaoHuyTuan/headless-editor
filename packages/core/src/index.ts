@@ -82,7 +82,6 @@ export type {
   EditorEventName,
   EditorOptions,
   EditorPlugins,
-  EditorView,
 } from './editor'
 export { eventToKeyName, normalizeKeyName } from './keymap'
 export type { Platform } from './keymap'
@@ -90,3 +89,5 @@ export { corePlugin } from './core-plugin'
 export { historyPlugin } from './history'
 export { Renderer } from './view/renderer'
 export { domToModel, modelToDom, readDomSelection, writeDomSelection } from './view/dom-selection'
+export { EditorView } from './view/view'
+export type { InputRecord, ViewModule } from './view/view'

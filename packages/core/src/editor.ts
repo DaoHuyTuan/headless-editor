@@ -13,6 +13,7 @@ import type { AnyPlugin, Command, CommandsOf, InputIntent, PluginContext } from 
 import type { EditorState } from './state'
 import { isMarkActive } from './transaction/marks'
 import { Transaction } from './transaction/transaction'
+import { EditorView } from './view/view'
 
 export interface EditorOptions<P extends readonly AnyPlugin[] = readonly AnyPlugin[]> {
   plugins: P
@@ -31,11 +32,6 @@ export interface EditorEvent {
   tr: Transaction
 }
 
-/** Placeholder; the DOM view arrives in Task 18. */
-export interface EditorView {
-  destroy(): void
-}
-
 /** Built-in plugins followed by the user's plugins. */
 export type EditorPlugins<P extends readonly AnyPlugin[]> = [typeof corePlugin, typeof historyPlugin, ...P]
 
@@ -52,7 +48,6 @@ interface Committed {
 }
 
 const MAX_APPEND_ROUNDS = 10
-const VIEW_UNAVAILABLE = 'View is not available yet'
 
 function detectPlatform(): Platform {
   if (typeof navigator === 'undefined') return 'other'
@@ -73,7 +68,7 @@ function firstTextSelection(d: Doc): Selection | null {
 export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
   readonly registry: Registry
   readonly commands: EditorCommands<P>
-  readonly view: EditorView | null = null
+  private _view: EditorView | null = null
 
   private _state: EditorState
   private readonly dev: boolean
@@ -118,6 +113,11 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
       }
     }
     this.commands = this.bindCommands(true)
+  }
+
+  /** The mounted DOM view, or null when not mounted. */
+  get view(): EditorView | null {
+    return this._view
   }
 
   get state(): EditorState {
@@ -251,15 +251,23 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     this.pluginOptions.set(name, { ...this.pluginOptions.get(name), ...partial })
   }
 
-  mount(_el: HTMLElement): void {
-    throw new Error(VIEW_UNAVAILABLE)
+  /** Renders into `el` and listens to it. No-op when already mounted on `el`; moves off any other element. */
+  mount(el: HTMLElement): void {
+    if (this.destroyed) throw new Error('Cannot mount a destroyed editor')
+    if (this._view?.root === el) return
+    this.unmount()
+    this._view = new EditorView(this as unknown as Editor, el)
   }
 
+  /** Removes the view's listeners (the rendered content stays). Idempotent. */
   unmount(): void {
-    throw new Error(VIEW_UNAVAILABLE)
+    const view = this._view
+    this._view = null
+    view?.destroy()
   }
 
   destroy(): void {
+    this.unmount()
     this.destroyed = true
     this.listeners.clear()
   }
