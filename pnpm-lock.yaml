@@ -188,6 +188,12 @@ importers:
         specifier: ^1.0.0
         version: 1.1.0
 
+  packages/plugins/paragraph:
+    dependencies:
+      '@hte/core':
+        specifier: workspace:*
+        version: link:../../core
+
 packages:
 
   '@esbuild/aix-ppc64@0.28.2':
