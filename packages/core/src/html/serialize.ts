@@ -15,9 +15,17 @@ function escapeAttr(value: string): string {
   return escapeText(value).replace(/"/g, '&quot;')
 }
 
+const NAME = /^[A-Za-z][A-Za-z0-9:_.-]*$/
+
+function checkTag(tag: string): string {
+  if (!NAME.test(tag)) throw new Error(`Invalid HTML tag name "${tag}"`)
+  return tag
+}
+
 function attrsToString(attrs: Record<string, string | number | undefined>): string {
   let out = ''
   for (const [name, value] of Object.entries(attrs)) {
+    if (!NAME.test(name)) throw new Error(`Invalid HTML attribute name "${name}"`)
     if (value === undefined) continue
     out += ` ${name}="${escapeAttr(String(value))}"`
   }
@@ -32,7 +40,8 @@ function isAttrs(value: unknown): value is Record<string, string | number | unde
 function renderSpec(spec: DOMOutputSpec, content: string): string {
   if (spec === 0) return content
   if (typeof spec === 'string') return escapeText(spec)
-  const [tag, maybeAttrs, ...rest] = spec
+  const [rawTag, maybeAttrs, ...rest] = spec
+  const tag = checkTag(rawTag)
   let attrs = ''
   let children: DOMOutputSpec[] = rest
   if (isAttrs(maybeAttrs)) attrs = attrsToString(maybeAttrs)
@@ -53,7 +62,7 @@ function openMark(dom: MarkDOM): string {
       .join(' ')
     if (style) attrs.style = style
   }
-  return `<${dom.tag}${attrsToString(attrs)}>`
+  return `<${checkTag(dom.tag)}${attrsToString(attrs)}>`
 }
 
 function sameMark(a: Mark, b: Mark): boolean {
@@ -66,6 +75,11 @@ function sameMark(a: Mark, b: Mark): boolean {
  * types without `renderHTML` are unwrapped (only their children are output); unknown types are
  * skipped. Marks nest in rank order (lowest rank outermost) via `mark.render`; adjacent texts
  * sharing outer marks share their wrappers. Unknown marks are ignored. Text is HTML-escaped.
+ *
+ * Safety contract: text and attribute values are escaped, and every tag and attribute name (from
+ * `renderHTML` and `mark.render`) must match `/^[A-Za-z][A-Za-z0-9:_.-]*$/`, otherwise this throws
+ * (`Invalid HTML tag name "…"` / `Invalid HTML attribute name "…"`). Which URL schemes (e.g.
+ * `javascript:`) and event-handler attributes a plugin emits is that plugin's responsibility.
  */
 export function serializeHTML(doc: Doc, registry: Registry, pluginOptions: (name: string) => unknown): string {
   const renderNodes = (nodes: Node[]): string => {

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { definePlugin } from '../src/plugin/define'
 import { Registry } from '../src/plugin/registry'
 import type { Doc, ElementNode, Node } from '../src/model/types'
+import type { DOMOutputSpec, MarkDOM } from '../src/plugin/types'
 import { Editor, parseHTML, serializeHTML } from '../src/index'
 import { corePlugin } from '../src/core-plugin'
 import { createTestEditor, doc, el, stripIds, txt } from '../src/testing/index'
@@ -99,6 +100,41 @@ describe('serializeHTML', () => {
 
   it('unwraps elements without renderHTML', () => {
     expect(serialize(doc(el('plain', txt('a', 'bold'))))).toBe('<strong>a</strong>')
+  })
+
+  describe('validates tag and attribute names', () => {
+    const withRender = (renderHTML: () => DOMOutputSpec) =>
+      new Registry([corePlugin, testParagraph.extend({ renderHTML })])
+    const ser = (r: Registry) => serializeHTML(doc(p('x')), r, () => undefined)
+
+    it('throws on an invalid renderHTML tag', () => {
+      expect(() => ser(withRender(() => ['h1 onmouseover=x', 0]))).toThrow('Invalid HTML tag name "h1 onmouseover=x"')
+      expect(() => ser(withRender(() => ['p', 0, ['b><i', 'y']]))).toThrow('Invalid HTML tag name "b><i"')
+    })
+
+    it('throws on an invalid renderHTML attribute name', () => {
+      expect(() => ser(withRender(() => ['p', { 'onclick x': '1' }, 0]))).toThrow(
+        'Invalid HTML attribute name "onclick x"',
+      )
+      expect(() => ser(withRender(() => ['p', { 'a"b': '1' }, 0]))).toThrow('Invalid HTML attribute name "a"b"')
+    })
+
+    it('throws on an invalid mark tag or attribute name', () => {
+      const markReg = (render: () => MarkDOM) =>
+        new Registry([corePlugin, testParagraph, definePlugin({ name: 'm', mark: { render } })])
+      const d = doc(p(txt('a', 'm')))
+      expect(() => serializeHTML(d, markReg(() => ({ tag: 'span x' })), () => undefined)).toThrow(
+        'Invalid HTML tag name "span x"',
+      )
+      expect(() =>
+        serializeHTML(d, markReg(() => ({ tag: 'span', attrs: { 'x y': '1' } })), () => undefined),
+      ).toThrow('Invalid HTML attribute name "x y"')
+    })
+
+    it('accepts valid names', () => {
+      const r = withRender(() => ['p', { 'data-id': 'i', 'aria-label': 'l', 'xlink:href': 'h' }, ['svg:g', 0]])
+      expect(ser(r)).toBe('<p data-id="i" aria-label="l" xlink:href="h"><svg:g>x</svg:g></p>')
+    })
   })
 
   it('does not need a DOM', () => {
