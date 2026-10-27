@@ -66,6 +66,42 @@ test('composing inside bold text keeps it bold', async ({ page }) => {
   await expect(page.locator('[data-testid=editor] strong')).toHaveText('bếc')
 })
 
+test('Mod+b at a caret, then compose: the composed text is bold, like typing', async ({ page }) => {
+  await page.keyboard.type('ab')
+  await page.keyboard.press('ArrowLeft')
+  await expect.poll(() => getSelection(page)).toMatchObject({ focus: { path: [0, 0], offset: 1 } })
+  await page.keyboard.press('ControlOrMeta+b')
+  await compose(['ê', 'ế'], 'ế')
+  const block = (await getDoc(page)).children[0] as ElementNode
+  expect(block.children).toEqual([
+    expect.objectContaining({ text: 'a', marks: [] }),
+    expect.objectContaining({ text: 'ế', marks: [{ type: 'bold', data: {} }] }),
+    expect.objectContaining({ text: 'b', marks: [] }),
+  ])
+  await expect(page.locator('[data-testid=editor] strong')).toHaveText('ế')
+  expect(await editorText(page)).toBe('aếb')
+  await expect.poll(() => getSelection(page)).toMatchObject({ focus: { path: [0, 1], offset: 1 } })
+})
+
+test('composing at the start of bold text after plain text follows the typing rule (plain)', async ({ page }) => {
+  await page.keyboard.type('a')
+  await page.keyboard.press('ControlOrMeta+b')
+  await page.keyboard.type('bc')
+  await page.keyboard.press('ArrowLeft')
+  await page.keyboard.press('ArrowLeft')
+  await expect.poll(() => getSelection(page)).toMatchObject({ focus: { offset: 1 } })
+  const typedMarks = await page.evaluate(() => window.editor.isActive('bold'))
+  await compose(['ê', 'ế'], 'ế')
+  const block = (await getDoc(page)).children[0] as ElementNode
+  expect(typedMarks).toBe(false)
+  expect(block.children).toEqual([
+    expect.objectContaining({ text: 'aế', marks: [] }),
+    expect.objectContaining({ text: 'bc', marks: [{ type: 'bold', data: {} }] }),
+  ])
+  await expect(page.locator('[data-testid=editor] strong')).toHaveText('bc')
+  expect(await editorText(page)).toBe('aếbc')
+})
+
 test('compose, then Backspace deletes the last composed character', async ({ page }) => {
   await compose(['n', 'ni', '你', '你好'], '你好')
   expect(await getText(page)).toBe('你好')

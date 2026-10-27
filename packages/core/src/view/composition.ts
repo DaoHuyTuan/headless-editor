@@ -1,6 +1,7 @@
-import { getNode, isText } from '../model/node'
+import { getNode, isText, sameMarkSet } from '../model/node'
 import { isCollapsed, toRange } from '../model/path'
-import type { Path } from '../model/types'
+import type { Mark, Path } from '../model/types'
+import { marksAt, marksOfRange } from '../transaction/marks'
 import { modelToDom } from './dom-selection'
 import type { EditorView, ViewModule } from './view'
 
@@ -31,12 +32,25 @@ function commonEnds(a: string, b: string): { prefix: number; suffix: number } {
   return { prefix, suffix }
 }
 
+/**
+ * The marks the composed text must get, captured at `compositionstart` by the typing rule: stored
+ * marks, else the marks of the first replaced character, else the marks at the caret.
+ */
+const compositionMarks = new WeakMap<EditorView, Mark[]>()
+
 function onCompositionStart(view: EditorView): void {
   if (view.composing) return
   const { editor, renderer } = view
   // While not yet composing, so the model follows the DOM caret.
   view.syncSelection()
   const sel = editor.state.selection
+  if (sel) {
+    const state = editor.state
+    const marks = state.storedMarks ?? (isCollapsed(sel) ? null : marksOfRange(state.doc, sel, editor.registry))
+    compositionMarks.set(view, marks ?? marksAt(state))
+  } else {
+    compositionMarks.delete(view)
+  }
   if (sel && !isCollapsed(sel)) {
     // The IME replaces the selection: delete it in the model first (the render collapses the DOM selection).
     const tr = editor.createTransaction()
@@ -65,6 +79,7 @@ function onCompositionEnd(view: EditorView): void {
   const { editor } = view
   const stateBefore = editor.state
   if (target) commit(view, target.leaf, target.path)
+  compositionMarks.delete(view)
   // Nothing dispatched (no change, or the tr was filtered out): still rebuild the leaf and show the selection.
   if (editor.state === stateBefore) view.update(editor.state)
 }
@@ -85,10 +100,19 @@ function commit(view: EditorView, leaf: HTMLElement, path: Path): void {
   const removed = before.slice(prefix, before.length - suffix)
   const inserted = after.slice(prefix, after.length - suffix)
   const tr = editor.createTransaction()
-  if (removed) tr.apply({ type: 'remove_text', path, offset: prefix, text: removed })
-  if (inserted) tr.apply({ type: 'insert_text', path, offset: prefix, text: inserted })
-  const caret = { path, offset: prefix + inserted.length }
-  tr.setSelection({ anchor: caret, focus: caret }).setMeta('origin', 'input').setMeta('inputType', INPUT_TYPE)
+  const marks = compositionMarks.get(view)
+  if (inserted && marks && !sameMarkSet(marks, node.marks)) {
+    // The composed text needs other marks than the composing text's (e.g. Mod-b before composing):
+    // insert it like typed text, which splits the text and applies the marks.
+    const start = { path, offset: prefix }
+    tr.setStoredMarks(marks).insertText(inserted, { start, end: { path, offset: prefix + removed.length } })
+  } else {
+    if (removed) tr.apply({ type: 'remove_text', path, offset: prefix, text: removed })
+    if (inserted) tr.apply({ type: 'insert_text', path, offset: prefix, text: inserted })
+    const caret = { path, offset: prefix + inserted.length }
+    tr.setSelection({ anchor: caret, focus: caret })
+  }
+  tr.setMeta('origin', 'input').setMeta('inputType', INPUT_TYPE)
   editor.dispatch(tr)
 }
 

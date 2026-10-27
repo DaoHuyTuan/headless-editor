@@ -111,6 +111,35 @@ describe('composition', () => {
     expect(root.querySelector('strong')!.textContent).toBe('b好c')
   })
 
+  it('applies stored marks like typing: Mod-b at a caret, then compose → bold', () => {
+    const { editor, root, view } = mount([p('p1', txt('ab'))], caret([0, 0], 1))
+    editor.commands.toggleMark('bold')
+    expect(editor.state.storedMarks).toEqual([{ type: 'bold', data: {} }])
+    fire(root, 'compositionstart')
+    imeWrite(view, [0, 0], 'aXb')
+    fire(root, 'compositionend')
+    expect(editor.state.doc.children[0]!.children).toEqual([txt('a'), txt('X', 'bold'), txt('b')])
+    expect(editor.state.selection).toEqual(caret([0, 1], 1))
+    expect(root.querySelector('strong')!.textContent).toBe('X')
+    expect(root.textContent).toBe('aXb')
+  })
+
+  it('composing at offset 0 of a bold text after plain text follows the typing rule', () => {
+    const typed = mount([p('p1', txt('a'), txt('bc', 'bold'))], caret([0, 1], 0))
+    typed.editor.commands.insertText('X')
+    const expected = typed.editor.state.doc.children[0]!.children
+    document.body.replaceChildren()
+
+    const { editor, root, view } = mount([p('p1', txt('a'), txt('bc', 'bold'))], caret([0, 1], 0))
+    fire(root, 'compositionstart')
+    expect(view.composition?.path).toEqual([0, 1])
+    imeWrite(view, [0, 1], 'Xbc')
+    fire(root, 'compositionend')
+    expect(editor.state.doc.children[0]!.children).toEqual(expected)
+    expect(editor.state.doc.children[0]!.children).toEqual([txt('aX'), txt('bc', 'bold')])
+    expect(root.textContent).toBe('aXbc')
+  })
+
   it('renders during composition leave the composing leaf alone and track its path', () => {
     const { editor, root, view } = mount([p('p1', txt('ab')), p('p2', txt('cd'))], caret([1, 0], 2))
     fire(root, 'compositionstart')
