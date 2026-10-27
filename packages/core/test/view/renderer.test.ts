@@ -261,6 +261,48 @@ describe('Renderer: keyed patching', () => {
     expect(leaf.firstChild).toBe(text)
   })
 
+  it('never removes skipLeaf when a leaf before it goes away (no skipPath)', () => {
+    const { renderer, root } = ctx
+    renderer.render(doc(p('p1', txt('a', 'bold'), txt('b'))))
+    const [l0, l1] = [renderer.leafAt([0, 0])!, renderer.leafAt([0, 1])!]
+    const text = l1.firstChild
+    renderer.render(doc(p('p1', txt('ab'))), { skipLeaf: l1 })
+    expect(root.contains(l1)).toBe(true)
+    expect(l1.firstChild).toBe(text)
+    expect(renderer.leafAt([0, 0])).toBe(l0)
+  })
+
+  it('pins skipLeaf to skipPath when a leaf before it is removed', () => {
+    const { renderer, root } = ctx
+    renderer.render(doc(p('p1', txt('a', 'bold'), txt('b'))))
+    const l1 = renderer.leafAt([0, 1])!
+    const text = l1.firstChild
+    renderer.render(doc(p('p1', txt('ab'))), { skipLeaf: l1, skipPath: [0, 0] })
+    expect(root.querySelectorAll('[data-hte-leaf]').length).toBe(1)
+    expect(root.contains(l1)).toBe(true)
+    expect(l1.firstChild).toBe(text)
+    expect(renderer.leafAt([0, 0])).toBe(l1)
+    expect(renderer.pathOfLeaf(l1)).toEqual([0, 0])
+    renderer.render(doc(p('p1', txt('ab'))))
+    expect(root.innerHTML).toBe('<p data-hte-id="p1"><span data-hte-leaf="">ab</span></p>')
+    expect(renderer.leafAt([0, 0])).toBe(l1)
+  })
+
+  it('pins skipLeaf to skipPath when a leaf is inserted before it', () => {
+    const { renderer, root } = ctx
+    renderer.render(doc(p('p1', txt('b'))))
+    const leaf = renderer.leafAt([0, 0])!
+    const text = leaf.firstChild
+    renderer.render(doc(p('p1', txt('x', 'bold'), txt('b'))), { skipLeaf: leaf, skipPath: [0, 1] })
+    expect(root.querySelectorAll('[data-hte-leaf]').length).toBe(2)
+    expect(renderer.leafAt([0, 1])).toBe(leaf)
+    expect(renderer.pathOfLeaf(leaf)).toEqual([0, 1])
+    expect(leaf.firstChild).toBe(text)
+    expect(root.innerHTML).toBe(
+      '<p data-hte-id="p1"><span data-hte-leaf=""><strong>x</strong></span><span data-hte-leaf="">b</span></p>',
+    )
+  })
+
   it('drops ids that are no longer in the doc', () => {
     const { renderer, root } = ctx
     renderer.render(doc(p('p1', 'a'), p('p2', 'b')))
@@ -268,6 +310,99 @@ describe('Renderer: keyed patching', () => {
     renderer.render(doc(p('p1', 'a')))
     renderer.render(doc(p('p1', 'a'), p('p2', 'b')))
     expect(root.children[1]).not.toBe(p2)
+  })
+})
+
+describe('Renderer: foreign DOM cleanup', () => {
+  it('clears pre-existing root content on the first render', () => {
+    const { editor } = ctx
+    const root = document.createElement('div')
+    root.innerHTML = 'junk<b>old</b><p data-hte-id="p1">stale</p>'
+    new Renderer(root, editor).render(doc(p('p1', 'a')))
+    expect(root.innerHTML).toBe('<p data-hte-id="p1"><span data-hte-leaf="">a</span></p>')
+  })
+
+  it('removes stray nodes the browser put into a hole or the root', () => {
+    const { renderer, root } = ctx
+    renderer.render(doc(p('p1', txt('a'), txt('b', 'bold'))))
+    const p1 = root.firstElementChild!
+    p1.insertBefore(document.createTextNode('stray'), p1.children[1]!)
+    p1.appendChild(document.createElement('br'))
+    root.appendChild(document.createTextNode('loose'))
+    renderer.render(doc(p('p1', txt('a'), txt('b', 'bold'))))
+    expect(root.innerHTML).toBe(
+      '<p data-hte-id="p1"><span data-hte-leaf="">a</span><span data-hte-leaf=""><strong>b</strong></span></p>',
+    )
+    expect(root.firstElementChild).toBe(p1)
+  })
+
+  it('corrects a non-skipped leaf whose DOM was changed', () => {
+    const { renderer, root } = ctx
+    renderer.render(doc(p('p1', txt('a'), txt('b', 'bold'))))
+    const [l0, l1] = [renderer.leafAt([0, 0])!, renderer.leafAt([0, 1])!]
+    l0.appendChild(document.createTextNode('x'))
+    ;(l1.firstChild!.firstChild as Text).data = 'zz'
+    renderer.render(doc(p('p1', txt('a'), txt('b', 'bold'))))
+    expect(root.innerHTML).toBe(
+      '<p data-hte-id="p1"><span data-hte-leaf="">a</span><span data-hte-leaf=""><strong>b</strong></span></p>',
+    )
+    expect(renderer.leafAt([0, 0])).toBe(l0)
+  })
+
+  it('does not correct skipLeaf', () => {
+    const { renderer } = ctx
+    renderer.render(doc(p('p1', txt('a'))))
+    const leaf = renderer.leafAt([0, 0])!
+    leaf.appendChild(document.createTextNode('x'))
+    renderer.render(doc(p('p1', txt('a'))), { skipLeaf: leaf })
+    expect(leaf.innerHTML).toBe('ax')
+  })
+
+  it('preserves static spec siblings around the hole while sweeping it', () => {
+    const { renderer, root } = ctx
+    renderer.render(doc(node('c', 'callout', {}, p('p1', 'a')), node('s', 'noHole', {}, txt('b'))))
+    const inner = root.querySelector('aside > div')!
+    inner.appendChild(document.createTextNode('stray'))
+    root.querySelector('section')!.appendChild(document.createTextNode('stray'))
+    renderer.render(doc(node('c', 'callout', {}, p('p1', 'a'), p('p2', 'b')), node('s', 'noHole', {}, txt('b'))))
+    expect(root.innerHTML).toBe(
+      '<aside data-hte-id="c"><span contenteditable="false">Note:</span><div><p data-hte-id="p1"><span data-hte-leaf="">a</span></p><p data-hte-id="p2"><span data-hte-leaf="">b</span></p></div><footer>end</footer></aside>' +
+        '<section a="1" data-hte-id="s"><span data-hte-leaf="">b</span></section>',
+    )
+  })
+
+  it('keeps static siblings when the hole shares its parent with them', () => {
+    const editor = createTestEditor({
+      plugins: [
+        testParagraph,
+        definePlugin({
+          name: 'fig',
+          node: { kind: 'block' },
+          renderHTML: () => ['figure', ['b', 'pre'], 0, ['i', 'post']],
+        }),
+      ],
+    })
+    const root = document.createElement('div')
+    const r = new Renderer(root, editor)
+    r.render(doc(node('f', 'fig', {}, p('p1', 'a'))))
+    const fig = root.firstElementChild!
+    fig.insertBefore(document.createTextNode('stray'), fig.lastChild)
+    r.render(doc(node('f', 'fig', {}, p('p2', 'z'), p('p1', 'a'))))
+    expect(root.innerHTML).toBe(
+      '<figure data-hte-id="f"><b>pre</b><p data-hte-id="p2"><span data-hte-leaf="">z</span></p><p data-hte-id="p1"><span data-hte-leaf="">a</span></p><i>post</i></figure>',
+    )
+    expect(r.elementAt([0, 1])).toBe(root.querySelector('[data-hte-id="p1"]'))
+  })
+
+  it('re-renders an element shell whose hole boundary nodes were removed, keeping child DOM', () => {
+    const { renderer, root } = ctx
+    renderer.render(doc(node('c', 'callout', {}, p('p1', 'a'))))
+    const p1 = root.querySelector('[data-hte-id="p1"]')
+    const aside = root.firstElementChild!
+    aside.querySelector(':scope > div')!.remove() // the hole itself
+    renderer.render(doc(node('c', 'callout', {}, p('p1', 'a'))))
+    expect(root.firstElementChild).not.toBe(aside)
+    expect(root.querySelector('aside > div > [data-hte-id="p1"]')).toBe(p1)
   })
 })
 

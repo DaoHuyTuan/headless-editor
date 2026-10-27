@@ -7,10 +7,15 @@ import type { DOMOutputSpec } from '../plugin/types'
 const ID_ATTR = 'data-hte-id'
 const LEAF_ATTR = 'data-hte-leaf'
 
-/** The rendered DOM of one element (or of the root, for the doc). */
+/**
+ * The rendered DOM of one element (or of the root, for the doc). Children occupy the hole's
+ * child nodes strictly between `before` and `anchor`; anything else there is swept on render.
+ */
 interface Holder {
   /** Where children are placed. */
   hole: HTMLElement
+  /** Static spec node right before the hole, or null when the hole starts at the first child. */
+  before: globalThis.Node | null
   /** Static spec node right after the hole (children are inserted before it), or null to append. */
   anchor: globalThis.Node | null
   /** Managed child DOM (element roots and leaf spans), in model order, as last rendered. */
@@ -24,6 +29,28 @@ interface ElementEntry extends Holder {
   rendersChildren: boolean
 }
 
+interface HolePosition {
+  hole: HTMLElement
+  before: globalThis.Node | null
+  anchor: globalThis.Node | null
+}
+
+export interface RenderOptions {
+  /** A leaf owned by composition: its DOM is never changed, moved out or removed by this render. */
+  skipLeaf?: HTMLElement
+  /**
+   * The path, in the doc being rendered, of the text `skipLeaf` shows. When given, that text is
+   * rendered by `skipLeaf` whatever its position; otherwise `skipLeaf` keeps its positional slot.
+   */
+  skipPath?: Path
+}
+
+interface RenderPass {
+  next: Map<string, ElementEntry>
+  skipLeaf?: HTMLElement
+  skipPath?: Path
+}
+
 /**
  * Renders a document into a contenteditable root and patches it on later renders.
  *
@@ -34,8 +61,9 @@ interface ElementEntry extends Holder {
  * empty `<div data-hte-id data-hte-unknown="<type>" contenteditable="false">`.
  *
  * Patching is keyed by element id: an element's DOM is reused while its id stays in the doc, and its
- * own root is re-rendered only when its type or data changes. Text leaves are reconciled by position
- * within their parent. Assumes element ids are unique in the doc.
+ * own root is re-rendered only when its type or data changes (or its spec DOM was damaged). Text
+ * leaves are reconciled by position within their parent. Nodes the renderer did not create (in the
+ * root, in holes, inside leaves) are removed or corrected. Assumes element ids are unique in the doc.
  */
 export class Renderer {
   private readonly doc: Document
@@ -54,13 +82,13 @@ export class Renderer {
     root.setAttribute('role', 'textbox')
     root.setAttribute('aria-multiline', 'true')
     root.style.whiteSpace = 'pre-wrap'
-    this.rootHolder = { hole: root, anchor: null, kids: [] }
+    this.rootHolder = { hole: root, before: null, anchor: null, kids: [] }
   }
 
-  render(doc: Doc, opts: { skipLeaf?: HTMLElement } = {}): void {
-    const next = new Map<string, ElementEntry>()
-    this.reconcile(this.rootHolder, doc.children, next, opts.skipLeaf)
-    this.byId = next
+  render(doc: Doc, opts: RenderOptions = {}): void {
+    const pass: RenderPass = { next: new Map(), skipLeaf: opts.skipLeaf, skipPath: opts.skipPath }
+    this.reconcile(this.rootHolder, doc.children, [], pass)
+    this.byId = pass.next
   }
 
   /** The `<span data-hte-leaf>` rendered for the text at `path`. */
@@ -135,33 +163,59 @@ export class Renderer {
   }
 
   /** Brings `holder`'s children in line with `children`, reusing DOM by id (elements) or position (leaves). */
-  private reconcile(holder: Holder, children: Node[], next: Map<string, ElementEntry>, skipLeaf?: HTMLElement): void {
-    const oldLeaves = holder.kids.filter((k) => k.hasAttribute(LEAF_ATTR))
+  private reconcile(holder: Holder, children: Node[], path: Path, pass: RenderPass): void {
+    const { skipLeaf, skipPath } = pass
+    // With a skipPath, skipLeaf is pinned to that text and leaves the positional pool.
+    const pinned = skipLeaf !== undefined && skipPath !== undefined
+    const oldLeaves = holder.kids.filter((k) => k.hasAttribute(LEAF_ATTR) && !(pinned && k === skipLeaf))
     let leafIndex = 0
     const kids: HTMLElement[] = []
-    for (const child of children) {
-      if (isText(child)) kids.push(this.leaf(oldLeaves[leafIndex++], child, skipLeaf))
-      else kids.push(this.element(child, next, skipLeaf))
-    }
+    children.forEach((child, i) => {
+      const childPath = [...path, i]
+      if (!isText(child)) {
+        kids.push(this.element(child, childPath, pass))
+      } else if (pinned && samePath(childPath, skipPath)) {
+        this.leafText.delete(skipLeaf)
+        kids.push(skipLeaf)
+      } else {
+        kids.push(this.leaf(oldLeaves[leafIndex++], child, skipLeaf))
+      }
+    })
 
-    const keep = new Set(kids)
-    for (const old of holder.kids) {
-      // A kid reused elsewhere has already been moved out of this hole.
-      if (!keep.has(old) && old.parentNode === holder.hole) old.remove()
-    }
-    let ref = holder.anchor
+    const { hole, anchor } = holder
+    let ref = anchor
     for (let i = kids.length - 1; i >= 0; i--) {
       const kid = kids[i]!
-      if (kid.parentNode !== holder.hole || kid.nextSibling !== ref) holder.hole.insertBefore(kid, ref)
+      // Composition owns skipLeaf: never move it (it is already in place when reused here).
+      if (kid === skipLeaf && kid.parentNode === hole) {
+        ref = kid
+        continue
+      }
+      if (kid.parentNode !== hole || kid.nextSibling !== ref) hole.insertBefore(kid, ref)
       ref = kid
+    }
+
+    // Sweep the hole: drop everything between `before` and `anchor` that is not a current kid
+    // (old kids, pre-existing content, nodes the browser inserted), except skipLeaf.
+    const keep = new Set<globalThis.Node>(kids)
+    let cur = holder.before ? holder.before.nextSibling : hole.firstChild
+    while (cur && cur !== anchor) {
+      const nextSibling = cur.nextSibling
+      if (!keep.has(cur) && cur !== skipLeaf) cur.remove()
+      cur = nextSibling
     }
     holder.kids = kids
   }
 
-  private element(node: ElementNode, next: Map<string, ElementEntry>, skipLeaf?: HTMLElement): HTMLElement {
+  private element(node: ElementNode, path: Path, pass: RenderPass): HTMLElement {
+    const { next } = pass
     const prev = next.has(node.id) ? undefined : this.byId.get(node.id)
     let entry: ElementEntry
-    if (prev && (prev.node === node || (prev.node.type === node.type && deepEqualJson(prev.node.data, node.data)))) {
+    if (
+      prev &&
+      this.shellIntact(prev) &&
+      (prev.node === node || (prev.node.type === node.type && deepEqualJson(prev.node.data, node.data)))
+    ) {
       entry = prev
       entry.node = node
     } else {
@@ -172,8 +226,15 @@ export class Renderer {
     }
     // Duplicate ids get fresh DOM and are not keyed.
     if (!next.has(node.id)) next.set(node.id, entry)
-    if (entry.rendersChildren) this.reconcile(entry, node.children ?? [], next, skipLeaf)
+    if (entry.rendersChildren) this.reconcile(entry, node.children ?? [], path, pass)
     return entry.dom
+  }
+
+  /** Whether the hole and its static boundary nodes are still where the spec put them. */
+  private shellIntact(entry: ElementEntry): boolean {
+    const { dom, hole, before, anchor } = entry
+    if (hole !== dom && !dom.contains(hole)) return false
+    return (!before || before.parentNode === hole) && (!anchor || anchor.parentNode === hole)
   }
 
   /** Builds an element's own root and content hole (no children). */
@@ -184,31 +245,35 @@ export class Renderer {
       dom.setAttribute(ID_ATTR, node.id)
       dom.setAttribute('data-hte-unknown', node.type)
       dom.setAttribute('contenteditable', 'false')
-      return { dom, node, hole: dom, anchor: null, kids: [], rendersChildren: false }
+      return { dom, node, hole: dom, before: null, anchor: null, kids: [], rendersChildren: false }
     }
     const render = registered.plugin.spec.renderHTML
     const spec = render?.(node, { options: this.editor.getPluginOptions(registered.plugin.name) })
     let dom: HTMLElement
-    let hole: HTMLElement | null = null
-    let anchor: globalThis.Node | null = null
+    let position: HolePosition | null = null
     if (Array.isArray(spec)) {
       const built = this.buildSpec(spec)
       dom = built.dom as HTMLElement
-      if (built.hole) ({ hole, anchor } = built.hole)
+      position = built.hole
     } else if (spec === undefined || spec === 0) {
       dom = this.doc.createElement(registered.kind === 'inline' ? 'span' : 'div')
     } else {
       throw new Error(`renderHTML for "${node.type}" must return an element spec`)
     }
     dom.setAttribute(ID_ATTR, node.id)
-    return { dom, node, hole: hole ?? dom, anchor, kids: [], rendersChildren: !registered.atom || hole !== null }
+    // Without a hole, children are appended after the spec's own content.
+    const fallback: HolePosition = { hole: dom, before: dom.lastChild, anchor: null }
+    return {
+      dom,
+      node,
+      ...(position ?? fallback),
+      kids: [],
+      rendersChildren: !registered.atom || position !== null,
+    }
   }
 
-  /** Builds DOM for a spec; records the first content hole as its parent element plus the node after it. */
-  private buildSpec(spec: DOMOutputSpec): {
-    dom: globalThis.Node
-    hole: { hole: HTMLElement; anchor: globalThis.Node | null } | null
-  } {
+  /** Builds DOM for a spec; records the first content hole with the static nodes around it. */
+  private buildSpec(spec: DOMOutputSpec): { dom: globalThis.Node; hole: HolePosition | null } {
     if (typeof spec === 'string') return { dom: this.doc.createTextNode(spec), hole: null }
     if (spec === 0) throw new Error('Content hole `0` must be inside an element')
     const [rawTag, maybeAttrs, ...rest] = spec
@@ -222,22 +287,22 @@ export class Renderer {
     } else if (maybeAttrs !== undefined) {
       children = [maybeAttrs, ...rest]
     }
-    let hole: { hole: HTMLElement; anchor: globalThis.Node | null } | null = null
-    let pendingHole = false
+    let hole: HolePosition | null = null
+    let pending: HolePosition | null = null
     for (const child of children) {
       if (child === 0) {
-        if (!hole && !pendingHole) pendingHole = true
+        if (!hole && !pending) pending = { hole: el, before: el.lastChild, anchor: null }
         continue
       }
       const built = this.buildSpec(child)
       el.appendChild(built.dom)
-      if (pendingHole) {
-        hole = { hole: el, anchor: built.dom }
-        pendingHole = false
+      if (pending) {
+        hole = { ...pending, anchor: built.dom }
+        pending = null
       }
       if (!hole && built.hole) hole = built.hole
     }
-    if (pendingHole) hole = { hole: el, anchor: null }
+    if (pending) hole = pending
     return { dom: el, hole }
   }
 
@@ -248,16 +313,32 @@ export class Renderer {
       return old
     }
     const shown = old && this.leafText.get(old)
-    if (old && shown && shown.text === text.text && sameMarkSet(shown.marks, text.marks)) {
+    if (old && shown && shown.text === text.text && sameMarkSet(shown.marks, text.marks) && this.leafIntact(old, text)) {
       this.leafText.set(old, text)
       return old
     }
     const leaf = old ?? this.doc.createElement('span')
     if (!old) leaf.setAttribute(LEAF_ATTR, '')
     const content = this.leafContent(text)
-    if (!(old && !shown && this.sameChildren(old, content))) leaf.replaceChildren(content)
+    if (!(old && leaf.childNodes.length === 1 && leaf.firstChild!.isEqualNode(content))) leaf.replaceChildren(content)
     this.leafText.set(leaf, text)
     return leaf
+  }
+
+  /**
+   * Cheap check that a leaf still has the shape we rendered: a single-child chain with one wrapper
+   * per known mark, ending in the text (or the break). Attributes on wrappers are not compared.
+   */
+  private leafIntact(leaf: HTMLElement, text: TextNode): boolean {
+    const markCount = text.marks.filter((m) => this.editor.registry.mark(m.type)).length
+    let cur: globalThis.Node = leaf
+    for (let depth = 0; depth <= markCount; depth++) {
+      if (cur.childNodes.length !== 1) return false
+      cur = cur.firstChild!
+      if (depth < markCount && cur.nodeType !== 1) return false
+    }
+    if (text.text === '') return cur.nodeName === 'BR' && (cur as Element).hasAttribute('data-hte-break')
+    return cur.nodeType === 3 && (cur as Text).data === text.text
   }
 
   /** The leaf's content: mark wrappers nested by rank around the text (or a break when empty). */
@@ -281,8 +362,8 @@ export class Renderer {
     }
     return out
   }
+}
 
-  private sameChildren(leaf: HTMLElement, content: globalThis.Node): boolean {
-    return leaf.childNodes.length === 1 && leaf.firstChild!.isEqualNode(content)
-  }
+function samePath(a: Path, b: Path): boolean {
+  return a.length === b.length && a.every((v, i) => v === b[i])
 }
