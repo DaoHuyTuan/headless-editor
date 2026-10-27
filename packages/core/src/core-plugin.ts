@@ -1,6 +1,7 @@
 import type { Data, Path } from './model/types'
 import { definePlugin } from './plugin/define'
 import type { Command, InputIntent } from './plugin/types'
+import { insertFragment, type Fragment } from './transaction/fragment'
 import { addMark, removeMark, toggleMark } from './transaction/marks'
 import type { Transaction } from './transaction/transaction'
 import { deleteBackward, deleteForward, insertText, selectAll, splitBlock, type DeleteUnit } from './transaction/text'
@@ -56,6 +57,10 @@ export const corePlugin = definePlugin({
         deleteForward(tr, unit),
     splitBlock: (): Command => ({ tr }) => splitBlock(tr),
     selectAll: (): Command => ({ tr }) => selectAll(tr),
+    insertContent:
+      (fragment: Fragment): Command =>
+      ({ tr }) =>
+        insertFragment(tr, fragment),
     setNodeData:
       (path: Path, partial: Data): Command =>
       ({ tr }) => {

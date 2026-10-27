@@ -28,7 +28,7 @@ function textAt(tr: Transaction, path: Path): TextNode {
 }
 
 /** Path of the nearest block-level element containing `path` (unknown element types count as blocks). */
-function blockPathOf(tr: Transaction, path: Path): Path {
+export function blockPathOf(tr: Transaction, path: Path): Path {
   for (let depth = path.length - 1; depth >= 1; depth--) {
     const p = path.slice(0, depth)
     const node = getNode(tr.doc, p)
@@ -264,7 +264,16 @@ export function splitBlock(tr: Transaction): boolean {
       ? { id: createId(), type: tr.registry.defaultBlock, data: {} }
       : { id: createId(), type: blockNode.type, data: blockNode.data }
 
-  // Split the text, then every ancestor up to and including the block.
+  tr.setSelection(caret(splitBlockAt(tr, point, blockPath, props)))
+  return true
+}
+
+/**
+ * Splits the text at `point`, then every ancestor up to and including the block at `blockPath`;
+ * the new right-hand block gets `props` (inline ancestors get fresh ids). Returns the start of the
+ * new block (its first text, at offset 0).
+ */
+export function splitBlockAt(tr: Transaction, point: Point, blockPath: Path, props: Partial<ElementNode>): Point {
   let path = point.path
   let position = point.offset
   tr.apply({ type: 'split_node', path, position, properties: { marks: textAt(tr, path).marks } })
@@ -276,8 +285,7 @@ export function splitBlock(tr: Transaction): boolean {
   }
   tr.apply({ type: 'split_node', path: blockPath, position: path[path.length - 1]! + 1, properties: props })
   const newBlock = nextPath(blockPath)
-  tr.setSelection(caret({ path: [...newBlock, ...point.path.slice(blockPath.length).map(() => 0)], offset: 0 }))
-  return true
+  return { path: [...newBlock, ...point.path.slice(blockPath.length).map(() => 0)], offset: 0 }
 }
 
 /** Selects from the start of the first text to the end of the last text in the doc. */

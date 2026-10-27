@@ -6,6 +6,8 @@ import { transformSelection } from '../ops/transform'
 import type { Operation } from '../ops/types'
 import type { Registry } from '../plugin/registry'
 import type { EditorState } from '../state'
+import * as fragmentEdit from './fragment'
+import type { Fragment } from './fragment'
 import * as markEdit from './marks'
 import * as textEdit from './text'
 import type { DeleteUnit } from './text'
@@ -123,6 +125,15 @@ export class Transaction {
   /** Splits the block at the caret (after deleting the selection); the caret ends in the new block. */
   splitBlock(): this {
     textEdit.splitBlock(this)
+    return this
+  }
+
+  /**
+   * Deletes `at` (default: the selection) and inserts `fragment` at the caret, giving inserted
+   * elements fresh ids where theirs already exist; the caret ends after the inserted content.
+   */
+  insertFragment(fragment: Fragment, at?: Range): this {
+    fragmentEdit.insertFragment(this, fragment, at)
     return this
   }
 
