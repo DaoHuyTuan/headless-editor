@@ -4,10 +4,25 @@ import type { Command, InputIntent } from './plugin/types'
 import type { Transaction } from './transaction/transaction'
 import { deleteBackward, deleteForward, insertText, selectAll, splitBlock, type DeleteUnit } from './transaction/text'
 
-/** Default `beforeinput` handling: inputType → edit on the tr. */
+/**
+ * The text an insert intent carries: `data`, else the plain text in `dataTransfer` (Chromium sends
+ * spellcheck/autocorrect `insertReplacementText` with `data === null`). Null when there is none;
+ * `getData` returns '' when the type is missing, so that counts as none too.
+ */
+function intentText(intent: InputIntent): string | null {
+  return intent.data ?? (intent.dataTransfer?.getData('text/plain') || null)
+}
+
+/** Inserts the intent's text into `intent.range` (or the selection). Without text, does nothing (false). */
+function insertIntentText(tr: Transaction, intent: InputIntent): boolean {
+  const text = intentText(intent)
+  return text === null ? false : insertText(tr, text, intent.range ?? undefined)
+}
+
+/** Default `beforeinput` handling: inputType → edit on the tr. Returning false leaves the intent unhandled. */
 const INPUT_ACTIONS: Record<string, (tr: Transaction, intent: InputIntent) => boolean> = {
-  insertText: (tr, intent) => insertText(tr, intent.data ?? '', intent.range ?? undefined),
-  insertReplacementText: (tr, intent) => insertText(tr, intent.data ?? '', intent.range ?? undefined),
+  insertText: insertIntentText,
+  insertReplacementText: insertIntentText,
   deleteContentBackward: (tr) => deleteBackward(tr, 'character'),
   deleteWordBackward: (tr) => deleteBackward(tr, 'word'),
   deleteSoftLineBackward: (tr) => deleteBackward(tr, 'line'),
@@ -63,6 +78,8 @@ export const corePlugin = definePlugin({
   onBeforeInput: (intent, ctx) => {
     const action = INPUT_ACTIONS[intent.inputType]
     if (!action) return false
+    // An insert intent without any text is left unhandled, so nothing is deleted.
+    if (action === insertIntentText && intentText(intent) === null) return false
     const tr = ctx.editor.createTransaction()
     tr.meta.origin = 'input'
     tr.meta.inputType = intent.inputType

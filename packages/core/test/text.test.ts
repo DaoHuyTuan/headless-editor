@@ -324,6 +324,27 @@ describe('onBeforeInput defaults', () => {
     expect(trs[0]).toEqual({ origin: 'input', inputType: 'insertText' })
   })
 
+  it('insertReplacementText with data null takes the text from dataTransfer', () => {
+    const ed = setup(doc(p('a teh b')), caret([0, 0], 0))
+    const dataTransfer = { getData: (type: string) => (type === 'text/plain' ? 'the' : '') } as DataTransfer
+    expect(
+      ed.handleIntent({ inputType: 'insertReplacementText', data: null, range: sel([0, 0], 2, [0, 0], 5), dataTransfer }),
+    ).toBe(true)
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p('a the b'))))
+    expect(ed.state.selection).toEqual(caret([0, 0], 5))
+  })
+
+  it.each([
+    ['insertReplacementText', undefined],
+    ['insertReplacementText', { getData: () => '' } as unknown as DataTransfer],
+    ['insertText', null],
+  ])('%s without any text is unhandled and deletes nothing', (inputType, dataTransfer) => {
+    const ed = setup(doc(p('a teh b')), caret([0, 0], 0))
+    const before = ed.getJSON()
+    expect(ed.handleIntent({ inputType, data: null, range: sel([0, 0], 2, [0, 0], 5), dataTransfer })).toBe(false)
+    expect(ed.getJSON()).toBe(before)
+  })
+
   it.each([
     ['deleteContentBackward', 'hello wor'],
     ['deleteWordBackward', 'hello '],
