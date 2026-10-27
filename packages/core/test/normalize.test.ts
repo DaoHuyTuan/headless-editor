@@ -3,12 +3,12 @@ import { normalize } from '../src/normalize'
 import { definePlugin } from '../src/plugin/define'
 import { Registry } from '../src/plugin/registry'
 import type { AnyPlugin, PluginContext } from '../src/plugin/types'
-import type { Doc, ElementNode, Node } from '../src/model/types'
+import type { Doc, ElementNode, Node, Selection } from '../src/model/types'
 import { applyOp } from '../src/ops/apply'
 import { invertOp } from '../src/ops/invert'
 import { Editor } from '../src/editor'
 import { Transaction } from '../src/transaction/transaction'
-import { doc, el, stripIds, txt } from '../src/testing/builders'
+import { doc, el, sel, stripIds, txt } from '../src/testing/builders'
 import { testBold, testParagraph } from './fixtures'
 
 const testItalic = definePlugin({ name: 'italic', mark: { render: () => ({ tag: 'em' }) } })
@@ -24,8 +24,8 @@ const ctx = (plugin: AnyPlugin): PluginContext<any, any> => ({
   getState: () => undefined,
 })
 
-function run(d: Doc, plugins: AnyPlugin[] = base): Transaction {
-  const tr = new Transaction({ doc: d, selection: null, storedMarks: null, pluginStates: new Map() }, new Registry(plugins))
+function run(d: Doc, plugins: AnyPlugin[] = base, selection: Selection | null = null): Transaction {
+  const tr = new Transaction({ doc: d, selection, storedMarks: null, pluginStates: new Map() }, new Registry(plugins))
   normalize(tr, ctx)
   return tr
 }
@@ -65,7 +65,31 @@ describe('normalize: core rules', () => {
     expect(normalized(doc(el('paragraph', txt(''))))).toEqual(stripIds(doc(el('paragraph', txt('')))))
   })
 
-  it('rule 5: a non-atom block with no children gets an empty text; atoms are left alone', () => {
+  it('rule 4 keeps a caret in the removed empty text (i > 0): it moves to the end of the previous text', () => {
+    // e.g. after deleting every character of the bold run in `a**b**`
+    const tr = run(doc(el('paragraph', txt('a'), txt('', 'bold'))), base, sel([0, 1], 0))
+    expect(stripIds(tr.doc)).toEqual(stripIds(doc(el('paragraph', txt('a')))))
+    expect(tr.selection).toEqual(sel([0, 0], 1))
+    expect(tr.ops).toEqual([
+      { type: 'merge_node', path: [0, 1], position: 1, properties: { marks: [{ type: 'bold', data: {} }] } },
+    ])
+  })
+
+  it('rule 4 keeps a caret in the removed empty text (i === 0): it moves to the start of the next text', () => {
+    const tr = run(doc(el('paragraph', txt('', 'bold'), txt('b'))), base, sel([0, 0], 0, [0, 1], 1))
+    expect(stripIds(tr.doc)).toEqual(stripIds(doc(el('paragraph', txt('b')))))
+    expect(tr.selection).toEqual(sel([0, 0], 0, [0, 0], 1))
+  })
+
+  it('rule 4 re-homes a caret next to an inline element into the inline’s edge text', () => {
+    const after = run(doc(el('paragraph', el('link', txt('ab')), txt('', 'bold'))), base, sel([0, 1], 0))
+    expect(stripIds(after.doc)).toEqual(stripIds(doc(el('paragraph', el('link', txt('ab'))))))
+    expect(after.selection).toEqual(sel([0, 0, 0], 2))
+    const before = run(doc(el('paragraph', txt('', 'bold'), el('link', txt('ab')))), base, sel([0, 0], 0))
+    expect(before.selection).toEqual(sel([0, 0, 0], 0))
+  })
+
+  it('rule 5:a non-atom block with no children gets an empty text; atoms are left alone', () => {
     const hr: ElementNode = { id: 'h', type: 'hr', data: {} }
     const d = doc({ id: 'p', type: 'paragraph', data: {} }, el('paragraph'), hr)
     expect(normalized(d)).toEqual(stripIds(doc(el('paragraph', txt('')), el('paragraph', txt('')), hr)))

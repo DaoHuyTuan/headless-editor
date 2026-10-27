@@ -1,6 +1,6 @@
 import { createId } from './model/id'
 import { getNode, isElement, isText, nodeEntries, sameMarkSet } from './model/node'
-import type { ElementNode, Mark, Node, Path, TextNode } from './model/types'
+import type { ElementNode, Mark, Node, Path, Point, TextNode } from './model/types'
 import { transformPath } from './ops/transform'
 import type { Registry } from './plugin/registry'
 import type { AnyPlugin, PluginContext } from './plugin/types'
@@ -119,8 +119,14 @@ function fixElement(tr: Transaction, node: ElementNode, path: Path): boolean {
       return true
     }
     // Rule 4: drop empty texts when the element has other children.
+    // Merging into a previous text keeps a caret inside it valid (it maps to the end of `prev`).
     if (c.text === '' && children.length > 1) {
-      tr.removeNode([...path, i])
+      if (prev && isText(prev)) {
+        tr.apply({ type: 'merge_node', path: [...path, i], position: prev.text.length, properties: { marks: c.marks } })
+      } else {
+        rehomeSelection(tr, children, path, i)
+        tr.removeNode([...path, i])
+      }
       return true
     }
     // Rule 6: marks are sorted by rank (duplicate types keep the first).
@@ -143,6 +149,42 @@ function fixMarks(tr: Transaction, text: TextNode, path: Path): boolean {
   for (const m of [...text.marks].reverse()) tr.apply({ type: 'remove_mark', path, mark: m })
   for (const m of target) tr.apply({ type: 'add_mark', path, mark: m })
   return true
+}
+
+/** First (`last` = false) or last text inside `node` (itself if a text), with its path. */
+function edgeText(node: Node, path: Path, last: boolean): [TextNode, Path] | null {
+  if (isText(node)) return [node, path]
+  const kids = node.children ?? []
+  for (let k = 0; k < kids.length; k++) {
+    const idx = last ? kids.length - 1 - k : k
+    const found = edgeText(kids[idx]!, [...path, idx], last)
+    if (found) return found
+  }
+  return null
+}
+
+/**
+ * Before removing the empty text at `[...parent, i]`, moves selection points inside it to the
+ * end of the previous sibling's last text, or else the start of the next sibling's first text,
+ * so the selection survives the removal.
+ */
+function rehomeSelection(tr: Transaction, siblings: Node[], parent: Path, i: number): void {
+  const sel = tr.selection
+  if (!sel) return
+  const at = [...parent, i]
+  const inside = (p: Path) => p.length === at.length && p.every((v, k) => v === at[k])
+  if (!inside(sel.anchor.path) && !inside(sel.focus.path)) return
+  const before = i > 0 ? edgeText(siblings[i - 1]!, [...parent, i - 1], true) : null
+  const after = before ? null : i + 1 < siblings.length ? edgeText(siblings[i + 1]!, [...parent, i + 1], false) : null
+  const target = before
+    ? { path: before[1], offset: before[0].text.length }
+    : after
+      ? { path: after[1], offset: 0 }
+      : null
+  if (!target) return
+  const move = (pt: Point) => (inside(pt.path) ? target : pt)
+  // Applied as an op directly so stored marks are kept (Transaction.setSelection clears them).
+  tr.apply({ type: 'set_selection', selection: { anchor: move(sel.anchor), focus: move(sel.focus) }, prevSelection: sel })
 }
 
 function isInlineContent(n: Node, registry: Registry): boolean {
