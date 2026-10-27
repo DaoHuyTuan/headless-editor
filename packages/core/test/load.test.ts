@@ -176,3 +176,20 @@ describe('load (coerceDoc + normalize)', () => {
     })
   })
 })
+
+describe('Editor load under unknown parents', () => {
+  it('keeps a registered node with invalid data below an unknown element, unchanged', async () => {
+    const { createTestEditor } = await import('../src/testing/index')
+    const strict = definePlugin({
+      name: 'strict',
+      node: { kind: 'block' },
+      data: z.object({ n: z.number().optional() }),
+    })
+    const content = doc(
+      el('paragraph', txt('a')),
+      el('unknownThing', el('strict', { n: 'bad' } as never, txt('y'))),
+    )
+    const ed = createTestEditor({ plugins: [testParagraph, strict], doc: content })
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(content))
+  })
+})

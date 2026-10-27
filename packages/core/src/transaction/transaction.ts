@@ -95,7 +95,7 @@ export class Transaction {
 
   /**
    * Inserts `node`, validating the data of every element in its subtree (registered types only:
-   * unknown types pass, so loading stays lossless). The first failure sets `rejected` and emits
+   * unknown types and their subtrees pass unchanged, so loading stays lossless). The first failure sets `rejected` and emits
    * nothing; validated output (e.g. defaults) is what gets stored.
    */
   insertNode(path: Path, node: ElementNode | TextNode): this {
@@ -107,7 +107,8 @@ export class Transaction {
 
   /** The node with validated data throughout, or null (and `rejected` set) at the first invalid element. */
   private validateSubtree(node: Node): Node | null {
-    if (isText(node)) return node
+    // Unknown types are opaque: like `coerceDoc`, nothing below them is validated.
+    if (isText(node) || !this.registry.node(node.type)) return node
     const result = this.registry.validateData(node.type, node.data)
     if (!result.ok) {
       this.rejected = result.message

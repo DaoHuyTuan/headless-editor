@@ -57,12 +57,16 @@ describe('Transaction base', () => {
     expect(tr.doc).toBe(d)
   })
 
-  it('insertNode validates nested elements, passes unknown types and valid data', () => {
+  it('insertNode validates nested registered elements; unknown types are opaque', () => {
     const d = doc(el('paragraph', txt('x')))
     const nested = new Transaction(stateOf(d), registry)
-    nested.insertNode([1], el('unknownThing', el('strict', { n: 'bad' } as never, txt('y'))))
+    nested.insertNode([1], el('paragraph', el('strict', { n: 'bad' } as never, txt('y'))))
     expect(nested.rejected).toBeTypeOf('string')
     expect(nested.ops).toEqual([])
+    const opaque = new Transaction(stateOf(d), registry)
+    opaque.insertNode([1], el('unknownThing', el('strict', { n: 'bad' } as never, txt('y'))))
+    expect(opaque.rejected).toBeNull()
+    expect(opaque.ops).toHaveLength(1)
     const ok = new Transaction(stateOf(d), registry)
     ok.insertNode([1], el('unknownThing', { whatever: 1 } as never, el('strict', { n: 1 } as never, txt('y'))))
     expect(ok.rejected).toBeNull()

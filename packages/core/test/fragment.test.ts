@@ -208,3 +208,15 @@ describe('Review Focus 3: pasting content copied from the same doc keeps ids uni
     expect(new Set(elementIds(ed.state.doc)).size).toBe(3)
   })
 })
+
+describe('insertFragment of existing content under unknown elements', () => {
+  it('inserts a copied unknown block whose child has invalid registered data', async () => {
+    const { z } = await import('zod')
+    const strict = definePlugin({ name: 'strict', node: { kind: 'block' }, data: z.object({ n: z.number().optional() }) })
+    const content = doc(p('a'), el('unknownThing', el('strict', { n: 'bad' } as never, txt('y'))), p('b'))
+    const ed = createTestEditor({ plugins: [testParagraph, strict], doc: content, selection: sel([2, 0], 0) })
+    const frag = getFragment(content, range([1], 0, [1, 0, 0], 1))
+    expect(() => ed.dispatch((() => { const tr = ed.createTransaction(); tr.insertFragment(frag); return tr })())).not.toThrow()
+    expect(JSON.stringify(ed.getJSON())).toContain('"bad"')
+  })
+})
