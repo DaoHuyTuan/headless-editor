@@ -1,11 +1,13 @@
 import { createId } from '../model/id'
 import { deepEqualJson, getNode, isElement, isText } from '../model/node'
-import type { Data, Doc, ElementNode, Json, Mark, Node, Path, Selection, TextNode } from '../model/types'
+import type { Data, Doc, ElementNode, Json, Mark, Node, Path, Range, Selection, TextNode } from '../model/types'
 import { applyOp } from '../ops/apply'
 import { transformSelection } from '../ops/transform'
 import type { Operation } from '../ops/types'
 import type { Registry } from '../plugin/registry'
 import type { EditorState } from '../state'
+import * as textEdit from './text'
+import type { DeleteUnit } from './text'
 
 export interface TransactionMeta {
   origin?: 'input' | 'paste' | 'command' | 'history' | 'plugin' | 'selection' | 'load'
@@ -93,6 +95,34 @@ export class Transaction {
 
   removeNode(path: Path): this {
     return this.apply({ type: 'remove_node', path, node: getNode(this._doc, path) })
+  }
+
+  /** Deletes the selection (or `at`) and inserts `text`; the caret ends after it. */
+  insertText(text: string, at?: Selection | Range): this {
+    textEdit.insertText(this, text, at)
+    return this
+  }
+
+  /** Deletes `range`, merging across blocks; the caret ends at its start. */
+  deleteRange(range: Range): this {
+    textEdit.deleteRange(this, range)
+    return this
+  }
+
+  deleteBackward(unit: DeleteUnit = 'character'): this {
+    textEdit.deleteBackward(this, unit)
+    return this
+  }
+
+  deleteForward(unit: DeleteUnit = 'character'): this {
+    textEdit.deleteForward(this, unit)
+    return this
+  }
+
+  /** Splits the block at the caret (after deleting the selection); the caret ends in the new block. */
+  splitBlock(): this {
+    textEdit.splitBlock(this)
+    return this
   }
 
   setNodeData(path: Path, partial: Data): this {
