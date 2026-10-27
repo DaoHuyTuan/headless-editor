@@ -2,6 +2,7 @@ import { createId } from '../model/id'
 import { getNode, isElement, isText, sameMarkSet, textEntries } from '../model/node'
 import { comparePath, comparePoint, nextPath, parentPath, pointEquals, toRange } from '../model/path'
 import type { ElementNode, Mark, Path, Point, Range, Selection, TextNode } from '../model/types'
+import { marksAtTr } from './marks'
 import type { Transaction } from './transaction'
 
 /** Text editing algorithms. Every change is an operation on `tr`; each returns whether it did anything. */
@@ -52,9 +53,9 @@ function lastPoint(texts: [TextNode, Path][]): Point | null {
   return last ? { path: last[1], offset: last[0].text.length } : null
 }
 
-/** The marks text inserted at `point` gets. Task 10 swaps the fallback for `marksAt`. */
+/** The marks text inserted at `point` gets: stored marks, else `marksAt` that caret. */
 export function insertionMarks(tr: Transaction, point: Point): Mark[] {
-  return tr.storedMarks ?? textAt(tr, point.path).marks
+  return marksAtTr(tr, point)
 }
 
 /** Removes the text between two points, text by text (no nodes are removed). */

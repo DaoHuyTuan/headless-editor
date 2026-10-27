@@ -1,6 +1,7 @@
 import type { Data, Path } from './model/types'
 import { definePlugin } from './plugin/define'
 import type { Command, InputIntent } from './plugin/types'
+import { addMark, removeMark, toggleMark } from './transaction/marks'
 import type { Transaction } from './transaction/transaction'
 import { deleteBackward, deleteForward, insertText, selectAll, splitBlock, type DeleteUnit } from './transaction/text'
 
@@ -61,6 +62,19 @@ export const corePlugin = definePlugin({
         tr.setNodeData(path, partial)
         return tr.rejected === null
       },
+    // Stored-mark-only changes (caret) dispatch too: the Editor dispatches when storedMarks changed.
+    toggleMark:
+      (type: string, data?: Data): Command =>
+      ({ tr }) =>
+        toggleMark(tr, type, data) && tr.rejected === null,
+    setMark:
+      (type: string, data?: Data): Command =>
+      ({ tr }) =>
+        addMark(tr, { type, data: data ?? {} }) && tr.rejected === null,
+    unsetMark:
+      (type: string): Command =>
+      ({ tr }) =>
+        removeMark(tr, type),
   }),
   // Runs selectAll on its own tr: going through `ctx.editor.commands` would make corePlugin's
   // type depend on the Editor's command types, which are derived from corePlugin.

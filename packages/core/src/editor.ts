@@ -9,6 +9,7 @@ import { normalize } from './normalize'
 import { Registry } from './plugin/registry'
 import type { AnyPlugin, Command, CommandsOf, InputIntent, PluginContext } from './plugin/types'
 import type { EditorState } from './state'
+import { isMarkActive } from './transaction/marks'
 import { Transaction } from './transaction/transaction'
 
 export interface EditorOptions<P extends readonly AnyPlugin[] = readonly AnyPlugin[]> {
@@ -220,9 +221,9 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     this.dispatch(tr)
   }
 
-  /** Marks: not yet supported (Task 10). Elements: the block containing the selection start. */
+  /** Marks: `isMarkActive` on the selection. Elements: the block containing the selection start. */
   isActive(type: string, data?: Partial<Data>): boolean {
-    if (this.registry.mark(type)) return false
+    if (this.registry.mark(type)) return isMarkActive(this._state, type, data)
     const sel = this._state.selection
     if (!sel) return false
     const start = comparePoint(sel.anchor, sel.focus) <= 0 ? sel.anchor : sel.focus

@@ -6,6 +6,7 @@ import { transformSelection } from '../ops/transform'
 import type { Operation } from '../ops/types'
 import type { Registry } from '../plugin/registry'
 import type { EditorState } from '../state'
+import * as markEdit from './marks'
 import * as textEdit from './text'
 import type { DeleteUnit } from './text'
 
@@ -122,6 +123,24 @@ export class Transaction {
   /** Splits the block at the caret (after deleting the selection); the caret ends in the new block. */
   splitBlock(): this {
     textEdit.splitBlock(this)
+    return this
+  }
+
+  /** Adds `mark` over `range` (default: the selection); a same-type mark with other data is replaced. */
+  addMark(mark: Mark, range?: Range): this {
+    markEdit.addMark(this, mark, range)
+    return this
+  }
+
+  /** Removes marks of `type` over `range` (default: the selection). */
+  removeMark(type: string, range?: Range): this {
+    markEdit.removeMark(this, type, range)
+    return this
+  }
+
+  /** Removes the mark if active on the whole selection, else adds it; a caret toggles stored marks. */
+  toggleMark(type: string, data?: Data): this {
+    markEdit.toggleMark(this, type, data)
     return this
   }
 
