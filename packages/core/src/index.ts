@@ -96,7 +96,7 @@ export type {
 export { eventToKeyName, normalizeKeyName } from './keymap'
 export type { Platform } from './keymap'
 export { corePlugin } from './core-plugin'
-export { historyPlugin } from './history'
+export { historyPlugin, rewriteHistoryData } from './history'
 export { Renderer } from './view/renderer'
 export { domToModel, modelToDom, readDomSelection, writeDomSelection } from './view/dom-selection'
 export { EditorView } from './view/view'

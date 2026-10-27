@@ -1,4 +1,8 @@
-import type { Selection } from './model/types'
+import type { Editor } from './editor'
+import { findPathById } from './model/find'
+import { deepEqualJson, getNode, isElement } from './model/node'
+import type { Data, Doc, ElementNode, Node, Selection } from './model/types'
+import { applyOp } from './ops/apply'
 import { invertOp } from './ops/invert'
 import type { Operation } from './ops/types'
 import { definePlugin } from './plugin/define'
@@ -42,8 +46,141 @@ function isGroupable(kind: string): boolean {
   return kind === 'insert' || kind === 'delete'
 }
 
+/** Keys a data-only change sets (`set`) or deletes (`unset`). */
+interface DataPatch {
+  set: Data
+  unset: string[]
+}
+
+interface Rewrite {
+  id: string
+  patch: DataPatch
+}
+
+type SetNodeDataOp = Extract<Operation, { type: 'set_node_data' }>
+
+function diffData(prevData: Data, data: Data): DataPatch {
+  const set: Data = {}
+  for (const [k, v] of Object.entries(data)) {
+    if (!(k in prevData) || !deepEqualJson(prevData[k]!, v)) set[k] = v
+  }
+  return { set, unset: Object.keys(prevData).filter((k) => !(k in data)) }
+}
+
+function patchData(data: Data, patches: DataPatch[]): Data {
+  let out = data
+  for (const { set, unset } of patches) {
+    out = { ...out, ...set }
+    for (const k of unset) delete out[k]
+  }
+  return out
+}
+
+/** `node` with the data of every element listed in `byId` patched (same reference when untouched). */
+function patchNode(node: Node, byId: Map<string, DataPatch[]>): Node {
+  if (!isElement(node)) return node
+  const patches = byId.get(node.id)
+  let children = node.children
+  if (children) {
+    const next = children.map((c) => patchNode(c, byId))
+    if (next.some((c, i) => c !== children![i])) children = next
+  }
+  if (!patches && children === node.children) return node
+  const out: ElementNode = { ...node, data: patches ? patchData(node.data, patches) : node.data }
+  if (children) out.children = children
+  return out
+}
+
+/**
+ * The element id each stored `set_node_data` op targets. Ops are path-addressed, so this replays
+ * the stacks from `doc` (the doc they are consistent with): undo entries backwards, redo forwards.
+ */
+function setNodeDataTargets(stacks: HistoryState, doc: Doc): Map<SetNodeDataOp, string> {
+  const targets = new Map<SetNodeDataOp, string>()
+  const note = (d: Doc, op: Operation) => {
+    if (op.type !== 'set_node_data') return
+    const node = getNode(d, op.path)
+    if (isElement(node)) targets.set(op, node.id)
+  }
+  let d = doc
+  for (let e = stacks.undo.length - 1; e >= 0; e--) {
+    const ops = stacks.undo[e]!.ops
+    for (let i = ops.length - 1; i >= 0; i--) {
+      note(d, ops[i]!)
+      d = applyOp(d, invertOp(ops[i]!))
+    }
+  }
+  d = doc
+  for (let e = stacks.redo.length - 1; e >= 0; e--) {
+    for (const op of stacks.redo[e]!.ops) {
+      note(d, op)
+      d = applyOp(d, op)
+    }
+  }
+  return targets
+}
+
+function patchOp(op: Operation, byId: Map<string, DataPatch[]>, targets: Map<SetNodeDataOp, string>): Operation {
+  switch (op.type) {
+    case 'insert_node':
+    case 'remove_node': {
+      const node = patchNode(op.node, byId)
+      return node === op.node ? op : { ...op, node }
+    }
+    case 'split_node':
+    case 'merge_node': {
+      const props = op.properties as Partial<ElementNode>
+      const patches = typeof props.id === 'string' ? byId.get(props.id) : undefined
+      if (!patches || !props.data) return op
+      return { ...op, properties: { ...props, data: patchData(props.data, patches) } }
+    }
+    case 'set_node_data': {
+      // Both sides get the patch: the op still changes the keys it changed, and never brings back old values.
+      const id = targets.get(op)
+      const patches = id === undefined ? undefined : byId.get(id)
+      if (!patches) return op
+      return { ...op, data: patchData(op.data, patches), prevData: patchData(op.prevData, patches) }
+    }
+    default:
+      return op
+  }
+}
+
+/**
+ * Applies `rewrites` to every payload in both stacks that carries the element's data: node subtrees,
+ * split/merge properties (by id) and `set_node_data` ops (by the id their path resolves to from `doc`).
+ */
+function rewriteStacks(prev: HistoryState, doc: Doc, rewrites: Rewrite[]): HistoryState {
+  if (rewrites.length === 0 || (prev.undo.length === 0 && prev.redo.length === 0)) return prev
+  const byId = new Map<string, DataPatch[]>()
+  for (const { id, patch } of rewrites) byId.set(id, [...(byId.get(id) ?? []), patch])
+  let targets: Map<SetNodeDataOp, string>
+  try {
+    targets = setNodeDataTargets(prev, doc)
+  } catch {
+    return EMPTY // stacks not replayable from `doc`: fall back to the M1 behaviour
+  }
+  const entry = (e: HistoryEntry): HistoryEntry => {
+    const ops = e.ops.map((op) => patchOp(op, byId, targets))
+    return ops.every((op, i) => op === e.ops[i]) ? e : { ...e, ops }
+  }
+  return { undo: prev.undo.map(entry), redo: prev.redo.map(entry) }
+}
+
+function isHistoryRewrite(v: unknown): v is { id: string; data: Data } {
+  if (typeof v !== 'object' || v === null) return false
+  const r = v as { id?: unknown; data?: unknown }
+  return typeof r.id === 'string' && typeof r.data === 'object' && r.data !== null && !Array.isArray(r.data)
+}
+
 function applyHistory(prev: HistoryState, tr: Transaction, options: HistoryOptions): HistoryState {
-  if (!tr.docChanged) return prev
+  if (!tr.docChanged) {
+    const rewrite = tr.meta.historyRewrite
+    // Only for elements outside the doc: patching the stacks of one in the doc would desync them.
+    if (isHistoryRewrite(rewrite) && findPathById(tr.doc, rewrite.id) === null)
+      return rewriteStacks(prev, tr.doc, [{ id: rewrite.id, patch: { set: rewrite.data, unset: [] } }])
+    return prev
+  }
 
   if (tr.meta.origin === 'history') {
     const action = tr.meta.historyAction as HistoryAction | undefined
@@ -60,8 +197,20 @@ function applyHistory(prev: HistoryState, tr: Transaction, options: HistoryOptio
     return { undo, redo }
   }
 
-  // Safe M1 fallback: unmapped changes would make the stacks' ops invalid, so drop them.
-  if (tr.meta.addToHistory === false) return EMPTY
+  if (tr.meta.addToHistory === false) {
+    // Data-only changes keep the structure, so the stacks stay valid once their payloads agree.
+    const docOps = tr.ops.filter((op) => op.type !== 'set_selection')
+    if (docOps.every((op) => op.type === 'set_node_data')) {
+      const rewrites: Rewrite[] = []
+      for (const op of docOps as Extract<Operation, { type: 'set_node_data' }>[]) {
+        const node = getNode(tr.before.doc, op.path)
+        if (isElement(node)) rewrites.push({ id: node.id, patch: diffData(op.prevData, op.data) })
+      }
+      return rewriteStacks(prev, tr.before.doc as Doc, rewrites)
+    }
+    // Structural changes made outside history would make the stacks' ops invalid, so drop them.
+    return EMPTY
+  }
 
   const ops = tr.ops.filter((op) => op.type !== 'set_selection')
   const time = options.now()
@@ -102,9 +251,23 @@ function runHistory(action: HistoryAction, ctx: PluginContext<HistoryOptions, Hi
 }
 
 /**
+ * Rewrites the stored history data of element `id` (merging `data` into every stored copy), for an
+ * element that is not in the doc (e.g. an undone image whose upload finished). For one in the doc,
+ * use `setNodeData` with `addToHistory: false` instead: history rewrites itself from that.
+ */
+export function rewriteHistoryData(editor: Editor, id: string, data: Data): void {
+  const tr = editor.createTransaction()
+  tr.meta.origin = 'plugin'
+  tr.meta.addToHistory = false
+  tr.meta.historyRewrite = { id, data }
+  editor.dispatch(tr)
+}
+
+/**
  * Built-in undo/redo plugin, prepended by the Editor unless `history: false`.
  * Records every doc-changing tr (as finally normalized); consecutive input of the same kind
- * within `groupDelay` ms is one step. Trs with `addToHistory: false` clear both stacks (M1).
+ * within `groupDelay` ms is one step. Trs with `addToHistory: false` clear both stacks, except
+ * data-only ones (all `set_node_data`), which rewrite the stored payloads of the changed elements.
  */
 export const historyPlugin = definePlugin({
   name: 'history',
