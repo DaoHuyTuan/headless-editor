@@ -10,7 +10,15 @@ import { comparePoint } from './model/path'
 import type { Data, Doc, ElementNode, Json, Selection } from './model/types'
 import { normalize } from './normalize'
 import { Registry } from './plugin/registry'
-import type { AnyPlugin, Command, CommandsOf, DOMEventName, InputIntent, PluginContext } from './plugin/types'
+import type {
+  AnyPlugin,
+  BoundCommands,
+  Command,
+  CommandsOf,
+  DOMEventName,
+  InputIntent,
+  PluginContext,
+} from './plugin/types'
 import type { EditorState } from './state'
 import type { Fragment } from './transaction/fragment'
 import { isMarkActive } from './transaction/marks'
@@ -37,10 +45,9 @@ export interface EditorEvent {
 /** Built-in plugins followed by the user's plugins. */
 export type EditorPlugins<P extends readonly AnyPlugin[]> = [typeof corePlugin, typeof historyPlugin, ...P]
 
-/** Command factories turned into callables that run the command and return whether it applied. */
-export type BoundCommands<C> = {
-  [K in keyof C]: C[K] extends (...args: infer A) => Command ? (...args: A) => boolean : never
-}
+export type { BoundCommands } from './plugin/types'
+
+type AnyCommandFactory = (...args: unknown[]) => Command
 
 export type EditorCommands<P extends readonly AnyPlugin[]> = BoundCommands<CommandsOf<EditorPlugins<P>>>
 
@@ -71,8 +78,8 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
   private readonly dev: boolean
   private readonly platform: Platform
   private readonly pluginOptions = new Map<string, Record<string, unknown>>()
-  private readonly contexts = new Map<string, PluginContext<any, any>>()
-  private readonly commandFactories = new Map<string, (...args: unknown[]) => Command>()
+  private readonly contexts = new Map<string, PluginContext<any, any, any>>()
+  private readonly commandFactories = new Map<string, AnyCommandFactory>()
   private readonly keymaps: { plugin: AnyPlugin; bindings: Map<string, () => boolean> }[] = []
   private readonly listeners = new Map<EditorEventName, Set<(e: EditorEvent) => void>>()
   private destroyed = false
@@ -98,10 +105,12 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     // Commands and keymaps are collected once; higher-priority plugins win name clashes.
     for (const plugin of this.registry.plugins) {
       const ctx = this.getContext(plugin)
-      const factories = plugin.spec.commands?.(ctx) ?? {}
-      for (const [name, factory] of Object.entries(factories)) {
-        if (!this.commandFactories.has(name)) this.commandFactories.set(name, factory as (...args: unknown[]) => Command)
+      const factories = Object.entries((plugin.spec.commands?.(ctx) ?? {}) as Record<string, AnyCommandFactory>)
+      for (const [name, factory] of factories) {
+        if (!this.commandFactories.has(name)) this.commandFactories.set(name, factory)
       }
+      // The plugin's own commands, bound to its own factories (not the editor-wide clash winner).
+      Object.assign(ctx.commands, this.bindCommands(factories, true))
       const keymap = plugin.spec.keymap?.(ctx)
       if (keymap) {
         const bindings = new Map<string, () => boolean>()
@@ -109,7 +118,7 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
         this.keymaps.push({ plugin, bindings })
       }
     }
-    this.commands = this.bindCommands(true)
+    this.commands = this.bindCommands(this.commandFactories, true) as EditorCommands<P>
   }
 
   /** The mounted DOM view, or null when not mounted. */
@@ -126,7 +135,7 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
   }
 
   can(): EditorCommands<P> {
-    return this.bindCommands(false)
+    return this.bindCommands(this.commandFactories, false) as EditorCommands<P>
   }
 
   /**
@@ -294,7 +303,8 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     if (!this.pluginOptions.has(name)) throw new Error(`Unknown plugin "${name}"`)
   }
 
-  private getContext(plugin: AnyPlugin): PluginContext<any, any> {
+  /** Cached per plugin. `commands` starts empty and is filled once the plugin's commands are collected. */
+  private getContext(plugin: AnyPlugin): PluginContext<any, any, any> {
     let ctx = this.contexts.get(plugin.name)
     if (!ctx) {
       const options = this.pluginOptions
@@ -306,6 +316,7 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
           return options.get(plugin.name)
         },
         getState: () => this._state.pluginStates.get(plugin.name),
+        commands: {},
       }
       this.contexts.set(plugin.name, ctx)
     }
@@ -366,9 +377,12 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     for (const fn of [...set]) fn(e)
   }
 
-  private bindCommands(dispatch: boolean): EditorCommands<P> {
+  private bindCommands(
+    factories: Iterable<[string, AnyCommandFactory]>,
+    dispatch: boolean,
+  ): Record<string, (...args: unknown[]) => boolean> {
     const out: Record<string, (...args: unknown[]) => boolean> = {}
-    for (const [name, factory] of this.commandFactories) {
+    for (const [name, factory] of factories) {
       out[name] = (...args: unknown[]) => {
         const tr = this.createTransaction()
         tr.meta.origin = 'command'
@@ -377,7 +391,7 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
         return ok
       }
     }
-    return out as EditorCommands<P>
+    return out
   }
 
   /** The nearest block-level element on `path` (unknown element types count as blocks). */

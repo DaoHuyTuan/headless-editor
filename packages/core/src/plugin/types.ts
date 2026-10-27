@@ -37,19 +37,30 @@ export interface InputIntent {
 
 export type Command = (props: { tr: Transaction; state: EditorState; editor: Editor }) => boolean
 
-export interface PluginContext<O, S> {
-  editor: Editor
-  name: string
-  readonly options: O
-  getState(): S
-}
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type CommandFactory = (...args: any[]) => Command
 export type CommandMap = Record<string, CommandFactory>
 
 /** Options type used when a plugin declares none. */
 export type NoOptions = Record<never, never>
+
+/** Command factories turned into callables that run the command and return whether it applied. */
+export type BoundCommands<C> = {
+  [K in keyof C]: C[K] extends (...args: infer A) => Command ? (...args: A) => boolean : never
+}
+
+export interface PluginContext<O, S, C extends CommandMap = NoOptions> {
+  editor: Editor
+  name: string
+  readonly options: O
+  getState(): S
+  /**
+   * This plugin's own commands, bound like `editor.commands` (fresh tr with origin `command`,
+   * dispatched when it applies). Always this plugin's factories, even when a higher-priority
+   * plugin registered a command with the same name.
+   */
+  readonly commands: BoundCommands<C>
+}
 
 export interface NodeSpec {
   kind: 'block' | 'inline'
@@ -78,19 +89,20 @@ export interface PluginSpec<
   mark?: MarkSpec<D>
   data?: StandardSchemaV1<unknown, D>
   options?: O
+  /** Gets a context without `C` (its own commands) to avoid circular inference. */
   commands?: (ctx: PluginContext<O, S>) => C
-  keymap?: (ctx: PluginContext<O, S>) => Record<string, () => boolean>
-  onBeforeInput?: (intent: InputIntent, ctx: PluginContext<O, S>) => boolean
-  handleDOMEvents?: Partial<Record<DOMEventName, (event: Event, ctx: PluginContext<O, S>) => boolean>>
+  keymap?: (ctx: PluginContext<O, S, C>) => Record<string, () => boolean>
+  onBeforeInput?: (intent: InputIntent, ctx: PluginContext<O, S, C>) => boolean
+  handleDOMEvents?: Partial<Record<DOMEventName, (event: Event, ctx: PluginContext<O, S, C>) => boolean>>
   filterTransaction?: (tr: Transaction, state: EditorState) => boolean
   appendTransaction?: (trs: Transaction[], oldState: EditorState, newState: EditorState) => Transaction | null
-  normalize?: (entry: [Node, Path], tr: Transaction, ctx: PluginContext<O, S>) => void
+  normalize?: (entry: [Node, Path], tr: Transaction, ctx: PluginContext<O, S, C>) => void
   parseHTML?: ParseRule[]
   renderHTML?: (node: ElementNode, ctx: { options: O }) => DOMOutputSpec
-  transformPasted?: (fragment: Fragment, ctx: PluginContext<O, S>) => Fragment
+  transformPasted?: (fragment: Fragment, ctx: PluginContext<O, S, C>) => Fragment
   onInvalidData?: (raw: unknown) => Data | null
   /** `apply` gets the final (normalized) tr; `ctx.getState()` still returns `prev` there. */
-  state?: { init: () => S; apply: (tr: Transaction, prev: S, ctx: PluginContext<O, S>) => S }
+  state?: { init: () => S; apply: (tr: Transaction, prev: S, ctx: PluginContext<O, S, C>) => S }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

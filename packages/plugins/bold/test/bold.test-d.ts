@@ -11,4 +11,10 @@ describe('bold types', () => {
     expectTypeOf(ed.commands.setBold).toBeFunction()
     expectTypeOf(ed.commands.unsetBold).toBeFunction()
   })
+
+  it("gives bold's own hooks its typed commands on ctx", () => {
+    type Ctx = Parameters<NonNullable<(typeof bold)['spec']['keymap']>>[0]
+    expectTypeOf<Ctx['commands']['toggleBold']>().toEqualTypeOf<() => boolean>()
+    expectTypeOf<Ctx['commands']['setBold']>().toEqualTypeOf<() => boolean>()
+  })
 })

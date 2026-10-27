@@ -22,6 +22,7 @@ const ctx = (plugin: AnyPlugin): PluginContext<any, any> => ({
   name: plugin.name,
   options: plugin.spec.options ?? {},
   getState: () => undefined,
+  commands: {},
 })
 
 function run(d: Doc, plugins: AnyPlugin[] = base, selection: Selection | null = null): Transaction {

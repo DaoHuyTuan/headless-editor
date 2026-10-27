@@ -405,4 +405,45 @@ describe('Editor', () => {
     ed.dispatch(insertTextTr(ed, 'x'))
     expect(fn).not.toHaveBeenCalled()
   })
+
+  it("ctx.commands runs the plugin's own command and dispatches it", () => {
+    const mine = definePlugin({
+      name: 'mine',
+      commands: () => ({
+        mine:
+          (): Command =>
+          ({ tr }) => {
+            tr.apply({ type: 'insert_text', path: [0, 0], offset: 0, text: 'M' })
+            return true
+          },
+      }),
+      keymap: (ctx) => ({ 'Mod-m': () => ctx.commands.mine() }),
+    })
+    const ed = createTestEditor({ plugins: [testParagraph, mine], doc: doc(el('paragraph', txt('ab'))) })
+    const fn = vi.fn()
+    ed.on('transaction', fn)
+    expect(ed.runKeymap('Ctrl-m')).toBe(true)
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(el('paragraph', txt('Mab')))))
+    expect(fn).toHaveBeenCalledTimes(1)
+    expect(fn.mock.calls[0]![0].tr.meta.origin).toBe('command')
+  })
+
+  it("ctx.commands uses the plugin's own factory on a name clash; editor.commands uses the winner", () => {
+    const calls: string[] = []
+    const a = definePlugin({
+      name: 'a',
+      priority: 200,
+      commands: () => ({ go: (): Command => () => (calls.push('a'), true) }),
+    })
+    const b = definePlugin({
+      name: 'b',
+      commands: () => ({ go: (): Command => () => (calls.push('b'), true) }),
+      keymap: (ctx) => ({ 'Mod-g': () => ctx.commands.go() }),
+    })
+    const ed = createTestEditor({ plugins: [testParagraph, a, b], doc: doc(el('paragraph', txt('ab'))) })
+    expect(ed.runKeymap('Ctrl-g')).toBe(true)
+    expect(calls).toEqual(['b'])
+    expect(ed.commands.go()).toBe(true)
+    expect(calls).toEqual(['b', 'a'])
+  })
 })

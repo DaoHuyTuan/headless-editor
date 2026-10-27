@@ -1,7 +1,4 @@
-import { definePlugin, type Command, type Editor } from '@hte/core'
-
-// The plugin's own commands are not in `ctx.editor`'s type (it is derived from the plugin list).
-const toggleBold = (editor: Editor): boolean => (editor.commands as unknown as { toggleBold(): boolean }).toggleBold()
+import { definePlugin, type Command } from '@hte/core'
 
 export const bold = definePlugin({
   name: 'bold',
@@ -16,6 +13,6 @@ export const bold = definePlugin({
     setBold: (): Command => ({ tr }) => tr.addMark({ type: 'bold', data: {} }).rejected === null,
     unsetBold: (): Command => ({ tr }) => tr.removeMark('bold').rejected === null,
   }),
-  keymap: (ctx) => ({ 'Mod-b': () => toggleBold(ctx.editor) }),
-  onBeforeInput: (intent, ctx) => (intent.inputType === 'formatBold' ? toggleBold(ctx.editor) : false),
+  keymap: (ctx) => ({ 'Mod-b': () => ctx.commands.toggleBold() }),
+  onBeforeInput: (intent, ctx) => (intent.inputType === 'formatBold' ? ctx.commands.toggleBold() : false),
 })

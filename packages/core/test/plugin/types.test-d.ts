@@ -84,4 +84,23 @@ describe('plugin types', () => {
     expectTypeOf<OptionsOf<typeof e>>().toEqualTypeOf<{ n: number }>()
     expectTypeOf(e).toMatchTypeOf<AnyPlugin>()
   })
+
+  it("types the plugin's own commands on ctx.commands", () => {
+    definePlugin({
+      name: 'own',
+      options: { n: 1 },
+      commands: () => ({ mine: (): Command => () => true, withArg: (x: string): Command => () => x === '' }),
+      keymap: (ctx) => {
+        expectTypeOf(ctx.commands.mine).toEqualTypeOf<() => boolean>()
+        expectTypeOf(ctx.commands.withArg).toEqualTypeOf<(x: string) => boolean>()
+        // @ts-expect-error not a command of this plugin
+        ctx.commands.nope()
+        return {}
+      },
+      onBeforeInput: (_intent, ctx) => {
+        expectTypeOf(ctx.commands.mine).toEqualTypeOf<() => boolean>()
+        return false
+      },
+    })
+  })
 })
