@@ -1,7 +1,8 @@
 import type { Editor } from '../editor'
-import { pointEquals } from '../model/path'
+import { nextPath, pointEquals } from '../model/path'
 import type { Path, Selection } from '../model/types'
 import { transformPath } from '../ops/transform'
+import type { Operation } from '../ops/types'
 import type { EditorState } from '../state'
 import type { Transaction } from '../transaction/transaction'
 import { attachComposition } from './composition'
@@ -34,11 +35,32 @@ const RECENT_INPUT_SIZE = 20
 function mapComposition(target: CompositionTarget, tr: Transaction): CompositionTarget | null {
   let path: Path | null = target.path
   for (const op of tr.ops) {
-    if ((op.type === 'split_node' || op.type === 'merge_node') && samePath(op.path, path)) return null
+    if (touchesText(op, path)) return null
     path = transformPath(path, op)
     if (!path) return null
   }
   return path === target.path ? target : { leaf: target.leaf, path }
+}
+
+/**
+ * Whether `op` changes the content or marks of the text at `path` (including a merge of its next
+ * sibling into it): the composing leaf would no longer match the model text, so the commit diff
+ * would undo that change.
+ */
+function touchesText(op: Operation, path: Path): boolean {
+  switch (op.type) {
+    case 'insert_text':
+    case 'remove_text':
+    case 'add_mark':
+    case 'remove_mark':
+    case 'set_node_data':
+    case 'split_node':
+      return samePath(op.path, path)
+    case 'merge_node':
+      return samePath(op.path, path) || samePath(op.path, nextPath(path))
+    default:
+      return false
+  }
 }
 
 function samePath(a: Path, b: Path): boolean {
@@ -151,6 +173,9 @@ export class EditorView {
   private onTransaction(state: EditorState, tr: Transaction): void {
     if (this.composition) {
       this.composition = mapComposition(this.composition, tr)
+      // The composing text was changed or removed by someone else: give up on this composition (its
+      // in-flight text may be lost) rather than let the commit diff overwrite the model; render normally.
+      if (!this.composition) this.composing = false
       // Listeners see the final state: with appended trs, render once the path is mapped through all of them.
       if (this.composing && tr.doc !== state.doc) return
     }

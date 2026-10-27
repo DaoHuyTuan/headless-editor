@@ -139,6 +139,45 @@ describe('composition', () => {
     expect(root.querySelectorAll('p')).toHaveLength(1)
   })
 
+  it('a merge into the composing text ends the composition without deleting the merged text', () => {
+    const { editor, root, view } = mount([p('p1', txt('ab'), txt('X', 'bold'), txt('cd'))], caret([0, 0], 2))
+    fire(root, 'compositionstart')
+    imeWrite(view, [0, 0], 'abê')
+    const ops: string[] = []
+    editor.on('transaction', ({ tr }) => ops.push(...tr.ops.map((o) => o.type)))
+    // Removing the bold text lets normalize merge 'cd' into the composing 'ab'.
+    editor.dispatch(editor.createTransaction().removeNode([0, 1]))
+    expect(ops).toContain('merge_node')
+    expect(view.composition).toBeNull()
+    expect(view.composing).toBe(false)
+    fire(root, 'compositionend')
+    expect(texts(editor)).toEqual(['abcd'])
+    expect(root.textContent).toBe('abcd')
+  })
+
+  it('an insert_text into the composing text ends the composition without deleting anything', () => {
+    const { editor, root, view } = mount([p('p1', txt('abc'))], caret([0, 0], 3))
+    fire(root, 'compositionstart')
+    imeWrite(view, [0, 0], 'abcê')
+    editor.dispatch(editor.createTransaction().insertText('Z', caret([0, 0], 0)))
+    expect(view.composition).toBeNull()
+    expect(view.composing).toBe(false)
+    expect(root.textContent).toBe('Zabc')
+    fire(root, 'compositionend')
+    expect(texts(editor)).toEqual(['Zabc'])
+  })
+
+  it('edits elsewhere keep tracking the composing text', () => {
+    const { editor, root, view } = mount([p('p1', txt('ab')), p('p2', txt('cd'))], caret([1, 0], 2))
+    fire(root, 'compositionstart')
+    imeWrite(view, [1, 0], 'cdê')
+    editor.dispatch(editor.createTransaction().insertText('Z', caret([0, 0], 0)))
+    expect(view.composing).toBe(true)
+    expect(view.composition?.path).toEqual([1, 0])
+    fire(root, 'compositionend')
+    expect(texts(editor)).toEqual(['Zab', 'cdê'])
+  })
+
   it('deletes a non-collapsed selection at compositionstart', () => {
     const { editor, root, view } = mount([p('p1', txt('abcd'))], range([0, 0], 1, 3))
     fire(root, 'compositionstart')
