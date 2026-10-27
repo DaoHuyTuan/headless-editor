@@ -55,6 +55,9 @@ export type {
   MarkDOM,
   MarkSpec,
   NodeSpec,
+  NodeViewFactory,
+  NodeViewInstance,
+  NodeViewProps,
   NoOptions,
   OptionsOf,
   ParseRule,
@@ -97,5 +100,6 @@ export { historyPlugin } from './history'
 export { Renderer } from './view/renderer'
 export { domToModel, modelToDom, readDomSelection, writeDomSelection } from './view/dom-selection'
 export { EditorView } from './view/view'
+export { IGNORE_ATTR, isIgnoredTarget } from './view/ignore'
 export { FRAGMENT_MIME, parseFromClipboard, serializeForClipboard } from './view/clipboard'
 export type { CompositionTarget, InputRecord, ViewModule } from './view/view'

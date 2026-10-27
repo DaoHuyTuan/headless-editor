@@ -48,12 +48,40 @@ test('focus, type, Ctrl+A and Backspace work; the unknown block survives', async
   await expect(page.locator('[data-testid=editor] p')).toHaveText(['Y'])
 })
 
-test('Backspace at the start of the block after the unknown block does nothing', async ({ page }) => {
+test('Backspace at the start of the block after the unknown block selects it; a second Backspace removes it', async ({
+  page,
+}) => {
+  const unknown = page.locator('[data-testid=editor] [data-hte-unknown=heading]')
   await page.keyboard.press('Backspace')
-  expect(await getText(page)).toBe('Title\nBody text')
+  await expect(unknown).toHaveAttribute('data-hte-selected', '')
+  expect((await getSelection(page))?.node).toEqual([0])
   expect((await getDoc(page)).children[0]).toEqual(unknownHeading)
-  await expect(page.locator('[data-testid=editor] p')).toHaveText(['Body text'])
-  await expect(page.locator('[data-testid=editor] [data-hte-unknown=heading]')).toHaveCount(1)
+  expect(await getText(page)).toBe('Title\nBody text')
+
+  await page.keyboard.press('Backspace')
+  await expect(unknown).toHaveCount(0)
+  expect(await getText(page)).toBe('Body text')
+
+  await page.keyboard.press('ControlOrMeta+z')
+  await expect(unknown).toHaveCount(1)
+  expect((await getDoc(page)).children[0]).toEqual(unknownHeading)
+  expect(await getText(page)).toBe('Title\nBody text')
+})
+
+test('clicking the unknown block selects it; typing then replaces it', async ({ page }) => {
+  const unknown = page.locator('[data-testid=editor] [data-hte-unknown=heading]')
+  await unknown.click()
+  await expect(unknown).toHaveAttribute('data-hte-selected', '')
+  expect((await getSelection(page))?.node).toEqual([0])
+  // The DOM selection covers exactly the block and maps back to the same node selection.
+  const domSel = await page.evaluate(() => {
+    const sel = document.getSelection()!
+    const root = document.querySelector('[data-testid=editor]')!
+    return { anchorIsRoot: sel.anchorNode === root, anchor: sel.anchorOffset, focus: sel.focusOffset }
+  })
+  expect(domSel).toEqual({ anchorIsRoot: true, anchor: 0, focus: 1 })
+
   await page.keyboard.type('Z')
-  expect(await getText(page)).toBe('Title\nZBody text')
+  await expect(unknown).toHaveCount(0)
+  expect(await getText(page)).toBe('Z\nBody text')
 })

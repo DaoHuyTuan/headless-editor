@@ -1,5 +1,6 @@
+import { nodeSelection } from '../model/editable'
 import { pointEquals } from '../model/path'
-import type { Point, Selection } from '../model/types'
+import type { Path, Point, Selection } from '../model/types'
 import type { Renderer } from './renderer'
 
 const LEAF_ATTR = 'data-hte-leaf'
@@ -50,6 +51,14 @@ export function domToModel(r: Renderer, node: globalThis.Node, offset: number): 
 /** The model selection for a DOM selection, or null when it has no range or leaves the root. */
 export function readDomSelection(r: Renderer, domSel: globalThis.Selection): Selection | null {
   if (domSel.rangeCount === 0 || !domSel.anchorNode || !domSel.focusNode) return null
+  const selected = selectedElementPath(r, domSel)
+  if (selected) {
+    try {
+      return nodeSelection(r.renderedDoc, r.registry, selected)
+    } catch {
+      // No editable text to anchor it: read it as a caret below.
+    }
+  }
   const anchor = domToModel(r, domSel.anchorNode, domSel.anchorOffset)
   const focus = domToModel(r, domSel.focusNode, domSel.focusOffset)
   return anchor && focus ? { anchor, focus } : null
@@ -65,15 +74,40 @@ export function writeDomSelection(r: Renderer, sel: Selection | null, domSel: gl
     if (domSel.rangeCount > 0 && domSel.anchorNode && r.root.contains(domSel.anchorNode)) domSel.removeAllRanges()
     return
   }
-  if (!r.leafAt(sel.anchor.path) || !r.leafAt(sel.focus.path)) return
   const current = readDomSelection(r, domSel)
-  if (current && pointEquals(current.anchor, sel.anchor) && pointEquals(current.focus, sel.focus)) return
+  if (sel.node) {
+    const el = r.elementAt(sel.node)
+    if (el?.parentNode) {
+      if (current?.node && samePath(current.node, sel.node)) return
+      const i = indexOf(el)
+      domSel.setBaseAndExtent(el.parentNode, i, el.parentNode, i + 1)
+      return
+    }
+    // Not rendered: show its caret.
+  }
+  if (!r.leafAt(sel.anchor.path) || !r.leafAt(sel.focus.path)) return
+  if (current && !current.node && pointEquals(current.anchor, sel.anchor) && pointEquals(current.focus, sel.focus)) {
+    return
+  }
   const anchor = modelToDom(r, sel.anchor)
   const focus = modelToDom(r, sel.focus)
   domSel.setBaseAndExtent(anchor.node, anchor.offset, focus.node, focus.offset)
 }
 
 // --- helpers ---
+
+/** The path of the opaque block whose root is exactly what the DOM selection covers, or null. */
+function selectedElementPath(r: Renderer, domSel: globalThis.Selection): Path | null {
+  const { anchorNode, focusNode, anchorOffset, focusOffset } = domSel
+  if (!anchorNode || anchorNode !== focusNode || Math.abs(anchorOffset - focusOffset) !== 1) return null
+  if (!r.root.contains(anchorNode) || anchorNode.nodeType !== 1) return null
+  const child = anchorNode.childNodes[Math.min(anchorOffset, focusOffset)]
+  return child && child.nodeType === 1 ? r.opaqueBlockPath(child as Element) : null
+}
+
+function samePath(a: Path, b: Path): boolean {
+  return a.length === b.length && a.every((v, i) => v === b[i])
+}
 
 function textsIn(el: globalThis.Node): Text[] {
   const walker = el.ownerDocument!.createTreeWalker(el, SHOW_TEXT)

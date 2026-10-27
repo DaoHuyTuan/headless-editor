@@ -47,6 +47,18 @@ button {
 .editor p {
   margin: 0 0 8px;
 }
+/* Unknown blocks render empty: give them a visible, clickable box. */
+.editor [data-hte-unknown] {
+  min-height: 24px;
+  margin: 0 0 8px;
+  border: 1px dashed #bbb;
+  border-radius: 4px;
+}
+/* The node-selected block (atom or unknown). */
+.editor [data-hte-selected] {
+  outline: 2px solid #4a7dff;
+  outline-offset: 1px;
+}
 .code pre {
   padding: 8px;
   background: #fff;

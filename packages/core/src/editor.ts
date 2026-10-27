@@ -17,6 +17,7 @@ import type {
   CommandsOf,
   DOMEventName,
   InputIntent,
+  NodeViewFactory,
   PluginContext,
   StorageOf,
 } from './plugin/types'
@@ -35,6 +36,12 @@ export interface EditorOptions<P extends readonly AnyPlugin[] = readonly AnyPlug
   /** Throws on rejected transactions instead of dropping them. */
   dev?: boolean
   platform?: Platform
+  /**
+   * Node views keyed by node type: the renderer mounts each into a container it creates (see
+   * `NodeViewFactory`). Atom types only in M2; a non-atom type throws.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  nodeViews?: Record<string, NodeViewFactory<any, any>>
 }
 
 export type EditorEventName = 'transaction' | 'update' | 'selectionUpdate'
@@ -92,6 +99,7 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
   private readonly commandFactories = new Map<string, AnyCommandFactory>()
   private readonly keymaps: { plugin: AnyPlugin; bindings: Map<string, () => boolean> }[] = []
   private readonly listeners = new Map<EditorEventName | 'options', Set<(e: any) => void>>()
+  private readonly nodeViews = new Map<string, NodeViewFactory<any, any>>()
   private destroyed = false
   /** True while `dispatch` runs the pipeline (before events are emitted). */
   private computing = false
@@ -101,6 +109,12 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     this.platform = options.platform ?? detectPlatform()
     const plugins: AnyPlugin[] = [corePlugin, ...(options.history === false ? [] : [historyPlugin]), ...options.plugins]
     this.registry = new Registry(plugins)
+    for (const [type, factory] of Object.entries(options.nodeViews ?? {})) {
+      const registered = this.registry.node(type)
+      if (!registered) throw new Error(`Unknown node type "${type}" in nodeViews`)
+      if (!registered.atom) throw new Error('Non-atom node views arrive in M3')
+      this.nodeViews.set(type, factory)
+    }
 
     const pluginStates = new Map<string, unknown>()
     for (const plugin of this.registry.plugins) {
@@ -229,6 +243,28 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
       if (handler && handler(event, this.getContext(plugin))) return true
     }
     return false
+  }
+
+  /** The node view factory registered for the node `type` (`EditorOptions.nodeViews`), if any. */
+  nodeViewFactory(type: string): NodeViewFactory | undefined {
+    return this.nodeViews.get(type)
+  }
+
+  /** Asks the `stopEvent` hook of `node`'s plugin whether the editor must ignore `event` (inside its node view). */
+  handleStopEvent(event: Event, node: ElementNode): boolean {
+    const plugin = this.registry.node(node.type)?.plugin
+    const hook = plugin?.spec.stopEvent
+    return !!plugin && !!hook && hook(event, node, this.getContext(plugin))
+  }
+
+  /**
+   * Whether a DOM mutation inside `node`'s node view is ignored: the `ignoreMutation` hook of its
+   * plugin decides; without one it is.
+   */
+  handleIgnoreMutation(record: MutationRecord, node: ElementNode): boolean {
+    const plugin = this.registry.node(node.type)?.plugin
+    const hook = plugin?.spec.ignoreMutation
+    return !plugin || !hook || hook(record, node, this.getContext(plugin))
   }
 
   /** Runs each plugin's `transformPasted` on `fragment`, by priority. */

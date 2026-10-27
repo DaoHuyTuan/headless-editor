@@ -1,5 +1,5 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
-import type { Data, ElementNode, Node, Path, Selection } from '../model/types'
+import type { Data, DeepReadonly, ElementNode, Node, Path, Selection } from '../model/types'
 import type { Transaction } from '../transaction/transaction'
 import type { EditorState } from '../state'
 import type { Editor } from '../editor'
@@ -79,6 +79,41 @@ export interface MarkSpec<D = Data> {
 
 export type DOMEventName = 'keydown' | 'beforeinput' | 'input'
 
+/** What a node view gets: the current node, whether it is node-selected, and ways to read and change it. */
+export interface NodeViewProps<D = Data, O = unknown> {
+  /** The current model node. */
+  node: DeepReadonly<ElementNode> & { readonly data: DeepReadonly<D> }
+  /** Whether the node is node-selected. */
+  selected: boolean
+  editor: Editor
+  /** The node plugin's current options. */
+  options: O
+  /** The node's path in the current doc (looked up by id), or null when it is no longer in the doc. */
+  getPos(): Path | null
+  /**
+   * Merges `partial` into the node's data in a fresh tr (origin `command`) and dispatches it.
+   * False when the node is gone or the change was rejected.
+   */
+  updateData(partial: Partial<D>): boolean
+}
+
+export interface NodeViewInstance<D = Data, O = unknown> {
+  /** Called when the node's data, its `selected` state or the plugin's options change. */
+  update(props: NodeViewProps<D, O>): void
+  /** Called once, when the node leaves the doc or the view is destroyed. */
+  destroy(): void
+}
+
+/**
+ * Renders a node into `container` (created by the renderer: `<div>` for a block, `<span>` for an
+ * inline node, `contenteditable="false"`). Called once per element id; the container is never rebuilt
+ * for a data change. Elements inside it marked `data-editor-ignore` are fully left to the view.
+ */
+export type NodeViewFactory<D = Data, O = unknown> = (
+  container: HTMLElement,
+  props: NodeViewProps<D, O>,
+) => NodeViewInstance<D, O>
+
 export interface PluginSpec<
   Name extends string = string,
   D = Data,
@@ -105,6 +140,17 @@ export interface PluginSpec<
   parseHTML?: ParseRule[]
   renderHTML?: (node: ElementNode, ctx: { options: O }) => DOMOutputSpec
   transformPasted?: (fragment: Fragment, ctx: PluginContext<O, S, C>) => Fragment
+  /**
+   * For an event inside a node view of this plugin's type: true makes the editor ignore it (no
+   * handling, no `preventDefault`). Events inside `data-editor-ignore` are ignored without asking.
+   */
+  stopEvent?: (event: Event, node: ElementNode, ctx: PluginContext<O, S, C>) => boolean
+  /**
+   * For a DOM mutation inside a node view of this plugin's type: false has it reverted (the node
+   * view is rebuilt). Without this hook such mutations are ignored; inside `data-editor-ignore` they
+   * always are.
+   */
+  ignoreMutation?: (record: MutationRecord, node: ElementNode, ctx: PluginContext<O, S, C>) => boolean
   onInvalidData?: (raw: unknown) => Data | null
   /** `apply` gets the final (normalized) tr; `ctx.getState()` still returns `prev` there. */
   state?: { init: () => S; apply: (tr: Transaction, prev: S, ctx: PluginContext<O, S, C>) => S }

@@ -2,7 +2,10 @@ import { getNode, isText, sameMarkSet } from '../model/node'
 import { isCollapsed, toRange } from '../model/path'
 import type { Mark, Path } from '../model/types'
 import { marksAt, marksOfRange } from '../transaction/marks'
+import { isNodeSelection } from '../model/editable'
+import { replaceSelectedNode } from '../transaction/text'
 import { modelToDom } from './dom-selection'
+import { isIgnoredEvent } from './ignore'
 import type { EditorView, ViewModule } from './view'
 
 const INPUT_TYPE = 'insertCompositionText'
@@ -43,6 +46,14 @@ function onCompositionStart(view: EditorView): void {
   const { editor, renderer } = view
   // While not yet composing, so the model follows the DOM caret.
   view.syncSelection()
+  if (isNodeSelection(editor.state.selection)) {
+    // The IME replaces the selected node: swap it for an empty default block holding the caret first.
+    const tr = editor.createTransaction()
+    if (replaceSelectedNode(tr, { text: '' })) {
+      tr.setMeta('origin', 'input').setMeta('inputType', INPUT_TYPE)
+      editor.dispatch(tr)
+    }
+  }
   const sel = editor.state.selection
   if (sel) {
     const state = editor.state
@@ -121,8 +132,12 @@ function commit(view: EditorView, leaf: HTMLElement, path: Path): void {
  * `compositionend` (or `blur`, if that never comes), then the leaf's text is diffed against the model.
  */
 export const attachComposition: ViewModule = (view) => {
-  view.listen(view.root, 'compositionstart', () => onCompositionStart(view))
-  view.listen(view.root, 'compositionend', () => onCompositionEnd(view))
+  view.listen(view.root, 'compositionstart', (e) => {
+    if (!isIgnoredEvent(view, e)) onCompositionStart(view)
+  })
+  view.listen(view.root, 'compositionend', (e) => {
+    if (!isIgnoredEvent(view, e)) onCompositionEnd(view)
+  })
   view.listen(view.root, 'blur', () => onCompositionEnd(view))
   return () => {
     view.composing = false

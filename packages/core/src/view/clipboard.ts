@@ -7,6 +7,7 @@ import { isCollapsed, toRange } from '../model/path'
 import type { Doc, ElementNode, Node, Range } from '../model/types'
 import type { Registry } from '../plugin/registry'
 import { getFragment, type Fragment } from '../transaction/fragment'
+import { isIgnoredEvent } from './ignore'
 import type { EditorView, ViewModule } from './view'
 
 /** The MIME type of the lossless JSON flavor (a `JSON.stringify`-ed `Fragment`). */
@@ -79,6 +80,7 @@ function copyRange(view: EditorView): Range | null {
 }
 
 function onCopy(view: EditorView, e: ClipboardEvent, cut: boolean): void {
+  if (isIgnoredEvent(view, e)) return
   // A cut while composing would change the IME's text: the composition owns the DOM.
   if (cut && view.composing) return
   const data = e.clipboardData
@@ -96,6 +98,7 @@ function onCopy(view: EditorView, e: ClipboardEvent, cut: boolean): void {
 }
 
 function onPaste(view: EditorView, e: ClipboardEvent): void {
+  if (isIgnoredEvent(view, e)) return
   if (view.composing) return
   view.syncSelection()
   e.preventDefault()

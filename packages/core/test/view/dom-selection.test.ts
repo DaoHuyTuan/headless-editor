@@ -204,3 +204,46 @@ describe('read/writeDomSelection', () => {
     expect(domSel().rangeCount).toBe(1)
   })
 })
+
+describe('read/writeDomSelection: node selections', () => {
+  const domSel = () => document.getSelection()!
+  const atom = definePlugin({ name: 'atom', node: { kind: 'block', atom: true } })
+  const inlineAtom = definePlugin({ name: 'chip', node: { kind: 'inline', atom: true } })
+
+  function setupAtoms() {
+    const editor = createTestEditor({ plugins: [testParagraph, atom, inlineAtom] })
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    const renderer = new Renderer(root, editor)
+    renderer.render(doc(p('p1', 'ab'), node('a1', 'atom'), p('p2', 'c', node('c1', 'chip'), 'd')))
+    return { root, renderer }
+  }
+
+  it('writes a node selection around the element root and reads it back', () => {
+    const { root, renderer } = setupAtoms()
+    const sel: Selection = { anchor: { path: [0, 0], offset: 2 }, focus: { path: [0, 0], offset: 2 }, node: [1] }
+    writeDomSelection(renderer, sel, domSel())
+    expect(domSel().anchorNode).toBe(root)
+    expect(domSel().anchorOffset).toBe(1)
+    expect(domSel().focusNode).toBe(root)
+    expect(domSel().focusOffset).toBe(2)
+    expect(readDomSelection(renderer, domSel())).toEqual(sel)
+  })
+
+  it('writing a caret over a node selection with the same caret replaces the DOM range', () => {
+    const { renderer } = setupAtoms()
+    const caretSel: Selection = { anchor: { path: [0, 0], offset: 2 }, focus: { path: [0, 0], offset: 2 } }
+    writeDomSelection(renderer, { ...caretSel, node: [1] }, domSel())
+    writeDomSelection(renderer, caretSel, domSel())
+    expect(readDomSelection(renderer, domSel())).toEqual(caretSel)
+  })
+
+  it('never reads a node selection for an inline element', () => {
+    const { renderer } = setupAtoms()
+    const chip = renderer.elementAt([2, 1])!
+    const parent = chip.parentNode!
+    const i = Array.prototype.indexOf.call(parent.childNodes, chip) as number
+    domSel().setBaseAndExtent(parent, i, parent, i + 1)
+    expect(readDomSelection(renderer, domSel())?.node).toBeUndefined()
+  })
+})

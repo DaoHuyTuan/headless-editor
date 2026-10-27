@@ -2,6 +2,7 @@ import { eventToKeyName } from '../keymap'
 import type { Selection } from '../model/types'
 import type { InputIntent } from '../plugin/types'
 import { domToModel } from './dom-selection'
+import { isIgnoredEvent } from './ignore'
 import type { EditorView, ViewModule } from './view'
 
 /** Input types owned by the clipboard module (Task 22): left alone here, not even prevented. */
@@ -18,6 +19,7 @@ function targetRange(view: EditorView, e: InputEvent): Selection | null {
 }
 
 function onKeyDown(view: EditorView, e: KeyboardEvent): void {
+  if (isIgnoredEvent(view, e)) return
   const { editor } = view
   if (editor.handleDOMEvent('keydown', e)) {
     e.preventDefault()
@@ -30,6 +32,7 @@ function onKeyDown(view: EditorView, e: KeyboardEvent): void {
 }
 
 function onBeforeInput(view: EditorView, e: InputEvent): void {
+  if (isIgnoredEvent(view, e)) return
   const { editor } = view
   view.recordInput({ inputType: e.inputType, data: e.data, time: Date.now() })
   if (editor.handleDOMEvent('beforeinput', e)) return
@@ -58,7 +61,9 @@ export const attachInput: ViewModule = (view) => {
   view.listen(view.root, 'keydown', (e) => onKeyDown(view, e as KeyboardEvent))
   view.listen(view.root, 'beforeinput', (e) => onBeforeInput(view, e as InputEvent))
   // `input` has no default action here: plugins may observe it; the mutation module reverts stray DOM changes.
-  view.listen(view.root, 'input', (e) => view.editor.handleDOMEvent('input', e))
+  view.listen(view.root, 'input', (e) => {
+    if (!isIgnoredEvent(view, e)) view.editor.handleDOMEvent('input', e)
+  })
   // The listeners are removed by the view's own disposers.
   return () => {}
 }

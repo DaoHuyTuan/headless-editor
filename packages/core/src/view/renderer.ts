@@ -2,10 +2,15 @@ import type { Editor } from '../editor'
 import { checkAttrName, checkTag, isAttrs, kebab } from '../html/serialize'
 import { deepEqualJson, isText, sameMarkSet } from '../model/node'
 import type { DeepReadonly, Doc, ElementNode, Node, Path, TextNode } from '../model/types'
-import type { DOMOutputSpec } from '../plugin/types'
+import { isOpaque } from '../model/editable'
+import type { DOMOutputSpec, NodeViewFactory } from '../plugin/types'
+import type { Registry } from '../plugin/registry'
+import { NodeViewHost } from './node-view'
 
 const ID_ATTR = 'data-hte-id'
 const LEAF_ATTR = 'data-hte-leaf'
+const NODE_VIEW_ATTR = 'data-hte-node-view'
+const SELECTED_ATTR = 'data-hte-selected'
 
 /**
  * The rendered DOM of one element (or of the root, for the doc). Children occupy the hole's
@@ -27,6 +32,8 @@ interface ElementEntry extends Holder {
   node: ElementNode
   /** Unknown elements and atoms render no children. */
   rendersChildren: boolean
+  /** The node view factory when `dom` is a node-view container. */
+  nodeView?: NodeViewFactory
 }
 
 interface HolePosition {
@@ -43,12 +50,15 @@ export interface RenderOptions {
    * rendered by `skipLeaf` whatever its position; otherwise `skipLeaf` keeps its positional slot.
    */
   skipPath?: Path
+  /** The path of the node-selected element: its root gets `data-hte-selected`, its node view `selected: true`. */
+  selectedNode?: Path
 }
 
 interface RenderPass {
   next: Map<string, ElementEntry>
   skipLeaf?: HTMLElement
   skipPath?: Path
+  selectedNode?: Path
 }
 
 /**
@@ -72,8 +82,12 @@ export class Renderer {
   private readonly byDom = new WeakMap<Element, ElementEntry>()
   /** The text each leaf span currently shows; missing when unknown (skipped while the model moved on). */
   private readonly leafText = new WeakMap<Element, TextNode>()
-  /** Element types whose shells are rebuilt on the next render. */
+  /** Element types whose shells are rebuilt (node views: updated) on the next render. */
   private readonly invalidated = new Set<string>()
+  /** Ids of node views rebuilt (new container, new instance) on the next render. */
+  private readonly rebuildViews = new Set<string>()
+  private readonly nodeViews: NodeViewHost
+  private lastDoc: DeepReadonly<Doc> = { type: 'doc', children: [] }
   private _rendering = false
   /** Run synchronously at the end of every render (the mutation observer drops the records of our own patches). */
   private readonly renderedHooks = new Set<() => void>()
@@ -89,25 +103,89 @@ export class Renderer {
     root.setAttribute('aria-multiline', 'true')
     root.style.whiteSpace = 'pre-wrap'
     this.rootHolder = { hole: root, before: null, anchor: null, kids: [] }
+    this.nodeViews = new NodeViewHost(editor)
   }
 
   render(doc: DeepReadonly<Doc>, opts: RenderOptions = {}): void {
-    const pass: RenderPass = { next: new Map(), skipLeaf: opts.skipLeaf, skipPath: opts.skipPath }
+    const pass: RenderPass = {
+      next: new Map(),
+      skipLeaf: opts.skipLeaf,
+      skipPath: opts.skipPath,
+      selectedNode: opts.selectedNode,
+    }
     this._rendering = true
     try {
       // Read-only: the renderer keeps references to the nodes but never changes them.
       this.reconcile(this.rootHolder, (doc as Doc).children, [], pass)
       this.byId = pass.next
+      this.lastDoc = doc
+      // Destroy the node views whose element left the doc (or is no longer shown by a node view).
+      const live = new Set<string>()
+      for (const [id, entry] of pass.next) if (entry.nodeView) live.add(id)
+      this.nodeViews.prune(live)
     } finally {
       this._rendering = false
       this.invalidated.clear()
+      this.rebuildViews.clear()
       for (const hook of [...this.renderedHooks]) hook()
     }
   }
 
-  /** Rebuilds the shell of every element of `type` on the next render; their children's DOM is reused. */
+  /**
+   * Rebuilds the shell of every element of `type` on the next render; their children's DOM is
+   * reused. Node views of `type` keep their container and get `update` with fresh options instead.
+   */
   invalidate(type: string): void {
     this.invalidated.add(type)
+  }
+
+  /** Rebuilds the node view of the element `id` on the next render: a new container and a new instance. */
+  invalidateNodeView(id: string): void {
+    this.rebuildViews.add(id)
+  }
+
+  /** Destroys every node view (the rendered DOM stays). */
+  destroy(): void {
+    this.nodeViews.destroyAll()
+  }
+
+  /** The doc of the last render. */
+  get renderedDoc(): DeepReadonly<Doc> {
+    return this.lastDoc
+  }
+
+  get registry(): Registry {
+    return this.editor.registry
+  }
+
+  /** The current model node of a rendered element root, or null when `dom` is not one. */
+  nodeOfElement(dom: Element): ElementNode | null {
+    const entry = this.byDom.get(dom)
+    return entry && this.byId.get(entry.node.id) === entry ? entry.node : null
+  }
+
+  /** The closest current node-view container that is or contains `node` (within the root), or null. */
+  nodeViewAround(node: globalThis.Node): HTMLElement | null {
+    let cur: globalThis.Node | null = node
+    while (cur && cur !== this.root) {
+      if (cur.nodeType === 1 && (cur as Element).hasAttribute(NODE_VIEW_ATTR)) {
+        const entry = this.byDom.get(cur as Element)
+        if (entry?.nodeView && this.byId.get(entry.node.id) === entry) return cur as HTMLElement
+      }
+      cur = cur.parentNode
+    }
+    return null
+  }
+
+  /**
+   * The path of the opaque block (atom or unknown type) whose rendered root is `dom`, or null.
+   * Inline opaque elements are never node-selected.
+   */
+  opaqueBlockPath(dom: Element): Path | null {
+    const node = this.nodeOfElement(dom)
+    if (!node || !isOpaque(node, this.editor.registry)) return null
+    if (this.editor.registry.node(node.type)?.kind === 'inline') return null
+    return this.pathOf(dom)
   }
 
   /** True while `render` patches the DOM: mutations made then are the renderer's own. */
@@ -241,10 +319,19 @@ export class Renderer {
 
   private element(node: ElementNode, path: Path, pass: RenderPass): HTMLElement {
     const { next } = pass
-    const prev = next.has(node.id) ? undefined : this.byId.get(node.id)
+    const duplicate = next.has(node.id)
+    const prev = duplicate ? undefined : this.byId.get(node.id)
+    const selected = pass.selectedNode !== undefined && samePath(path, pass.selectedNode)
     let entry: ElementEntry
-    if (
+    const keepView = prev?.nodeView && prev.node.type === node.type && !this.rebuildViews.has(node.id)
+    if (keepView && this.nodeViews.has(node.id)) {
+      // A node view keeps its container: data, selection and option changes go through `update`.
+      entry = prev
+      entry.node = node
+      this.nodeViews.update(node, selected, this.invalidated.has(node.type))
+    } else if (
       prev &&
+      !prev.nodeView &&
       this.shellIntact(prev) &&
       !this.invalidated.has(node.type) &&
       (prev.node === node || (prev.node.type === node.type && deepEqualJson(prev.node.data, node.data)))
@@ -256,9 +343,14 @@ export class Renderer {
       // Keep the old children's DOM so they are moved into the new shell, not recreated.
       if (prev && entry.rendersChildren) entry.kids = prev.kids
       this.byDom.set(entry.dom, entry)
+      if (prev?.nodeView) this.nodeViews.destroy(node.id)
+      // Views are keyed by id: a duplicate id gets an empty container.
+      if (entry.nodeView && !duplicate) this.nodeViews.create(entry.nodeView, entry.dom, node, selected)
     }
+    if (selected) entry.dom.setAttribute(SELECTED_ATTR, '')
+    else if (entry.dom.hasAttribute(SELECTED_ATTR)) entry.dom.removeAttribute(SELECTED_ATTR)
     // Duplicate ids get fresh DOM and are not keyed.
-    if (!next.has(node.id)) next.set(node.id, entry)
+    if (!duplicate) next.set(node.id, entry)
     if (entry.rendersChildren) this.reconcile(entry, node.children ?? [], path, pass)
     return entry.dom
   }
@@ -279,6 +371,15 @@ export class Renderer {
       dom.setAttribute('data-hte-unknown', node.type)
       dom.setAttribute('contenteditable', 'false')
       return { dom, node, hole: dom, before: null, anchor: null, kids: [], rendersChildren: false }
+    }
+    const nodeView = registered.atom ? this.editor.nodeViewFactory(node.type) : undefined
+    if (nodeView) {
+      // The view owns the container's content; the renderer never looks inside it.
+      const dom = this.doc.createElement(registered.kind === 'inline' ? 'span' : 'div')
+      dom.setAttribute(ID_ATTR, node.id)
+      dom.setAttribute(NODE_VIEW_ATTR, '')
+      dom.setAttribute('contenteditable', 'false')
+      return { dom, node, hole: dom, before: null, anchor: null, kids: [], rendersChildren: false, nodeView }
     }
     const render = registered.plugin.spec.renderHTML
     const spec = render?.(node, { options: this.editor.getPluginOptions(registered.plugin.name) })

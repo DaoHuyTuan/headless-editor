@@ -1,0 +1,92 @@
+import type { Editor } from '../editor'
+import { deepEqualJson } from '../model/node'
+import { findPathById } from '../model/find'
+import type { Data, ElementNode, Path } from '../model/types'
+import type { NodeViewFactory, NodeViewInstance, NodeViewProps } from '../plugin/types'
+
+interface HostedView {
+  instance: NodeViewInstance
+  container: HTMLElement
+  /** The props last given to the view (factory or `update`). */
+  props: NodeViewProps
+}
+
+/**
+ * The node views of one renderer, keyed by element id: creates each instance once, updates it when
+ * its node's data, its selected state or its plugin's options change, and destroys it when the
+ * element leaves the doc. Owned by the renderer, which creates the containers.
+ */
+export class NodeViewHost {
+  private readonly views = new Map<string, HostedView>()
+
+  constructor(private readonly editor: Editor) {}
+
+  has(id: string): boolean {
+    return this.views.has(id)
+  }
+
+  /** Calls `factory` for the element `node`, rendered into `container`. */
+  create(factory: NodeViewFactory, container: HTMLElement, node: ElementNode, selected: boolean): void {
+    this.destroy(node.id)
+    const props = this.props(node, selected)
+    const instance = factory(container, props)
+    this.views.set(node.id, { instance, container, props })
+  }
+
+  /**
+   * Gives the view of `node` its current props when its data, its selected state or (with `force`,
+   * after an options change) its options changed. Other node changes only refresh the node
+   * reference kept for the next update.
+   */
+  update(node: ElementNode, selected: boolean, force: boolean): void {
+    const view = this.views.get(node.id)
+    if (!view) return
+    const prev = view.props
+    const changed =
+      force || prev.selected !== selected || (prev.node !== node && !deepEqualJson(prev.node.data as Data, node.data))
+    if (!changed) return
+    view.props = this.props(node, selected)
+    view.instance.update(view.props)
+  }
+
+  /** Destroys the view of the element `id` (no-op when there is none). */
+  destroy(id: string): void {
+    const view = this.views.get(id)
+    if (!view) return
+    this.views.delete(id)
+    view.instance.destroy()
+  }
+
+  /** Destroys every view whose id is not in `keep`. */
+  prune(keep: ReadonlySet<string>): void {
+    for (const id of [...this.views.keys()]) if (!keep.has(id)) this.destroy(id)
+  }
+
+  destroyAll(): void {
+    this.prune(new Set())
+  }
+
+  private props(node: ElementNode, selected: boolean): NodeViewProps {
+    const { editor } = this
+    const id = node.id
+    const getPos = (): Path | null => findPathById(editor.state.doc, id)
+    return {
+      node,
+      selected,
+      editor,
+      options: editor.getPluginOptions(node.type),
+      getPos,
+      updateData: (partial) => {
+        const path = getPos()
+        if (!path) return false
+        const tr = editor.createTransaction()
+        tr.setMeta('origin', 'command')
+        tr.setNodeData(path, partial as Data)
+        if (tr.rejected !== null) return false
+        const before = editor.state
+        editor.dispatch(tr)
+        return editor.state !== before
+      },
+    }
+  }
+}

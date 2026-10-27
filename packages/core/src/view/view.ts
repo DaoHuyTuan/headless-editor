@@ -8,8 +8,10 @@ import type { Transaction } from '../transaction/transaction'
 import { attachClipboard } from './clipboard'
 import { attachComposition } from './composition'
 import { readDomSelection, writeDomSelection } from './dom-selection'
+import { isInIgnoredElement } from './ignore'
 import { attachInput } from './input'
 import { attachMutation } from './mutation'
+import { attachNodeSelect } from './node-select'
 import { Renderer } from './renderer'
 
 /** The leaf an IME composition owns, and the current model path of the text it shows. */
@@ -70,7 +72,10 @@ function samePath(a: Path, b: Path): boolean {
 
 function sameSelection(a: Selection | null, b: Selection | null): boolean {
   if (a === null || b === null) return a === b
-  return pointEquals(a.anchor, b.anchor) && pointEquals(a.focus, b.focus)
+  if (pointEquals(a.anchor, b.anchor) && pointEquals(a.focus, b.focus)) {
+    return a.node === undefined || b.node === undefined ? a.node === b.node : samePath(a.node, b.node)
+  }
+  return false
 }
 
 /**
@@ -114,6 +119,7 @@ export class EditorView {
     this.attach(attachComposition)
     this.attach(attachMutation)
     this.attach(attachClipboard)
+    this.attach(attachNodeSelect)
   }
 
   /** The last 20 input events, oldest first. */
@@ -133,7 +139,11 @@ export class EditorView {
   update(state: EditorState): void {
     if (this.destroyed) return
     const target = this.composing ? this.composition : null
-    this.renderer.render(state.doc, target ? { skipLeaf: target.leaf, skipPath: target.path } : {})
+    const selectedNode = state.selection?.node
+    this.renderer.render(
+      state.doc,
+      target ? { skipLeaf: target.leaf, skipPath: target.path, selectedNode } : { selectedNode },
+    )
     if (!this.composing && this.hasFocus()) this.writeSelection(state.selection)
   }
 
@@ -147,6 +157,7 @@ export class EditorView {
     if (this.destroyed) return
     this.destroyed = true
     for (const dispose of this.disposers.splice(0).reverse()) dispose()
+    this.renderer.destroy()
   }
 
   /** Attaches a view module; its disposer runs on `destroy`. */
@@ -165,7 +176,7 @@ export class EditorView {
    * selection-only tr if they differ. Input handlers call it first: `selectionchange` is async.
    */
   syncSelection(): void {
-    if (this.destroyed || this.composing) return
+    if (this.destroyed || this.composing || this.focusIgnored()) return
     const domSel = this.domSelection()
     const anchor = domSel?.anchorNode
     if (!domSel || !anchor || !this.root.contains(anchor)) return
@@ -202,7 +213,14 @@ export class EditorView {
     return !!anchor && this.root.contains(anchor)
   }
 
+  /** Whether the focus is inside a `data-editor-ignore` element of the root (e.g. a node view's input). */
+  private focusIgnored(): boolean {
+    return isInIgnoredElement(this, this.root.ownerDocument.activeElement)
+  }
+
   private writeSelection(sel: Selection | null): void {
+    // Never take the selection (and the focus) away from an ignored element.
+    if (this.focusIgnored()) return
     const domSel = this.domSelection()
     if (!domSel) return
     this.writingSelection = true
