@@ -72,6 +72,9 @@ export class Renderer {
   private readonly byDom = new WeakMap<Element, ElementEntry>()
   /** The text each leaf span currently shows; missing when unknown (skipped while the model moved on). */
   private readonly leafText = new WeakMap<Element, TextNode>()
+  private _rendering = false
+  /** Run synchronously at the end of every render (the mutation observer drops the records of our own patches). */
+  private readonly renderedHooks = new Set<() => void>()
 
   constructor(
     /** The contenteditable root the document renders into. */
@@ -88,8 +91,27 @@ export class Renderer {
 
   render(doc: Doc, opts: RenderOptions = {}): void {
     const pass: RenderPass = { next: new Map(), skipLeaf: opts.skipLeaf, skipPath: opts.skipPath }
-    this.reconcile(this.rootHolder, doc.children, [], pass)
-    this.byId = pass.next
+    this._rendering = true
+    try {
+      this.reconcile(this.rootHolder, doc.children, [], pass)
+      this.byId = pass.next
+    } finally {
+      this._rendering = false
+      for (const hook of [...this.renderedHooks]) hook()
+    }
+  }
+
+  /** True while `render` patches the DOM: mutations made then are the renderer's own. */
+  get rendering(): boolean {
+    return this._rendering
+  }
+
+  /** Runs `fn` synchronously at the end of every render; returns its remover. */
+  onRendered(fn: () => void): () => void {
+    this.renderedHooks.add(fn)
+    return () => {
+      this.renderedHooks.delete(fn)
+    }
   }
 
   /** The `<span data-hte-leaf>` rendered for the text at `path`. */

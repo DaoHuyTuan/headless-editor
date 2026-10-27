@@ -1,10 +1,20 @@
 import type { Editor } from '../editor'
 import { pointEquals } from '../model/path'
-import type { Selection } from '../model/types'
+import type { Path, Selection } from '../model/types'
+import { transformPath } from '../ops/transform'
 import type { EditorState } from '../state'
+import type { Transaction } from '../transaction/transaction'
+import { attachComposition } from './composition'
 import { readDomSelection, writeDomSelection } from './dom-selection'
 import { attachInput } from './input'
+import { attachMutation } from './mutation'
 import { Renderer } from './renderer'
+
+/** The leaf an IME composition owns, and the current model path of the text it shows. */
+export interface CompositionTarget {
+  leaf: HTMLElement
+  path: Path
+}
 
 export interface InputRecord {
   inputType: string
@@ -16,6 +26,24 @@ export interface InputRecord {
 export type ViewModule = (view: EditorView) => () => void
 
 const RECENT_INPUT_SIZE = 20
+
+/**
+ * Follows the composing text through `tr`; null when it was removed, or split or merged (the leaf
+ * would then no longer show the whole text at its path).
+ */
+function mapComposition(target: CompositionTarget, tr: Transaction): CompositionTarget | null {
+  let path: Path | null = target.path
+  for (const op of tr.ops) {
+    if ((op.type === 'split_node' || op.type === 'merge_node') && samePath(op.path, path)) return null
+    path = transformPath(path, op)
+    if (!path) return null
+  }
+  return path === target.path ? target : { leaf: target.leaf, path }
+}
+
+function samePath(a: Path, b: Path): boolean {
+  return a.length === b.length && a.every((v, i) => v === b[i])
+}
 
 function sameSelection(a: Selection | null, b: Selection | null): boolean {
   if (a === null || b === null) return a === b
@@ -31,6 +59,11 @@ export class EditorView {
   readonly renderer: Renderer
   /** True while an IME composition is in progress (driven by the composition module). */
   composing = false
+  /**
+   * While composing, the leaf the IME writes into: renders never touch it and pin it to `path`,
+   * which follows every transaction. Null when there is none (or its text was removed).
+   */
+  composition: CompositionTarget | null = null
 
   private readonly _recentInput: InputRecord[] = []
   private readonly disposers: (() => void)[] = []
@@ -45,9 +78,11 @@ export class EditorView {
     this.renderer = new Renderer(root, editor)
     this.renderer.render(editor.state.doc)
 
-    this.disposers.push(editor.on('transaction', ({ editor: ed }) => this.update(ed.state)))
+    this.disposers.push(editor.on('transaction', ({ editor: ed, tr }) => this.onTransaction(ed.state, tr)))
     this.listen(root.ownerDocument, 'selectionchange', () => this.onSelectionChange())
     this.attach(attachInput)
+    this.attach(attachComposition)
+    this.attach(attachMutation)
   }
 
   /** The last 20 input events, oldest first. */
@@ -60,11 +95,15 @@ export class EditorView {
     if (this._recentInput.length > RECENT_INPUT_SIZE) this._recentInput.shift()
   }
 
-  /** Renders `state` and, when the editor has focus, shows its selection in the DOM. */
+  /**
+   * Renders `state` and, when the editor has focus, shows its selection in the DOM. While composing,
+   * the composing leaf is left to the IME and the DOM selection is not touched.
+   */
   update(state: EditorState): void {
     if (this.destroyed) return
-    this.renderer.render(state.doc)
-    if (this.hasFocus()) this.writeSelection(state.selection)
+    const target = this.composing ? this.composition : null
+    this.renderer.render(state.doc, target ? { skipLeaf: target.leaf, skipPath: target.path } : {})
+    if (!this.composing && this.hasFocus()) this.writeSelection(state.selection)
   }
 
   focus(): void {
@@ -108,6 +147,15 @@ export class EditorView {
   }
 
   // --- internals ---
+
+  private onTransaction(state: EditorState, tr: Transaction): void {
+    if (this.composition) {
+      this.composition = mapComposition(this.composition, tr)
+      // Listeners see the final state: with appended trs, render once the path is mapped through all of them.
+      if (this.composing && tr.doc !== state.doc) return
+    }
+    this.update(state)
+  }
 
   private domSelection(): globalThis.Selection | null {
     return this.root.ownerDocument.getSelection()

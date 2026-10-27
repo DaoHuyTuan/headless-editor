@@ -53,10 +53,12 @@ function onBeforeInput(view: EditorView, e: InputEvent): void {
   if (handled || e.cancelable) e.preventDefault()
 }
 
-/** Keyboard and `beforeinput` handling: plugin DOM handlers, then the keymap or the intent pipeline. */
+/** Keyboard, `beforeinput` and `input` handling: plugin DOM handlers, then the keymap or the intent pipeline. */
 export const attachInput: ViewModule = (view) => {
   view.listen(view.root, 'keydown', (e) => onKeyDown(view, e as KeyboardEvent))
   view.listen(view.root, 'beforeinput', (e) => onBeforeInput(view, e as InputEvent))
+  // `input` has no default action here: plugins may observe it; the mutation module reverts stray DOM changes.
+  view.listen(view.root, 'input', (e) => view.editor.handleDOMEvent('input', e))
   // The listeners are removed by the view's own disposers.
   return () => {}
 }

@@ -1,0 +1,198 @@
+// @vitest-environment happy-dom
+import { afterEach, describe, expect, it } from 'vitest'
+import type { ElementNode, Node, Selection, TextNode } from '../../src/model/types'
+import { modelToDom } from '../../src/index'
+import { createTestEditor, doc, txt } from '../../src/testing/index'
+import { testBold, testParagraph } from '../fixtures'
+
+const p = (id: string, ...children: Node[]): ElementNode => ({ id, type: 'paragraph', data: {}, children })
+const caret = (path: number[], offset: number): Selection => ({ anchor: { path, offset }, focus: { path, offset } })
+const range = (path: number[], from: number, to: number): Selection => ({
+  anchor: { path, offset: from },
+  focus: { path, offset: to },
+})
+
+function mount(children: ElementNode[], selection: Selection) {
+  const editor = createTestEditor({ plugins: [testParagraph, testBold], doc: doc(...children), selection })
+  const root = document.createElement('div')
+  document.body.appendChild(root)
+  editor.mount(root)
+  editor.view!.focus()
+  return { editor, root, view: editor.view! }
+}
+
+const fire = (root: HTMLElement, type: string) => root.dispatchEvent(new Event(type, { bubbles: true }))
+const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0))
+const texts = (editor: ReturnType<typeof mount>['editor']) =>
+  editor.state.doc.children.map((b) => (b.children ?? []).map((t) => (t as TextNode).text).join(''))
+
+/** What an IME does to the DOM: sets the text of the leaf at `path` in place. */
+function imeWrite(view: ReturnType<typeof mount>['view'], path: number[], text: string) {
+  const leaf = view.renderer.leafAt(path)!
+  const textNode = leaf.ownerDocument.createTreeWalker(leaf, 4).nextNode() as Text | null
+  if (textNode) textNode.data = text
+  else leaf.replaceChildren(leaf.ownerDocument.createTextNode(text))
+}
+
+afterEach(() => {
+  document.getSelection()?.removeAllRanges()
+  document.body.replaceChildren()
+})
+
+describe('composition', () => {
+  it('compositionstart sets composing and remembers the leaf under the caret', () => {
+    const { root, view } = mount([p('p1', txt('ab'))], caret([0, 0], 1))
+    fire(root, 'compositionstart')
+    expect(view.composing).toBe(true)
+    expect(view.composition).toEqual({ leaf: view.renderer.leafAt([0, 0]), path: [0, 0] })
+  })
+
+  it('compositionend diffs the leaf text into one input tr with the caret after the inserted text', async () => {
+    const { editor, root, view } = mount([p('p1', txt('abc'))], caret([0, 0], 2))
+    const trs: { origin: unknown; inputType: unknown; ops: string[] }[] = []
+    editor.on('transaction', ({ tr }) =>
+      trs.push({ origin: tr.meta.origin, inputType: tr.meta.inputType, ops: tr.ops.map((o) => o.type).filter((t) => t !== 'set_selection') }),
+    )
+    fire(root, 'compositionstart')
+    imeWrite(view, [0, 0], 'abêc')
+    await flush()
+    imeWrite(view, [0, 0], 'abếc')
+    await flush()
+    expect(texts(editor)).toEqual(['abc'])
+    fire(root, 'compositionend')
+    expect(view.composing).toBe(false)
+    expect(view.composition).toBeNull()
+    expect(texts(editor)).toEqual(['abếc'])
+    expect(trs).toEqual([{ origin: 'input', inputType: 'insertCompositionText', ops: ['insert_text'] }])
+    expect(editor.state.selection).toEqual(caret([0, 0], 3))
+    expect(root.textContent).toBe('abếc')
+  })
+
+  it('replaces changed text with one remove_text + one insert_text', () => {
+    const { editor, root, view } = mount([p('p1', txt('abXYc'))], caret([0, 0], 4))
+    const ops: unknown[] = []
+    editor.on('transaction', ({ tr }) => ops.push(...tr.ops.filter((o) => o.type !== 'set_selection')))
+    fire(root, 'compositionstart')
+    imeWrite(view, [0, 0], 'ab你c')
+    fire(root, 'compositionend')
+    expect(ops).toEqual([
+      { type: 'remove_text', path: [0, 0], offset: 2, text: 'XY' },
+      { type: 'insert_text', path: [0, 0], offset: 2, text: '你' },
+    ])
+    expect(editor.state.selection).toEqual(caret([0, 0], 3))
+  })
+
+  it('reads the whole text of an empty leaf whose <br> the IME replaced', () => {
+    const { editor, root, view } = mount([p('p1', txt(''))], caret([0, 0], 0))
+    fire(root, 'compositionstart')
+    view.renderer.leafAt([0, 0])!.replaceChildren(document.createTextNode('你好'))
+    fire(root, 'compositionend')
+    expect(texts(editor)).toEqual(['你好'])
+    expect(editor.state.selection).toEqual(caret([0, 0], 2))
+  })
+
+  it('treats a leaf left with only its <br> as empty', () => {
+    const { editor, root } = mount([p('p1', txt(''))], caret([0, 0], 0))
+    let count = 0
+    editor.on('transaction', () => count++)
+    fire(root, 'compositionstart')
+    fire(root, 'compositionend')
+    expect(count).toBe(0)
+    expect(texts(editor)).toEqual([''])
+    expect(root.querySelector('br[data-hte-break]')).not.toBeNull()
+  })
+
+  it('keeps marks of the composing text', () => {
+    const { editor, root, view } = mount([p('p1', txt('a'), txt('bc', 'bold'))], caret([0, 1], 1))
+    fire(root, 'compositionstart')
+    imeWrite(view, [0, 1], 'b好c')
+    fire(root, 'compositionend')
+    expect(editor.state.doc.children[0]!.children).toEqual([txt('a'), txt('b好c', 'bold')])
+    expect(root.querySelector('strong')!.textContent).toBe('b好c')
+  })
+
+  it('renders during composition leave the composing leaf alone and track its path', () => {
+    const { editor, root, view } = mount([p('p1', txt('ab')), p('p2', txt('cd'))], caret([1, 0], 2))
+    fire(root, 'compositionstart')
+    const leaf = view.renderer.leafAt([1, 0])!
+    imeWrite(view, [1, 0], 'cdê')
+    // A remote-like edit before the composing text: a new block at the top.
+    const tr = editor.createTransaction()
+    tr.insertNode([0], p('p0', txt('zero')))
+    editor.dispatch(tr)
+    expect(view.composition).toEqual({ leaf, path: [2, 0] })
+    expect(view.renderer.leafAt([2, 0])).toBe(leaf)
+    expect(leaf.textContent).toBe('cdê')
+    fire(root, 'compositionend')
+    expect(texts(editor)).toEqual(['zero', 'ab', 'cdê'])
+    expect(editor.state.selection).toEqual(caret([2, 0], 3))
+  })
+
+  it('drops tracking when the composing text is removed', () => {
+    const { editor, root, view } = mount([p('p1', txt('ab')), p('p2', txt('cd'))], caret([1, 0], 2))
+    fire(root, 'compositionstart')
+    editor.dispatch(editor.createTransaction().removeNode([1]))
+    expect(view.composition).toBeNull()
+    fire(root, 'compositionend')
+    expect(view.composing).toBe(false)
+    expect(texts(editor)).toEqual(['ab'])
+    expect(root.querySelectorAll('p')).toHaveLength(1)
+  })
+
+  it('deletes a non-collapsed selection at compositionstart', () => {
+    const { editor, root, view } = mount([p('p1', txt('abcd'))], range([0, 0], 1, 3))
+    fire(root, 'compositionstart')
+    expect(texts(editor)).toEqual(['ad'])
+    expect(view.composing).toBe(true)
+    expect(view.composition?.path).toEqual([0, 0])
+    expect(root.textContent).toBe('ad')
+    imeWrite(view, [0, 0], 'aXd')
+    fire(root, 'compositionend')
+    expect(texts(editor)).toEqual(['aXd'])
+  })
+
+  it('blur ends the composition like compositionend', () => {
+    const { editor, root, view } = mount([p('p1', txt('ab'))], caret([0, 0], 2))
+    fire(root, 'compositionstart')
+    imeWrite(view, [0, 0], 'abc')
+    fire(root, 'blur')
+    expect(view.composing).toBe(false)
+    expect(texts(editor)).toEqual(['abc'])
+    fire(root, 'compositionend')
+    expect(texts(editor)).toEqual(['abc'])
+  })
+
+  it('a composition is one undo step, including the replaced selection', () => {
+    const { editor, root, view } = mount([p('p1', txt('abcd'))], range([0, 0], 1, 3))
+    fire(root, 'compositionstart')
+    imeWrite(view, [0, 0], 'a你好d')
+    fire(root, 'compositionend')
+    expect(texts(editor)).toEqual(['a你好d'])
+    editor.commands.undo()
+    expect(texts(editor)).toEqual(['abcd'])
+  })
+
+  it('rebuilds extra structure the browser left in the leaf', () => {
+    const { editor, root, view } = mount([p('p1', txt('ab'))], caret([0, 0], 2))
+    fire(root, 'compositionstart')
+    const leaf = view.renderer.leafAt([0, 0])!
+    leaf.appendChild(document.createElement('span')).textContent = 'c'
+    leaf.appendChild(document.createElement('br'))
+    fire(root, 'compositionend')
+    expect(texts(editor)).toEqual(['abc'])
+    expect(leaf.innerHTML).toBe('abc')
+    expect(modelToDom(view.renderer, editor.state.selection!.focus)).toEqual({ node: leaf.firstChild, offset: 3 })
+  })
+
+  it('forwards input events to plugin handleDOMEvents.input', () => {
+    const { root, editor } = mount([p('p1', txt('ab'))], caret([0, 0], 0))
+    const seen: string[] = []
+    const orig = editor.handleDOMEvent.bind(editor)
+    editor.handleDOMEvent = (type, e) => {
+      seen.push(type)
+      return orig(type, e)
+    }
+    fire(root, 'input')
+    expect(seen).toEqual(['input'])
+  })
+})
