@@ -1,0 +1,18 @@
+{
+  "name": "headless-text-editor",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.15.0",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json",
+    "e2e": "pnpm --filter playground e2e"
+  },
+  "devDependencies": {
+    "@standard-schema/spec": "^1.0.0",
+    "happy-dom": "^20.0.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0",
+    "zod": "^4.0.0"
+  }
+}
