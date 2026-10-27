@@ -17,22 +17,29 @@ function escapeAttr(value: string): string {
 
 const NAME = /^[A-Za-z][A-Za-z0-9:_.-]*$/
 
-function checkTag(tag: string): string {
+/** Returns `tag`, or throws `Invalid HTML tag name "…"` if it is not a safe element name. */
+export function checkTag(tag: string): string {
   if (!NAME.test(tag)) throw new Error(`Invalid HTML tag name "${tag}"`)
   return tag
+}
+
+/** Returns `name`, or throws `Invalid HTML attribute name "…"` if it is not a safe attribute name. */
+export function checkAttrName(name: string): string {
+  if (!NAME.test(name)) throw new Error(`Invalid HTML attribute name "${name}"`)
+  return name
 }
 
 function attrsToString(attrs: Record<string, string | number | undefined>): string {
   let out = ''
   for (const [name, value] of Object.entries(attrs)) {
-    if (!NAME.test(name)) throw new Error(`Invalid HTML attribute name "${name}"`)
+    checkAttrName(name)
     if (value === undefined) continue
     out += ` ${name}="${escapeAttr(String(value))}"`
   }
   return out
 }
 
-function isAttrs(value: unknown): value is Record<string, string | number | undefined> {
+export function isAttrs(value: unknown): value is Record<string, string | number | undefined> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
@@ -50,7 +57,7 @@ function renderSpec(spec: DOMOutputSpec, content: string): string {
   return `<${tag}${attrs}>${children.map((c) => renderSpec(c, content)).join('')}</${tag}>`
 }
 
-function kebab(prop: string): string {
+export function kebab(prop: string): string {
   return prop.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)
 }
 

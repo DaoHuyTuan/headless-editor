@@ -240,6 +240,12 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     return this._state.pluginStates.get(name) as S
   }
 
+  /** The plugin's current options (its defaults merged with every `setPluginOptions` call). */
+  getPluginOptions<O = Record<string, unknown>>(name: string): O {
+    this.requirePlugin(name)
+    return this.pluginOptions.get(name) as O
+  }
+
   setPluginOptions(name: string, partial: Record<string, unknown>): void {
     this.requirePlugin(name)
     this.pluginOptions.set(name, { ...this.pluginOptions.get(name), ...partial })
