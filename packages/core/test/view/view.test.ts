@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ElementNode, Selection } from '../../src/model/types'
 import { EditorView, Renderer, modelToDom } from '../../src/index'
+import { definePlugin } from '../../src/plugin/define'
 import { createTestEditor, doc, txt } from '../../src/testing/index'
 import { testBold, testParagraph } from '../fixtures'
 
@@ -257,5 +258,44 @@ describe('EditorView', () => {
     expect(view.recentInput).toHaveLength(20)
     expect(view.recentInput[0]!.data).toBe('5')
     expect(view.recentInput.at(-1)!.data).toBe('24')
+  })
+})
+
+describe('EditorView: plugin options', () => {
+  const boxed = definePlugin({
+    name: 'boxed',
+    node: { kind: 'block', content: 'inline' },
+    options: { className: 'a' },
+    renderHTML: (_n, { options }) => ['div', { class: String(options.className) }, 0],
+  })
+
+  it('rebuilds the element shell on setPluginOptions and reuses the children DOM', () => {
+    const editor = createTestEditor({
+      plugins: [testParagraph, boxed],
+      doc: doc({ id: 'b1', type: 'boxed', data: {}, children: [txt('hi')] }),
+    })
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    editor.mount(root)
+    const shell = root.querySelector('[data-hte-id]')!
+    const leaf = root.querySelector('[data-hte-leaf]')!
+    expect(shell.className).toBe('a')
+    editor.setPluginOptions('boxed', { className: 'b' })
+    const next = root.querySelector('[data-hte-id]')!
+    expect(next.className).toBe('b')
+    expect(next).not.toBe(shell)
+    expect(root.querySelector('[data-hte-leaf]')).toBe(leaf)
+    expect(next.contains(leaf)).toBe(true)
+  })
+
+  it('ignores options changes after unmount and for plugins without a node', () => {
+    const editor = createTestEditor({ plugins: [testParagraph, testBold, boxed], doc: doc(p('p1', 'x')) })
+    const root = document.createElement('div')
+    editor.mount(root)
+    const dom = root.querySelector('p')
+    editor.setPluginOptions('bold', { a: 1 })
+    expect(root.querySelector('p')).toBe(dom)
+    editor.unmount()
+    editor.setPluginOptions('boxed', { className: 'q' })
   })
 })

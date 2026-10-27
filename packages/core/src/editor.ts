@@ -37,6 +37,11 @@ export interface EditorOptions<P extends readonly AnyPlugin[] = readonly AnyPlug
 }
 
 export type EditorEventName = 'transaction' | 'update' | 'selectionUpdate'
+/** Payload of the `'options'` event, emitted by `setPluginOptions`. */
+export interface OptionsEvent {
+  editor: Editor
+  plugin: string
+}
 export interface EditorEvent {
   editor: Editor
   tr: Transaction
@@ -81,7 +86,7 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
   private readonly contexts = new Map<string, PluginContext<any, any, any>>()
   private readonly commandFactories = new Map<string, AnyCommandFactory>()
   private readonly keymaps: { plugin: AnyPlugin; bindings: Map<string, () => boolean> }[] = []
-  private readonly listeners = new Map<EditorEventName, Set<(e: EditorEvent) => void>>()
+  private readonly listeners = new Map<EditorEventName | 'options', Set<(e: any) => void>>()
   private destroyed = false
   /** True while `dispatch` runs the pipeline (before events are emitted). */
   private computing = false
@@ -223,7 +228,9 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     return fragment
   }
 
-  on(event: EditorEventName, fn: (e: EditorEvent) => void): () => void {
+  on(event: 'options', fn: (e: OptionsEvent) => void): () => void
+  on(event: EditorEventName, fn: (e: EditorEvent) => void): () => void
+  on(event: EditorEventName | 'options', fn: (e: any) => void): () => void {
     let set = this.listeners.get(event)
     if (!set) this.listeners.set(event, (set = new Set()))
     set.add(fn)
@@ -265,15 +272,19 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     return this._state.pluginStates.get(name) as S
   }
 
-  /** The plugin's current options (its defaults merged with every `setPluginOptions` call). */
+  /** A frozen shallow copy of the plugin's current options (its defaults merged with every `setPluginOptions` call). */
   getPluginOptions<O = Record<string, unknown>>(name: string): O {
     this.requirePlugin(name)
-    return this.pluginOptions.get(name) as O
+    return Object.freeze({ ...this.pluginOptions.get(name) }) as O
   }
 
   setPluginOptions(name: string, partial: Record<string, unknown>): void {
     this.requirePlugin(name)
     this.pluginOptions.set(name, { ...this.pluginOptions.get(name), ...partial })
+    const set = this.listeners.get('options')
+    if (!set) return
+    const e: OptionsEvent = { editor: this as unknown as Editor, plugin: name }
+    for (const fn of [...set]) fn(e)
   }
 
   /** Renders into `el` and listens to it. No-op when already mounted on `el`; moves off any other element. */

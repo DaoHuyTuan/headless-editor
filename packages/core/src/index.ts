@@ -81,6 +81,7 @@ export type {
   EditorCommands,
   EditorEvent,
   EditorEventName,
+  OptionsEvent,
   EditorOptions,
   EditorPlugins,
 } from './editor'

@@ -101,6 +101,13 @@ export class EditorView {
     this.renderer = new Renderer(root, editor)
     this.renderer.render(editor.state.doc)
 
+    this.disposers.push(
+      editor.on('options', ({ editor: ed, plugin }) => {
+        const spec = ed.registry.node(plugin)
+        if (spec) this.renderer.invalidate(plugin)
+        this.update(ed.state)
+      }),
+    )
     this.disposers.push(editor.on('transaction', ({ editor: ed, tr }) => this.onTransaction(ed.state, tr)))
     this.listen(root.ownerDocument, 'selectionchange', () => this.onSelectionChange())
     this.attach(attachInput)

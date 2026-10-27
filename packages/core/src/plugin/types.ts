@@ -69,6 +69,10 @@ export interface NodeSpec {
   content?: 'inline' | 'text'
 }
 
+/**
+ * Marks render from their data only: `render(data)` must not read plugin options, and mark plugins
+ * have no invalidation, so an options change never re-renders existing marked text.
+ */
 export interface MarkSpec<D = Data> {
   render: (data: D) => MarkDOM
 }

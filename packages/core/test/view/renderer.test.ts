@@ -443,3 +443,21 @@ describe('Renderer: lookups', () => {
     expect(renderer.elementAt([0])!.getAttribute('data-hte-unknown')).toBe('mystery')
   })
 })
+
+describe('Renderer: invalidate', () => {
+  it('rebuilds shells of the given type on the next render, keeping children DOM', () => {
+    const d = doc(node('h', 'heading', { level: 2 }, txt('T')), p('p1', 'a'))
+    ctx.renderer.render(d)
+    const h = ctx.root.querySelector('h2')!
+    const leaf = h.firstChild
+    const para = ctx.root.querySelector('p')
+    ctx.renderer.invalidate('heading')
+    ctx.renderer.render(d)
+    const h2 = ctx.root.querySelector('h2')!
+    expect(h2).not.toBe(h)
+    expect(h2.firstChild).toBe(leaf)
+    expect(ctx.root.querySelector('p')).toBe(para)
+    ctx.renderer.render(d)
+    expect(ctx.root.querySelector('h2')).toBe(h2)
+  })
+})

@@ -72,6 +72,8 @@ export class Renderer {
   private readonly byDom = new WeakMap<Element, ElementEntry>()
   /** The text each leaf span currently shows; missing when unknown (skipped while the model moved on). */
   private readonly leafText = new WeakMap<Element, TextNode>()
+  /** Element types whose shells are rebuilt on the next render. */
+  private readonly invalidated = new Set<string>()
   private _rendering = false
   /** Run synchronously at the end of every render (the mutation observer drops the records of our own patches). */
   private readonly renderedHooks = new Set<() => void>()
@@ -98,8 +100,14 @@ export class Renderer {
       this.byId = pass.next
     } finally {
       this._rendering = false
+      this.invalidated.clear()
       for (const hook of [...this.renderedHooks]) hook()
     }
+  }
+
+  /** Rebuilds the shell of every element of `type` on the next render; their children's DOM is reused. */
+  invalidate(type: string): void {
+    this.invalidated.add(type)
   }
 
   /** True while `render` patches the DOM: mutations made then are the renderer's own. */
@@ -238,6 +246,7 @@ export class Renderer {
     if (
       prev &&
       this.shellIntact(prev) &&
+      !this.invalidated.has(node.type) &&
       (prev.node === node || (prev.node.type === node.type && deepEqualJson(prev.node.data, node.data)))
     ) {
       entry = prev

@@ -447,3 +447,31 @@ describe('Editor', () => {
     expect(calls).toEqual(['b', 'a'])
   })
 })
+
+describe('plugin options', () => {
+  const mk = () =>
+    createTestEditor({ plugins: [testParagraph, counter], doc: doc(el('paragraph', txt('ab'))), selection: sel([0, 0], 2) })
+
+  it('getPluginOptions returns a frozen copy; mutating it does not change the stored options', () => {
+    const ed = mk()
+    const opts = ed.getPluginOptions<{ label: string }>('counter')
+    expect(Object.isFrozen(opts)).toBe(true)
+    expect(() => {
+      ;(opts as { label: string }).label = 'z'
+    }).toThrow()
+    expect(ed.getPluginOptions<{ label: string }>('counter').label).toBe('x')
+    expect(ed.getPluginOptions('counter')).not.toBe(opts)
+  })
+
+  it("emits 'options' with the plugin name on setPluginOptions", () => {
+    const ed = mk()
+    const fn = vi.fn()
+    const off = ed.on('options', fn)
+    ed.setPluginOptions('counter', { label: 'y' })
+    expect(fn).toHaveBeenCalledTimes(1)
+    expect(fn).toHaveBeenCalledWith({ editor: ed, plugin: 'counter' })
+    off()
+    ed.setPluginOptions('counter', { label: 'z' })
+    expect(fn).toHaveBeenCalledTimes(1)
+  })
+})
