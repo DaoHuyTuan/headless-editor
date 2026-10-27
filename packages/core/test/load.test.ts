@@ -46,6 +46,16 @@ describe('load (coerceDoc + normalize)', () => {
     expect(warn).not.toHaveBeenCalled()
   })
 
+  it('flattens blocks nested inside a paragraph', () => {
+    const raw = {
+      type: 'doc',
+      children: [
+        { type: 'paragraph', children: [{ type: 'paragraph', children: [{ type: 'paragraph', children: [{ text: 'deep' }] }] }] },
+      ],
+    }
+    expect(stripIds(load(r, raw))).toEqual(stripIds(doc(el('paragraph', txt('deep')))))
+  })
+
   it('turns any non-object into an empty doc, and never throws', () => {
     for (const raw of [undefined, 42, 'doc', true, [1, 2], () => 1]) {
       expect(coerceDoc(raw, r)).toEqual({ type: 'doc', children: [] })

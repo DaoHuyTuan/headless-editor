@@ -89,6 +89,18 @@ function fixElement(tr: Transaction, node: ElementNode, path: Path): boolean {
     return true
   }
 
+  // Rule 9: a block holding inline content (or text) has no block children: a nested block is
+  // unwrapped (its children are lifted into this block at its position). Repeated passes handle
+  // deeper nesting. Unknown types are not blocks here (rule 7 leaves them alone).
+  if (spec.kind === 'block' && (spec.content === 'inline' || spec.content === 'text')) {
+    for (let i = 0; i < children.length; i++) {
+      const c = children[i]!
+      if (isText(c) || registry.node(c.type)?.kind !== 'block') continue
+      unwrap(tr, c, [...path, i])
+      return true
+    }
+  }
+
   // Rule 8: a `content: 'text'` block holds only unmarked text.
   if (spec.content === 'text') {
     for (let i = 0; i < children.length; i++) {
@@ -99,12 +111,7 @@ function fixElement(tr: Transaction, node: ElementNode, path: Path): boolean {
         return true
       }
       if (registry.node(c.type)?.kind !== 'inline') continue
-      // Unwrap the inline element: move its children out before it, then remove it.
-      const kids = c.children ?? []
-      for (let k = 0; k < kids.length; k++) {
-        tr.apply({ type: 'move_node', path: [...path, i + k, 0], newPath: [...path, i + k] })
-      }
-      tr.removeNode([...path, i + kids.length])
+      unwrap(tr, c, [...path, i])
       return true
     }
   }
@@ -138,6 +145,17 @@ function fixElement(tr: Transaction, node: ElementNode, path: Path): boolean {
     if (isElement(c) && fixElement(tr, c, [...path, i])) return true
   }
   return false
+}
+
+/** Moves the children of the element at `at` out before it (selection points follow), then removes it. */
+function unwrap(tr: Transaction, node: ElementNode, at: Path): void {
+  const parent = at.slice(0, -1)
+  const i = at[at.length - 1]!
+  const kids = node.children ?? []
+  for (let k = 0; k < kids.length; k++) {
+    tr.apply({ type: 'move_node', path: [...parent, i + k, 0], newPath: [...parent, i + k] })
+  }
+  tr.removeNode([...parent, i + kids.length])
 }
 
 function fixMarks(tr: Transaction, text: TextNode, path: Path): boolean {

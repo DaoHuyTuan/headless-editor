@@ -276,6 +276,27 @@ describe('clipboard view module', () => {
     expect(new Set(all).size).toBe(all.length)
   })
 
+  it('pasted json cannot nest blocks inside a paragraph', () => {
+    const editor = setup(doc(p('p1', txt('ab'))), caret([0, 0], 1))
+    const root = mount(editor)
+    const nested = (depth: number, text: string): unknown =>
+      depth === 0 ? { text, marks: [] } : { id: `x${depth}`, type: 'paragraph', data: {}, children: [nested(depth - 1, text)] }
+    const json = JSON.stringify([
+      { id: 'o1', type: 'paragraph', data: {}, children: [{ text: 'x', marks: [] }, nested(3, 'deep')] },
+      { id: 'o2', type: 'paragraph', data: {}, children: [nested(2, 'y')] },
+    ])
+    root.dispatchEvent(clipboardEvent('paste', { [HTE_MIME]: json }).e)
+    const result = editor.getJSON()
+    for (const block of result.children) {
+      expect(block.type).toBe('paragraph')
+      expect(block.children!.every(isText)).toBe(true)
+    }
+    expect(result.children.map((b) => b.children!.map((c) => (c as { text: string }).text).join(''))).toEqual([
+      'axdeep',
+      'yb',
+    ])
+  })
+
   it('an empty paste does nothing', () => {
     const editor = setup(doc(p('p1', txt('ab'))), caret([0, 0], 1))
     const root = mount(editor)

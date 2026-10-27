@@ -120,6 +120,25 @@ describe('normalize: core rules', () => {
     expect(normalized(d)).toEqual(stripIds(doc(el('code', txt('abc')))))
   })
 
+  it('rule 9: blocks nested in an inline-content block are unwrapped, recursively; ops invert back', () => {
+    const d = doc(
+      el('paragraph', txt('a'), el('paragraph', txt('b', 'bold'), el('paragraph', txt('c'), el('paragraph', txt('d')))), txt('e')),
+    )
+    const tr = run(d, base, sel([0, 1, 1, 1, 0], 1))
+    expect(stripIds(tr.doc)).toEqual(stripIds(doc(el('paragraph', txt('a'), txt('b', 'bold'), txt('cde')))))
+    expect(tr.selection).toEqual(sel([0, 2], 2))
+    expect(tr.ops.reduce(applyOp, d)).toEqual(tr.doc)
+    expect([...tr.ops].reverse().map(invertOp).reduce(applyOp, tr.doc)).toEqual(d)
+    expect(run(tr.doc).ops).toEqual([])
+  })
+
+  it('rule 9 also unwraps blocks inside content:"text" blocks; unknown types stay (rule 7)', () => {
+    expect(normalized(doc(el('code', txt('a'), el('paragraph', txt('b', 'bold')))))).toEqual(stripIds(doc(el('code', txt('ab')))))
+    const widget: ElementNode = { id: 'w', type: 'widget', data: {}, children: [el('paragraph', txt('x'))] }
+    const d = doc(el('paragraph', txt('a'), widget))
+    expect(run(d).doc).toBe(d)
+  })
+
   it('emits every change as ops: replaying them reproduces the result and inverting restores the input', () => {
     const d = rawDoc(
       txt('root'),
