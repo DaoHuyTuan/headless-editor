@@ -1,2 +1,108 @@
-/** Placeholder; replaced by the real Transaction in Task 6. */
-export class Transaction {}
+import { createId } from '../model/id'
+import { deepEqualJson, getNode, isElement, isText } from '../model/node'
+import type { Data, Doc, ElementNode, Json, Mark, Node, Path, Selection, TextNode } from '../model/types'
+import { applyOp } from '../ops/apply'
+import { transformSelection } from '../ops/transform'
+import type { Operation } from '../ops/types'
+import type { Registry } from '../plugin/registry'
+import type { EditorState } from '../state'
+
+export interface TransactionMeta {
+  origin?: 'input' | 'paste' | 'command' | 'history' | 'plugin' | 'selection' | 'load'
+  addToHistory?: boolean
+  inputType?: string
+  [k: string]: unknown
+}
+
+function selectionEquals(a: Selection | null, b: Selection | null): boolean {
+  if (a === null || b === null) return a === b
+  return deepEqualJson(a as unknown as Json, b as unknown as Json)
+}
+
+/** Fills in missing id/data/marks, recursively. */
+function normalizeNode(node: ElementNode | TextNode): Node {
+  if (isText(node)) return { ...node, marks: node.marks ?? [] }
+  const out: ElementNode = { ...node, id: node.id ?? createId(), data: node.data ?? {} }
+  if (node.children) out.children = node.children.map(normalizeNode)
+  return out
+}
+
+export class Transaction {
+  readonly before: EditorState
+  readonly registry: Registry
+  readonly ops: Operation[] = []
+  readonly meta: TransactionMeta = {}
+  rejected: string | null = null
+
+  private _doc: Doc
+  private _selection: Selection | null
+  private _storedMarks: Mark[] | null
+
+  constructor(state: EditorState, registry: Registry) {
+    this.before = state
+    this.registry = registry
+    this._doc = state.doc
+    this._selection = state.selection
+    this._storedMarks = state.storedMarks
+  }
+
+  get doc(): Doc {
+    return this._doc
+  }
+  get selection(): Selection | null {
+    return this._selection
+  }
+  get storedMarks(): Mark[] | null {
+    return this._storedMarks
+  }
+  get docChanged(): boolean {
+    return this.ops.some((op) => op.type !== 'set_selection')
+  }
+
+  apply(op: Operation): this {
+    if (op.type === 'set_selection') {
+      this._selection = op.selection
+    } else {
+      this._doc = applyOp(this._doc, op)
+      if (this._selection) this._selection = transformSelection(this._selection, op)
+    }
+    this.ops.push(op)
+    return this
+  }
+
+  setSelection(sel: Selection | null): this {
+    if (selectionEquals(sel, this._selection)) return this
+    this.apply({ type: 'set_selection', selection: sel, prevSelection: this._selection })
+    this._storedMarks = null
+    return this
+  }
+
+  setStoredMarks(marks: Mark[] | null): this {
+    this._storedMarks = marks
+    return this
+  }
+
+  setMeta(key: string, value: unknown): this {
+    this.meta[key] = value
+    return this
+  }
+
+  insertNode(path: Path, node: ElementNode | TextNode): this {
+    return this.apply({ type: 'insert_node', path, node: normalizeNode(node) })
+  }
+
+  removeNode(path: Path): this {
+    return this.apply({ type: 'remove_node', path, node: getNode(this._doc, path) })
+  }
+
+  setNodeData(path: Path, partial: Data): this {
+    const node = getNode(this._doc, path)
+    if (!isElement(node)) throw new Error(`Expected an element at [${path}]`)
+    const result = this.registry.validateData(node.type, { ...node.data, ...partial })
+    if (!result.ok) {
+      this.rejected = result.message
+      return this
+    }
+    return this.apply({ type: 'set_node_data', path, data: result.data, prevData: node.data })
+  }
+}
