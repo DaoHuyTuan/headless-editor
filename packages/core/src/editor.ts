@@ -4,7 +4,8 @@ import { normalizeKeyName, type Platform } from './keymap'
 import { parseHTML } from './html/parse'
 import { serializeHTML } from './html/serialize'
 import { coerceDoc } from './load'
-import { deepEqualJson, getNode, isElement, textEntries } from './model/node'
+import { firstEditableCaret, isEditablePoint } from './model/editable'
+import { deepEqualJson, getNode, isElement } from './model/node'
 import { comparePoint } from './model/path'
 import type { Data, Doc, ElementNode, Json, Selection } from './model/types'
 import { normalize } from './normalize'
@@ -59,11 +60,6 @@ function detectPlatform(): Platform {
 function selectionEquals(a: Selection | null, b: Selection | null): boolean {
   if (a === null || b === null) return a === b
   return deepEqualJson(a as unknown as Json, b as unknown as Json)
-}
-
-function firstTextSelection(d: Doc): Selection | null {
-  for (const [, path] of textEntries(d)) return { anchor: { path, offset: 0 }, focus: { path, offset: 0 } }
-  return null
 }
 
 export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
@@ -237,7 +233,7 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     return serializeHTML(this._state.doc, this.registry, (name) => this.pluginOptions.get(name))
   }
 
-  /** Replaces the document; the caret goes to the start of the first text. Not added to history. */
+  /** Replaces the document; the caret goes to the start of the first editable text. Not added to history. */
   setContent(content: Doc | string): void {
     const tr = this.contentTransaction(content)
     this.dispatch(tr)
@@ -245,7 +241,7 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
 
   /** Marks: `isMarkActive` on the selection. Elements: the block containing the selection start. */
   isActive(type: string, data?: Partial<Data>): boolean {
-    if (this.registry.mark(type)) return isMarkActive(this._state, type, data)
+    if (this.registry.mark(type)) return isMarkActive(this._state, type, data, this.registry)
     const sel = this._state.selection
     if (!sel) return false
     const start = comparePoint(sel.anchor, sel.focus) <= 0 ? sel.anchor : sel.focus
@@ -330,7 +326,11 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     doc.children.forEach((node, i) => tr.insertNode([i], node))
     if (selection) tr.setSelection(selection)
     normalize(tr, this.contextFn)
-    if (!tr.selection) tr.setSelection(firstTextSelection(tr.doc))
+    // A missing selection, or one that does not resolve to editable text, starts at the first editable text.
+    const sel = tr.selection
+    const valid =
+      sel && isEditablePoint(tr.doc, this.registry, sel.anchor) && isEditablePoint(tr.doc, this.registry, sel.focus)
+    if (!valid) tr.setSelection(firstEditableCaret(tr.doc, this.registry))
     return tr
   }
 

@@ -1,6 +1,7 @@
 import { createId } from '../model/id'
-import { getNode, isElement, isText, sameMarkSet, textEntries } from '../model/node'
-import { comparePath, comparePoint, nextPath, parentPath, pointEquals, toRange } from '../model/path'
+import { editableTextEntries } from '../model/editable'
+import { getNode, isElement, isText, sameMarkSet } from '../model/node'
+import { comparePoint, nextPath, parentPath, pointEquals, toRange } from '../model/path'
 import type { ElementNode, Mark, Path, Point, Range, Selection, TextNode } from '../model/types'
 import { marksAtTr, marksOfRange } from './marks'
 import type { Transaction } from './transaction'
@@ -38,10 +39,13 @@ export function blockPathOf(tr: Transaction, path: Path): Path {
   throw new Error(`No block contains [${path}]`)
 }
 
-/** Every text of the element at `blockPath`, with absolute paths, in document order. */
+/**
+ * Every editable text of the element at `blockPath`, with absolute paths, in document order (none
+ * for an opaque element: unknown types and atoms).
+ */
 function blockTexts(tr: Transaction, blockPath: Path): [TextNode, Path][] {
   const block = getNode(tr.doc, blockPath) as ElementNode
-  return [...textEntries(block)].map(([t, rel]) => [t, [...blockPath, ...rel]])
+  return [...editableTextEntries(block, tr.registry)].map(([t, rel]) => [t, [...blockPath, ...rel]])
 }
 
 function firstPoint(texts: [TextNode, Path][]): Point | null {
@@ -59,11 +63,9 @@ export function insertionMarks(tr: Transaction, point: Point): Mark[] {
   return marksAtTr(tr, point)
 }
 
-/** Removes the text between two points, text by text (no nodes are removed). */
+/** Removes the editable text between two points, text by text (no nodes are removed). */
 function removeTextBetween(tr: Transaction, start: Point, end: Point): void {
-  const texts = [...textEntries(tr.doc)].filter(
-    ([, p]) => comparePath(p, start.path) >= 0 && comparePath(p, end.path) <= 0,
-  )
+  const texts = [...editableTextEntries(tr.doc, tr.registry, { start, end })]
   for (let i = texts.length - 1; i >= 0; i--) {
     const [t, p] = texts[i]!
     const from = pathEquals(p, start.path) ? start.offset : 0
@@ -112,7 +114,7 @@ export function insertText(tr: Transaction, text: string, at?: Selection | Range
   // Deleting moves the selection, which clears stored marks; keep them for the insertion.
   const stored = tr.storedMarks
   // Typing over a range keeps the marks of its first covered character (read before deleting).
-  const replaced = stored ? null : marksOfRange(tr.doc, range)
+  const replaced = stored ? null : marksOfRange(tr.doc, range, tr.registry)
   deleteRange(tr, range)
   tr.setStoredMarks(stored)
   const point = range.start
@@ -203,7 +205,10 @@ function targetOffset(text: string, offset: number, unit: DeleteUnit, backward: 
   return target
 }
 
-/** The sibling element of `blockPath` in the given direction, when it holds text. */
+/**
+ * The sibling element of `blockPath` in the given direction, when it holds editable text. Opaque
+ * siblings (unknown types, atoms) give null: Backspace/Delete next to them does nothing.
+ */
 function adjacentBlock(tr: Transaction, blockPath: Path, backward: boolean): Path | null {
   const k = blockPath.length - 1
   const index = blockPath[k]! + (backward ? -1 : 1)
@@ -289,9 +294,9 @@ export function splitBlockAt(tr: Transaction, point: Point, blockPath: Path, pro
   return { path: [...newBlock, ...point.path.slice(blockPath.length).map(() => 0)], offset: 0 }
 }
 
-/** Selects from the start of the first text to the end of the last text in the doc. */
+/** Selects from the start of the first editable text to the end of the last one in the doc. */
 export function selectAll(tr: Transaction): boolean {
-  const texts = [...textEntries(tr.doc)]
+  const texts = [...editableTextEntries(tr.doc, tr.registry)]
   const anchor = firstPoint(texts)
   const focus = lastPoint(texts)
   if (!anchor || !focus) return false

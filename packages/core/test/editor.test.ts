@@ -69,6 +69,30 @@ describe('Editor', () => {
     expect(ed.getHTML()).toBe(html)
   })
 
+  it('falls back to the first editable text when the initial selection does not resolve to one', () => {
+    const widget = { id: 'w', type: 'widget', data: {}, children: [txt('hidden')] } as ElementNode
+    const content = doc(el('paragraph', txt('ab')))
+    for (const selection of [sel([5, 0], 0), sel([0, 0], 9), sel([0], 0), sel([0, 0], 0, [3, 1], 0)]) {
+      const ed = createTestEditor({ plugins: [testParagraph], doc: content, selection })
+      expect(ed.state.selection).toEqual(sel([0, 0], 0))
+    }
+    const withWidget = createTestEditor({
+      plugins: [testParagraph],
+      doc: doc(widget, el('paragraph', txt('ab'))),
+      selection: sel([0, 0], 1),
+    })
+    expect(withWidget.state.selection).toEqual(sel([1, 0], 0))
+  })
+
+  it('setContent places the caret at the first editable text, skipping unknown elements', () => {
+    const ed = createTestEditor({ plugins: [testParagraph], doc: doc(el('paragraph', txt('ab'))) })
+    ed.setContent({
+      type: 'doc',
+      children: [{ id: 'w', type: 'widget', data: {}, children: [txt('hidden')] }, el('paragraph', txt('cd'))],
+    } as Doc)
+    expect(ed.state.selection).toEqual(sel([1, 0], 0))
+  })
+
   it('createTestEditor resets ids to a counter', () => {
     const ed = createTestEditor({ plugins: [testParagraph], doc: doc() })
     expect(ed.getJSON().children[0]!.id).toBe('n1')

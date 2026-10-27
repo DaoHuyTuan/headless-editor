@@ -61,6 +61,17 @@ describe('modelToDom', () => {
     ctx.renderer.render(doc(p('p1', 'a')))
     expect(() => modelToDom(ctx.renderer, { path: [3, 0], offset: 0 })).toThrow()
   })
+
+  it('writeDomSelection skips (does not throw) when a point has no rendered leaf', () => {
+    ctx.renderer.render(doc(node('w', 'widget', txt('hidden')), p('p1', 'a')))
+    const domSel = document.getSelection()!
+    const leaf = ctx.renderer.leafAt([1, 0])!
+    domSel.collapse(textIn(leaf), 1)
+    const unrendered: Selection = { anchor: { path: [0, 0], offset: 0 }, focus: { path: [0, 0], offset: 0 } }
+    expect(() => writeDomSelection(ctx.renderer, unrendered, domSel)).not.toThrow()
+    expect(domSel.anchorNode).toBe(textIn(leaf))
+    expect(domSel.anchorOffset).toBe(1)
+  })
 })
 
 describe('domToModel', () => {

@@ -1,3 +1,4 @@
+import { isOpaque, type NodeTypes } from '../model/editable'
 import { createId } from '../model/id'
 import { getNode, isElement, isText, nodeEntries } from '../model/node'
 import { comparePoint, parentPath } from '../model/path'
@@ -100,10 +101,14 @@ function withUniqueIds(nodes: Node[], used: Set<string>): Node[] {
   return nodes.map(copy)
 }
 
-/** The end of the last text inside `nodes` inserted at `[...parent, index]`, or null if they hold none. */
-function endOfInserted(nodes: Node[], parent: Path, index: number): Point | null {
+/**
+ * The end of the last editable text inside `nodes` inserted at `[...parent, index]` (texts inside
+ * opaque elements: unknown types and atoms, are skipped), or null if they hold none.
+ */
+function endOfInserted(nodes: Node[], parent: Path, index: number, types: NodeTypes): Point | null {
   const lastText = (node: Node, path: Path): Point | null => {
     if (isText(node)) return { path, offset: node.text.length }
+    if (isOpaque(node, types)) return null
     const kids = node.children ?? []
     for (let k = kids.length - 1; k >= 0; k--) {
       const found = lastText(kids[k]!, [...path, k])
@@ -135,7 +140,7 @@ function insertInline(tr: Transaction, point: Point, nodes: Node[]): Point {
   nodes.forEach((n, i) => tr.insertNode([...parent, index + i], n))
   // Nodes without any text: the caret stays where the original point now is.
   const original: Point = atEnd ? point : { path: [...parent, index + nodes.length], offset: 0 }
-  return endOfInserted(nodes, parent, index) ?? original
+  return endOfInserted(nodes, parent, index, tr.registry) ?? original
 }
 
 /**
@@ -166,7 +171,7 @@ function insertBlocks(tr: Transaction, point: Point, blocks: Node[], rightId: st
     path: [...rightPath, lastKids.length, ...rightStart.path.slice(blockPath.length + 1)],
     offset: 0,
   }
-  return endOfInserted(lastKids, rightPath, 0) ?? remainder
+  return endOfInserted(lastKids, rightPath, 0, tr.registry) ?? remainder
 }
 
 /**

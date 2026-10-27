@@ -1,3 +1,4 @@
+import { editableTextEntries, type NodeTypes } from '../model/editable'
 import { deepEqualJson, getNode, isText, textEntries } from '../model/node'
 import { comparePoint, nextPath, parentPath } from '../model/path'
 import type { Data, DeepReadonly, Doc, Json, Mark, Path, Point, Range, Selection, TextNode } from '../model/types'
@@ -72,10 +73,14 @@ interface Covered {
   to: number
 }
 
-/** Texts in `range` with the character span the range covers in each (non-empty spans only). */
-function coveredTexts(doc: DeepReadonly<Doc>, range: Range): Covered[] {
+/**
+ * Texts in `range` with the character span the range covers in each (non-empty spans only). With
+ * `types`, texts inside opaque elements (unknown types, atoms) are skipped.
+ */
+function coveredTexts(doc: DeepReadonly<Doc>, range: Range, types?: NodeTypes): Covered[] {
   const out: Covered[] = []
-  for (const [node, path] of textEntries(doc, range)) {
+  const entries = types ? editableTextEntries(doc, types, range) : textEntries(doc, range)
+  for (const [node, path] of entries) {
     const from = pathEquals(path, range.start.path) ? range.start.offset : 0
     const to = pathEquals(path, range.end.path) ? range.end.offset : node.text.length
     if (to > from) out.push({ node, path, from, to })
@@ -87,18 +92,19 @@ function coveredTexts(doc: DeepReadonly<Doc>, range: Range): Covered[] {
  * Marks of the first character `range` covers (what typing over the range keeps), or null when it
  * covers no characters. Unlike the caret rule, a range replacement keeps the replaced content's marks.
  */
-export function marksOfRange(doc: DeepReadonly<Doc>, range: Range | Selection): Mark[] | null {
-  return coveredTexts(doc, ordered(range))[0]?.node.marks ?? null
+export function marksOfRange(doc: DeepReadonly<Doc>, range: Range | Selection, types?: NodeTypes): Mark[] | null {
+  return coveredTexts(doc, ordered(range), types)[0]?.node.marks ?? null
 }
 
 /**
  * Collapsed (or covering no characters) → `marksAt`; a range → every text with at least one
- * covered character has a matching mark.
+ * covered character has a matching mark. Pass the editor's `registry` to ignore texts inside
+ * unknown elements and atoms (which are not editable).
  */
-export function isMarkActive(state: MarkStateView, type: string, data?: Partial<Data>): boolean {
+export function isMarkActive(state: MarkStateView, type: string, data?: Partial<Data>, registry?: NodeTypes): boolean {
   const sel = state.selection
   if (!sel) return false
-  const covered = coveredTexts(state.doc, ordered(sel))
+  const covered = coveredTexts(state.doc, ordered(sel), registry)
   if (covered.length === 0) return marksAt(state).some((m) => matches(m, type, data))
   return covered.every((c) => c.node.marks.some((m) => matches(m, type, data)))
 }
@@ -117,7 +123,7 @@ function eachCoveredSpan(
   needsChange: (node: TextNode) => boolean,
   change: (path: Path, node: TextNode) => void,
 ): void {
-  const covered = coveredTexts(tr.doc, range).filter((c) => needsChange(c.node))
+  const covered = coveredTexts(tr.doc, range, tr.registry).filter((c) => needsChange(c.node))
   for (let i = covered.length - 1; i >= 0; i--) {
     const { node, from, to } = covered[i]!
     let path = covered[i]!.path
@@ -206,6 +212,6 @@ export function toggleMark(tr: Transaction, type: string, data?: Data): boolean 
   const valid = validated(tr, type, data ?? {})
   if (!valid) return false
   if (!tr.selection) return false
-  const active = isMarkActive(trView(tr), type, data)
+  const active = isMarkActive(trView(tr), type, data, tr.registry)
   return active ? removeMark(tr, type) : addMark(tr, valid)
 }

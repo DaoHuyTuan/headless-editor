@@ -41,6 +41,48 @@ afterEach(() => {
   document.body.replaceChildren()
 })
 
+describe('EditorView with an unknown block', () => {
+  const widget = (id: string, text: string): ElementNode => ({ id, type: 'widget', data: {}, children: [txt(text)] })
+
+  function setupUnknown(children: ElementNode[]) {
+    const editor = createTestEditor({ plugins: [testParagraph, testBold], doc: doc(...children) })
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    editor.mount(root)
+    return { editor, root, view: editor.view! }
+  }
+
+  it('starts in the first editable text and focus() does not throw', () => {
+    const { editor, view } = setupUnknown([widget('w', 'Title'), p('p1', 'body')])
+    expect(editor.state.selection).toEqual(caret([1, 0], 0))
+    expect(() => view.focus()).not.toThrow()
+  })
+
+  it.each([
+    ['first', [widget('w', 'Title'), p('p1', 'body')], caret([1, 0], 0)],
+    ['last', [p('p1', 'body'), widget('w', 'Title')], caret([0, 0], 0)],
+  ])('Mod-a with the unknown block %s selects only editable text and later listeners still run', (_, children, start) => {
+    const { editor, view } = setupUnknown(children as ElementNode[])
+    view.focus()
+    const seen: unknown[] = []
+    editor.on('transaction', ({ tr }) => seen.push(tr.selection))
+    expect(() => editor.runKeymap('Mod-a')).not.toThrow()
+    const path = (start as Selection).anchor.path
+    expect(editor.state.selection).toEqual({ anchor: { path, offset: 0 }, focus: { path, offset: 4 } })
+    expect(seen).toHaveLength(1)
+  })
+
+  it('Backspace at the start of the block after it does nothing; the content stays rendered', () => {
+    const { editor, root, view } = setupUnknown([widget('w', 'Title'), p('p1', 'body')])
+    view.focus()
+    const before = editor.state.doc
+    expect(editor.handleIntent({ inputType: 'deleteContentBackward', data: null, range: caret([1, 0], 0) })).toBe(true)
+    expect(editor.state.doc).toBe(before)
+    expect(root.textContent).toBe('body')
+    expect(editor.getHTML()).toContain('body')
+  })
+})
+
 describe('EditorView', () => {
   it('renders the document on mount', () => {
     const { editor, root } = setup('hello')

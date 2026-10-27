@@ -122,6 +122,18 @@ describe('insertFragment / insertContent', () => {
     expect(ed.state.selection).toEqual(sel([0, 1, 0], 1))
   })
 
+  it('never places the caret inside a pasted atom (opaque element)', () => {
+    const mention = definePlugin({ name: 'mention', node: { kind: 'inline', atom: true } })
+    const ed = createTestEditor({
+      plugins: [testParagraph, testBold, mention],
+      doc: doc(p('ab')),
+      selection: sel([0, 0], 1),
+    })
+    ed.commands.insertContent([txt('X'), el('mention', txt('@m'))])
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p('aX', el('mention', txt('@m')), 'b'))))
+    expect(ed.state.selection).toEqual(sel([0, 0], 2))
+  })
+
   it('places the caret at the start of the remainder when the last block is empty', () => {
     const ed = setup(doc(p('ab')), sel([0, 0], 1))
     ed.commands.insertContent([p('X'), p('')])

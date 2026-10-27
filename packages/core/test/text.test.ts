@@ -391,3 +391,68 @@ describe('onBeforeInput defaults', () => {
     expect(ed.handleIntent({ inputType: 'formatBold', data: null, range: null })).toBe(false)
   })
 })
+
+describe('opaque elements (unknown types and atoms)', () => {
+  const widget = (text: string): ElementNode => el('widget', txt(text))
+  const image = definePlugin({ name: 'image', node: { kind: 'block', atom: true } })
+  const setupOpaque = (content: Doc, selection?: Selection) =>
+    createTestEditor({ plugins: [testParagraph, testBold, image], doc: content, selection })
+
+  it('the initial caret skips texts inside unknown elements and atoms', () => {
+    expect(setupOpaque(doc(widget('Title'), p('body'))).state.selection).toEqual(caret([1, 0], 0))
+    expect(setupOpaque(doc(el('image', txt('alt')), p('body'))).state.selection).toEqual(caret([1, 0], 0))
+  })
+
+  it.each([
+    ['first', () => doc(widget('T'), p('ab'), p('cd')), sel([1, 0], 0, [2, 0], 2)],
+    ['last', () => doc(p('ab'), p('cd'), widget('T')), sel([0, 0], 0, [1, 0], 2)],
+    ['middle', () => doc(p('ab'), widget('T'), p('cd')), sel([0, 0], 0, [2, 0], 2)],
+  ])('Mod-a with the unknown block %s selects only editable text', (_, content, expected) => {
+    const ed = setupOpaque(content())
+    expect(ed.runKeymap('Mod-a')).toBe(true)
+    expect(ed.state.selection).toEqual(expected)
+  })
+
+  it('Mod-a skips atoms', () => {
+    const ed = setupOpaque(doc(p('ab'), el('image', txt('alt'))))
+    ed.runKeymap('Mod-a')
+    expect(ed.state.selection).toEqual(sel([0, 0], 0, [0, 0], 2))
+  })
+
+  it('Mod-a then Backspace keeps an unknown first block', () => {
+    const ed = setupOpaque(doc(widget('Title'), p('body')))
+    ed.runKeymap('Mod-a')
+    ed.commands.deleteBackward()
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(widget('Title'), p(''))))
+    expect(ed.state.selection).toEqual(caret([1, 0], 0))
+  })
+
+  it('Backspace at the start of a block after an unknown block does nothing', () => {
+    const ed = setupOpaque(doc(widget('Title'), p('body')), caret([1, 0], 0))
+    const before = ed.state.doc
+    expect(ed.commands.deleteBackward()).toBe(false)
+    expect(ed.state.doc).toBe(before)
+  })
+
+  it('Delete at the end of a block before an unknown block does nothing', () => {
+    const ed = setupOpaque(doc(p('body'), widget('Tail')), caret([0, 0], 4))
+    const before = ed.state.doc
+    expect(ed.commands.deleteForward()).toBe(false)
+    expect(ed.state.doc).toBe(before)
+  })
+
+  it('Backspace / Delete next to an atom block do nothing', () => {
+    const after = setupOpaque(doc(el('image'), p('body')), caret([1, 0], 0))
+    expect(after.commands.deleteBackward()).toBe(false)
+    const before = setupOpaque(doc(p('body'), el('image')), caret([0, 0], 4))
+    expect(before.commands.deleteForward()).toBe(false)
+  })
+
+  it('isActive and mark commands ignore texts inside unknown elements', () => {
+    const ed = setupOpaque(doc(p(txt('ab', 'bold')), widget('plain'), p(txt('cd', 'bold'))), sel([0, 0], 0, [2, 0], 2))
+    expect(ed.isActive('bold')).toBe(true)
+    const plain = setupOpaque(doc(p('ab'), widget('hidden'), p('cd')), sel([0, 0], 0, [2, 0], 2))
+    plain.commands.setMark('bold')
+    expect(stripIds(plain.getJSON())).toEqual(stripIds(doc(p(txt('ab', 'bold')), widget('hidden'), p(txt('cd', 'bold')))))
+  })
+})

@@ -58,12 +58,14 @@ export function readDomSelection(r: Renderer, domSel: globalThis.Selection): Sel
 /**
  * Makes the DOM selection show `sel`, keeping its direction. Does nothing when the DOM selection
  * already maps to `sel`. A null `sel` clears the DOM selection only when it is inside the root.
+ * Does nothing when a point has no rendered leaf (e.g. a text inside an unknown element).
  */
 export function writeDomSelection(r: Renderer, sel: Selection | null, domSel: globalThis.Selection): void {
   if (!sel) {
     if (domSel.rangeCount > 0 && domSel.anchorNode && r.root.contains(domSel.anchorNode)) domSel.removeAllRanges()
     return
   }
+  if (!r.leafAt(sel.anchor.path) || !r.leafAt(sel.focus.path)) return
   const current = readDomSelection(r, domSel)
   if (current && pointEquals(current.anchor, sel.anchor) && pointEquals(current.focus, sel.focus)) return
   const anchor = modelToDom(r, sel.anchor)
