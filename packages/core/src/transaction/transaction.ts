@@ -93,8 +93,37 @@ export class Transaction {
     return this
   }
 
+  /**
+   * Inserts `node`, validating the data of every element in its subtree (registered types only:
+   * unknown types pass, so loading stays lossless). The first failure sets `rejected` and emits
+   * nothing; validated output (e.g. defaults) is what gets stored.
+   */
   insertNode(path: Path, node: ElementNode | TextNode): this {
-    return this.apply({ type: 'insert_node', path, node: normalizeNode(node) })
+    const normalized = normalizeNode(node)
+    const checked = this.validateSubtree(normalized)
+    if (checked === null) return this
+    return this.apply({ type: 'insert_node', path, node: checked })
+  }
+
+  /** The node with validated data throughout, or null (and `rejected` set) at the first invalid element. */
+  private validateSubtree(node: Node): Node | null {
+    if (isText(node)) return node
+    const result = this.registry.validateData(node.type, node.data)
+    if (!result.ok) {
+      this.rejected = result.message
+      return null
+    }
+    const out: ElementNode = { ...node, data: result.data }
+    if (node.children) {
+      const children: Node[] = []
+      for (const child of node.children) {
+        const checked = this.validateSubtree(child)
+        if (checked === null) return null
+        children.push(checked)
+      }
+      out.children = children
+    }
+    return out
   }
 
   removeNode(path: Path): this {

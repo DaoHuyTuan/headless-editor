@@ -138,8 +138,12 @@ function eachCoveredSpan(
   }
 }
 
-/** Validates the mark's data; on failure sets `tr.rejected` and returns null. */
+/** Checks the mark type is registered and validates its data; on failure sets `tr.rejected` and returns null. */
 function validated(tr: Transaction, type: string, data: unknown): Mark | null {
+  if (!tr.registry.mark(type)) {
+    tr.rejected = `Unknown mark type "${type}"`
+    return null
+  }
   const result = tr.registry.validateData(type, data)
   if (!result.ok) {
     tr.rejected = result.message

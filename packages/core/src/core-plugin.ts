@@ -1,3 +1,4 @@
+import { sanitizeFragment } from './content/sanitize'
 import type { Data, Path } from './model/types'
 import { definePlugin } from './plugin/define'
 import type { Command, InputIntent } from './plugin/types'
@@ -60,7 +61,7 @@ export const corePlugin = definePlugin({
     insertContent:
       (fragment: Fragment): Command =>
       ({ tr }) =>
-        insertFragment(tr, fragment),
+        insertFragment(tr, sanitizeFragment(fragment, tr.registry)),
     setNodeData:
       (path: Path, partial: Data): Command =>
       ({ tr }) => {

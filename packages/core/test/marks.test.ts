@@ -196,6 +196,20 @@ describe('mark order and validation', () => {
     expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p('ab'))))
   })
 
+  it('unregistered mark types are rejected', () => {
+    const ed = setup(doc(p('ab')), sel([0, 0], 0, [0, 0], 2))
+    const t1 = ed.createTransaction()
+    t1.addMark({ type: 'ghost', data: {} })
+    expect(t1.rejected).toBe('Unknown mark type "ghost"')
+    expect(t1.ops).toHaveLength(0)
+    const t2 = ed.createTransaction()
+    t2.toggleMark('ghost')
+    expect(t2.rejected).toBe('Unknown mark type "ghost"')
+    expect(t2.ops).toHaveLength(0)
+    expect(ed.commands.setMark('ghost')).toBe(false)
+    expect(ed.commands.toggleMark('ghost')).toBe(false)
+  })
+
   it('invalid data on a collapsed toggle is rejected too', () => {
     const ed = setup(doc(p('ab')), sel([0, 0], 1))
     const tr = ed.createTransaction()

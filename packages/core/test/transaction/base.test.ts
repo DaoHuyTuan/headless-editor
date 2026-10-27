@@ -48,6 +48,27 @@ describe('Transaction base', () => {
     expect(tr.doc).toBe(d)
   })
 
+  it('insertNode with invalid data for a registered type is rejected and emits nothing', () => {
+    const d = doc(el('paragraph', txt('x')))
+    const tr = new Transaction(stateOf(d), registry)
+    tr.insertNode([1], el('strict', { n: 'bad' } as never, txt('y')))
+    expect(tr.rejected).toBeTypeOf('string')
+    expect(tr.ops).toEqual([])
+    expect(tr.doc).toBe(d)
+  })
+
+  it('insertNode validates nested elements, passes unknown types and valid data', () => {
+    const d = doc(el('paragraph', txt('x')))
+    const nested = new Transaction(stateOf(d), registry)
+    nested.insertNode([1], el('unknownThing', el('strict', { n: 'bad' } as never, txt('y'))))
+    expect(nested.rejected).toBeTypeOf('string')
+    expect(nested.ops).toEqual([])
+    const ok = new Transaction(stateOf(d), registry)
+    ok.insertNode([1], el('unknownThing', { whatever: 1 } as never, el('strict', { n: 1 } as never, txt('y'))))
+    expect(ok.rejected).toBeNull()
+    expect(ok.ops).toHaveLength(1)
+  })
+
   it('setSelection clears storedMarks and docChanged stays false', () => {
     const d = doc(el('paragraph', txt('ab')))
     const tr = new Transaction(stateOf(d, sel([0, 0], 0)), registry)
