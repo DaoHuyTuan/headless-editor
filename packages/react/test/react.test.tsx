@@ -239,4 +239,50 @@ describe('useEditorState', () => {
     })
     expect(renders).toBe(before)
   })
+
+  it('an inline object-returning selector with the default isEqual is stable (no loop, no warning)', () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+    let editor!: TestEditor
+    function Toolbar({ editor: ed }: { editor: TestEditor }) {
+      const state = useEditorState(ed, (_, e) => ({ bold: e.isActive('bold') }))
+      return <span data-testid="tb">{String(state.bold)}</span>
+    }
+    const { getByTestId } = render(
+      <StrictMode>
+        <Harness onEditor={(e) => (editor = e)}>{(e) => <Toolbar editor={e} />}</Harness>
+      </StrictMode>,
+    )
+    expect(getByTestId('tb').textContent).toBe('false')
+    act(() => {
+      editor.commands.toggleBold()
+    })
+    expect(getByTestId('tb').textContent).toBe('true')
+    expect(errors).not.toHaveBeenCalled()
+  })
+
+  it('re-renders on a selection-only transaction that changes isActive', () => {
+    let editor!: TestEditor
+    function BoldState({ editor: ed }: { editor: TestEditor }) {
+      const active = useEditorState(ed, (_, e) => e.isActive('bold'))
+      return <span data-testid="bold">{String(active)}</span>
+    }
+    const { getByTestId } = render(
+      <Harness onEditor={(e) => (editor = e)}>{(e) => <BoldState editor={e} />}</Harness>,
+    )
+    act(() => {
+      editor.commands.toggleBold() // doc: a | bc(bold) | d
+    })
+    expect(getByTestId('bold').textContent).toBe('true')
+    const select = (s: ReturnType<typeof sel>) =>
+      act(() => {
+        const tr = editor.createTransaction()
+        tr.setSelection(s)
+        editor.dispatch(tr)
+      })
+    select(sel([0, 0], 0, [0, 0], 1))
+    expect(editor.getJSON().children[0]).toMatchObject({ children: [{ text: 'a' }, { text: 'bc' }, { text: 'd' }] })
+    expect(getByTestId('bold').textContent).toBe('false')
+    select(sel([0, 1], 0, [0, 1], 2))
+    expect(getByTestId('bold').textContent).toBe('true')
+  })
 })
