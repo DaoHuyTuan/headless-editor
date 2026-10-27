@@ -1,6 +1,15 @@
 import { describe, expectTypeOf, it } from 'vitest'
 import { definePlugin } from '../src/plugin/define'
-import type { AnyPlugin, Command, CommandsOf, CommandsOfPlugin } from '../src/plugin/types'
+import type {
+  AnyPlugin,
+  Command,
+  CommandsOf,
+  CommandsOfPlugin,
+  OptionsOf,
+  StateOf,
+  StorageOf,
+  StorageOfPlugin,
+} from '../src/plugin/types'
 import type { Doc } from '../src/model/types'
 import { Editor } from '../src/editor'
 import { createTestEditor } from '../src/testing/index'
@@ -63,5 +72,51 @@ describe('Editor types', () => {
   it('a typed editor is usable where Editor is expected', () => {
     const ed = createTestEditor({ plugins: [testParagraph, counter] })
     expectTypeOf(ed).toMatchTypeOf<Editor>()
+  })
+
+  it('types storage per plugin', () => {
+    const stored = definePlugin({
+      name: 'counter',
+      state: { init: () => 0, apply: (_tr, n: number) => n + 1 },
+      options: { step: 1 },
+      commands: () => ({ bump: (): Command => () => true }),
+      storage: (ctx) => ({
+        count: () => ctx.getState(),
+        step: () => ctx.options.step,
+        bump: () => ctx.commands.bump(),
+      }),
+      destroy: (ctx) => {
+        expectTypeOf(ctx.getState()).toEqualTypeOf<number>()
+      },
+    })
+    type Storage = { count: () => number; step: () => number; bump: () => boolean }
+    expectTypeOf<StorageOfPlugin<typeof stored>>().toEqualTypeOf<Storage>()
+    expectTypeOf<StateOf<typeof stored>>().toEqualTypeOf<number>()
+    expectTypeOf<OptionsOf<typeof stored>>().toEqualTypeOf<{ step: number }>()
+    expectTypeOf<CommandsOfPlugin<typeof stored>>().toEqualTypeOf<{ bump: () => Command }>()
+
+    const ed = createTestEditor({ plugins: [testParagraph, stored] })
+    expectTypeOf(ed.storage.counter.count).toEqualTypeOf<() => number>()
+    expectTypeOf(ed.storage.counter).toEqualTypeOf<Storage>()
+    // @ts-expect-error unknown storage
+    ed.storage.nope
+    // @ts-expect-error paragraph has no storage
+    ed.storage.paragraph
+    expectTypeOf(ed.commands.bump).toEqualTypeOf<() => boolean>()
+
+    const direct = new Editor({ plugins: [testParagraph, stored] })
+    expectTypeOf(direct.storage.counter.count).toEqualTypeOf<() => number>()
+  })
+
+  it('an any-typed plugin contributes no storage instead of collapsing to any', () => {
+    expectTypeOf<StorageOf<[AnyPlugin]>>().toEqualTypeOf<{}>()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expectTypeOf<StorageOf<[any]>>().toEqualTypeOf<{}>()
+    const stored = definePlugin({ name: 'box', storage: () => ({ n: 1 }) })
+    const loose: AnyPlugin = stored
+    const ed = createTestEditor({ plugins: [testParagraph, stored, loose] })
+    expectTypeOf(ed.storage.box).toEqualTypeOf<{ n: number }>()
+    // @ts-expect-error unknown storage
+    ed.storage.nope
   })
 })

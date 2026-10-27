@@ -85,6 +85,7 @@ export interface PluginSpec<
   O = NoOptions,
   C extends CommandMap = NoOptions,
   S = undefined,
+  T = undefined,
 > {
   name: Name
   /** Default 100; higher runs first. */
@@ -107,18 +108,27 @@ export interface PluginSpec<
   onInvalidData?: (raw: unknown) => Data | null
   /** `apply` gets the final (normalized) tr; `ctx.getState()` still returns `prev` there. */
   state?: { init: () => S; apply: (tr: Transaction, prev: S, ctx: PluginContext<O, S, C>) => S }
+  /**
+   * Creates the plugin's storage (`editor.storage[name]`), once per editor, after every plugin's
+   * commands are bound (so `ctx.commands` is usable).
+   */
+  storage?: (ctx: PluginContext<O, S, C>) => T
+  /** Called by `editor.destroy()`, in reverse priority order (lowest priority first). */
+  destroy?: (ctx: PluginContext<O, S, C>) => void
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type AnyPluginSpec = PluginSpec<string, any, any, any, any>
+export type AnyPluginSpec = PluginSpec<string, any, any, any, any, any>
 
 /** Accepts either a plugin or a spec and yields the spec. */
 type SpecOf<T> = T extends { readonly spec: infer S } ? S : T
 
 /** Extracts a type argument from a spec. `{ options?: X }` infers `X` (optional props add no `undefined`). */
-export type OptionsOf<T> = SpecOf<T> extends PluginSpec<string, infer _D, infer O, infer _C, infer _S> ? O : NoOptions
-export type DataOf<T> = SpecOf<T> extends PluginSpec<string, infer D, infer _O, infer _C, infer _S> ? D : Data
-export type StateOf<T> = SpecOf<T> extends PluginSpec<string, infer _D, infer _O, infer _C, infer S> ? S : undefined
+export type OptionsOf<T> =
+  SpecOf<T> extends PluginSpec<string, infer _D, infer O, infer _C, infer _S, infer _T> ? O : NoOptions
+export type DataOf<T> = SpecOf<T> extends PluginSpec<string, infer D, infer _O, infer _C, infer _S, infer _T> ? D : Data
+export type StateOf<T> =
+  SpecOf<T> extends PluginSpec<string, infer _D, infer _O, infer _C, infer S, infer _T> ? S : undefined
 type IsAny<T> = 0 extends 1 & T ? true : false
 
 /** Commands of a plugin (or spec). A plugin typed `any`/`AnyPlugin` contributes none instead of collapsing to `any`. */
@@ -131,12 +141,34 @@ export type CommandsOfPlugin<T> =
         : C
       : NoOptions
 
+/**
+ * Storage of a plugin (or spec): what its `storage` factory returns, `undefined` when it has none.
+ * A plugin typed `any`/`AnyPlugin` yields `undefined` instead of `any`.
+ */
+export type StorageOfPlugin<T> =
+  IsAny<T> extends true
+    ? undefined
+    : SpecOf<T> extends { storage?: (ctx: never) => infer X }
+      ? IsAny<X> extends true
+        ? undefined
+        : X
+      : undefined
+
+type StorageEntry<T> = [StorageOfPlugin<T>] extends [undefined]
+  ? NoOptions
+  : SpecOf<T> extends { name: infer N extends string }
+    ? { [K in N]: StorageOfPlugin<T> }
+    : NoOptions
+
 type UnionToIntersection<U> = (U extends unknown ? (x: U) => void : never) extends (x: infer I) => void ? I : never
 
 /** All commands contributed by a list of plugins, merged into one object type. */
 export type CommandsOf<P extends readonly AnyPlugin[]> = UnionToIntersection<
   { [K in keyof P]: CommandsOfPlugin<P[K]> }[number]
 >
+
+/** Storage of every plugin in a list that declares one, keyed by plugin name. */
+export type StorageOf<P extends readonly AnyPlugin[]> = UnionToIntersection<{ [K in keyof P]: StorageEntry<P[K]> }[number]>
 
 export interface Plugin<Spec extends AnyPluginSpec = AnyPluginSpec> {
   readonly name: Spec['name']

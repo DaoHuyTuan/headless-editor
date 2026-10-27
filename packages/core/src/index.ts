@@ -60,6 +60,8 @@ export type {
   PluginContext,
   PluginSpec,
   StateOf,
+  StorageOf,
+  StorageOfPlugin,
 } from './plugin/types'
 export { definePlugin } from './plugin/define'
 export { DEFAULT_PRIORITY, Registry } from './plugin/registry'
@@ -84,6 +86,7 @@ export type {
   OptionsEvent,
   EditorOptions,
   EditorPlugins,
+  EditorStorage,
 } from './editor'
 export { eventToKeyName, normalizeKeyName } from './keymap'
 export type { Platform } from './keymap'

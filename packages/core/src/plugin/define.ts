@@ -16,7 +16,7 @@ function createPlugin<Spec extends AnyPluginSpec>(spec: Spec): Plugin<Spec> {
 
 /**
  * Defines a plugin. Type parameters are inferred from the spec: `D` from the
- * `data` schema's output, `O` from `options`, `C` from `commands`, `S` from `state`.
+ * `data` schema's output, `O` from `options`, `C` from `commands`, `S` from `state`, `T` from `storage`.
  */
 export function definePlugin<
   const Name extends string,
@@ -24,6 +24,7 @@ export function definePlugin<
   O = NoOptions,
   C extends CommandMap = NoOptions,
   S = undefined,
->(spec: PluginSpec<Name, D, O, C, S>): Plugin<PluginSpec<Name, D, O, C, S>> {
+  T = undefined,
+>(spec: PluginSpec<Name, D, O, C, S, T>): Plugin<PluginSpec<Name, D, O, C, S, T>> {
   return createPlugin(spec)
 }

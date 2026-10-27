@@ -475,3 +475,79 @@ describe('plugin options', () => {
     expect(fn).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('plugin storage', () => {
+  const stored = definePlugin({
+    name: 'counter',
+    node: { kind: 'block' },
+    state: { init: () => 0, apply: (tr, n: number) => n + (tr.docChanged ? 1 : 0) },
+    commands: () => ({
+      typeX:
+        (): Command =>
+        ({ tr }) => {
+          if (!tr.selection) return false
+          tr.apply({ type: 'insert_text', path: tr.selection.anchor.path, offset: tr.selection.anchor.offset, text: 'x' })
+          return true
+        },
+    }),
+    storage: (ctx) => ({ count: () => ctx.getState(), typeX: () => ctx.commands.typeX() }),
+  })
+
+  it('editor.storage.counter.count() reads plugin state through ctx', () => {
+    const ed = createTestEditor({ plugins: [testParagraph, stored], doc: doc(el('paragraph', txt('ab'))), selection: sel([0, 0], 1) })
+    expect(ed.storage.counter.count()).toBe(0)
+    expect(ed.storage.counter.typeX()).toBe(true)
+    expect(ed.storage.counter.count()).toBe(1)
+    expect(ed.getJSON().children[0]!.children![0]).toMatchObject({ text: 'axb' })
+  })
+
+  it('creates storage once per editor; plugins without storage are absent', () => {
+    const factory = vi.fn(() => ({ n: 1 }))
+    const once = definePlugin({ name: 'once', storage: factory })
+    const a = createTestEditor({ plugins: [testParagraph, once] })
+    const b = createTestEditor({ plugins: [testParagraph, once] })
+    expect(factory).toHaveBeenCalledTimes(2)
+    expect(a.storage.once).not.toBe(b.storage.once)
+    expect(a.storage.once).toBe(a.storage.once)
+    expect('paragraph' in a.storage).toBe(false)
+  })
+
+  it('destroy hooks run on editor.destroy() in reverse priority order, once', () => {
+    const calls: string[] = []
+    const hi = definePlugin({ name: 'hi', priority: 200, destroy: (ctx) => void calls.push(ctx.name) })
+    const lo = definePlugin({ name: 'lo', priority: 50, destroy: (ctx) => void calls.push(ctx.name) })
+    const ed = createTestEditor({ plugins: [testParagraph, hi, lo] })
+    ed.destroy()
+    expect(calls).toEqual(['lo', 'hi'])
+    ed.destroy()
+    expect(calls).toEqual(['lo', 'hi'])
+  })
+
+  it('a throwing destroy hook does not stop the others; the first error is rethrown', () => {
+    const calls: string[] = []
+    const a = definePlugin({ name: 'a', priority: 300, destroy: () => void calls.push('a') })
+    const b = definePlugin({
+      name: 'b',
+      priority: 200,
+      destroy: () => {
+        calls.push('b')
+        throw new Error('b failed')
+      },
+    })
+    const c = definePlugin({
+      name: 'c',
+      priority: 150,
+      destroy: () => {
+        calls.push('c')
+        throw new Error('c failed')
+      },
+    })
+    const ed = createTestEditor({ plugins: [testParagraph, a, b, c] })
+    const fn = vi.fn()
+    ed.on('transaction', fn)
+    expect(() => ed.destroy()).toThrow('c failed')
+    expect(calls).toEqual(['c', 'b', 'a'])
+    ed.dispatch(insertTextTr(ed, 'x'))
+    expect(fn).not.toHaveBeenCalled()
+  })
+})

@@ -18,6 +18,7 @@ import type {
   DOMEventName,
   InputIntent,
   PluginContext,
+  StorageOf,
 } from './plugin/types'
 import type { EditorState } from './state'
 import type { Fragment } from './transaction/fragment'
@@ -56,6 +57,9 @@ type AnyCommandFactory = (...args: unknown[]) => Command
 
 export type EditorCommands<P extends readonly AnyPlugin[]> = BoundCommands<CommandsOf<EditorPlugins<P>>>
 
+/** `editor.storage`: each plugin's storage keyed by plugin name (plugins without storage are absent). */
+export type EditorStorage<P extends readonly AnyPlugin[]> = StorageOf<EditorPlugins<P>>
+
 interface Committed {
   tr: Transaction
   selectionChanged: boolean
@@ -77,6 +81,7 @@ function selectionEquals(a: Selection | null, b: Selection | null): boolean {
 export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
   readonly registry: Registry
   readonly commands: EditorCommands<P>
+  readonly storage: EditorStorage<P>
   private _view: EditorView | null = null
 
   private _state: EditorState
@@ -124,6 +129,13 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
       }
     }
     this.commands = this.bindCommands(this.commandFactories, true) as EditorCommands<P>
+
+    // Storage is created once all commands are bound, so factories may use ctx.commands.
+    const storage: Record<string, unknown> = {}
+    for (const plugin of this.registry.plugins) {
+      if (plugin.spec.storage) storage[plugin.name] = plugin.spec.storage(this.getContext(plugin))
+    }
+    this.storage = storage as EditorStorage<P>
   }
 
   /** The mounted DOM view, or null when not mounted. */
@@ -302,10 +314,26 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     view?.destroy()
   }
 
+  /**
+   * Unmounts, then runs every plugin's `destroy` hook in reverse priority order. A throwing hook
+   * does not stop the others; the first error is rethrown once all ran. Idempotent.
+   */
   destroy(): void {
+    if (this.destroyed) return
     this.unmount()
+    const errors: unknown[] = []
+    for (const plugin of [...this.registry.plugins].reverse()) {
+      const hook = plugin.spec.destroy
+      if (!hook) continue
+      try {
+        hook(this.getContext(plugin))
+      } catch (error) {
+        errors.push(error)
+      }
+    }
     this.destroyed = true
     this.listeners.clear()
+    if (errors.length > 0) throw errors[0]
   }
 
   // --- internals ---
