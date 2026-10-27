@@ -89,7 +89,8 @@ export interface PluginSpec<
   renderHTML?: (node: ElementNode, ctx: { options: O }) => DOMOutputSpec
   transformPasted?: (fragment: Fragment, ctx: PluginContext<O, S>) => Fragment
   onInvalidData?: (raw: unknown) => Data | null
-  state?: { init: () => S; apply: (tr: Transaction, prev: S) => S }
+  /** `apply` gets the final (normalized) tr; `ctx.getState()` still returns `prev` there. */
+  state?: { init: () => S; apply: (tr: Transaction, prev: S, ctx: PluginContext<O, S>) => S }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

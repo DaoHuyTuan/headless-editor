@@ -317,7 +317,7 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     const pluginStates = new Map(prev.pluginStates)
     for (const plugin of this.registry.plugins) {
       const spec = plugin.spec.state
-      if (spec) pluginStates.set(plugin.name, spec.apply(tr, prev.pluginStates.get(plugin.name)))
+      if (spec) pluginStates.set(plugin.name, spec.apply(tr, prev.pluginStates.get(plugin.name), this.getContext(plugin)))
     }
     this._state = { doc: tr.doc, selection: tr.selection, storedMarks: tr.storedMarks, pluginStates }
     return { tr, selectionChanged: !selectionEquals(prev.selection, tr.selection) }
