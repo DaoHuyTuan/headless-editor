@@ -78,6 +78,33 @@ describe('load (coerceDoc + normalize)', () => {
     expect(stripIds(d)).toEqual(stripIds(doc(el('paragraph', txt('a', { type: 'glow', data: { c: 'red' } })))))
   })
 
+  it('gives repeated element ids a fresh id; the first occurrence keeps its id', () => {
+    const d = coerceDoc(
+      {
+        type: 'doc',
+        children: [
+          { id: 'dup', type: 'paragraph', children: [{ text: 'a' }] },
+          { id: 'dup', type: 'paragraph', children: [{ text: 'b' }] },
+          { id: 'w', type: 'widget', children: [{ id: 'dup', type: 'paragraph', children: [{ text: 'c' }] }] },
+          { id: 'w', type: 'paragraph', children: [{ text: 'd' }] },
+        ],
+      },
+      r,
+    )
+    const ids: string[] = []
+    const walk = (nodes: unknown[]): void => {
+      for (const n of nodes as { id?: string; children?: unknown[] }[]) {
+        if (typeof n.id === 'string') ids.push(n.id)
+        if (n.children) walk(n.children)
+      }
+    }
+    walk(d.children)
+    expect(ids).toHaveLength(5)
+    expect(new Set(ids).size).toBe(5)
+    expect(d.children[0]!.id).toBe('dup')
+    expect(d.children[2]!.id).toBe('w')
+  })
+
   it('does not mutate its input', () => {
     const raw = { type: 'doc', children: [{ type: 'paragraph', children: [{ text: 'a' }] }, { text: 'root' }] }
     const copy = structuredClone(raw)

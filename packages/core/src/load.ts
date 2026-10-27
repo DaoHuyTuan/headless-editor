@@ -83,18 +83,28 @@ function coerceMarks(raw: unknown, registry: Registry, validate: boolean): Mark[
   return out
 }
 
-function coerceChildren(raw: unknown, registry: Registry, validate: boolean): Node[] {
+function coerceChildren(raw: unknown, registry: Registry, validate: boolean, seen: Set<string>): Node[] {
   if (!Array.isArray(raw)) return []
   const out: Node[] = []
   for (const c of raw) {
-    const n = coerceNode(c, registry, validate)
+    const n = coerceNode(c, registry, validate, seen)
     if (n) out.push(n)
   }
   return out
 }
 
-/** `validate` is false below unknown elements: their subtree is only made structurally valid. */
-function coerceNode(raw: unknown, registry: Registry, validate: boolean): Node | null {
+/** A fresh id that is not in `seen`. */
+function freshId(seen: Set<string>): string {
+  let id = createId()
+  while (seen.has(id)) id = createId()
+  return id
+}
+
+/**
+ * `validate` is false below unknown elements: their subtree is only made structurally valid.
+ * `seen` holds the element ids used so far in the whole doc: a missing or repeated id gets a fresh one.
+ */
+function coerceNode(raw: unknown, registry: Registry, validate: boolean, seen: Set<string>): Node | null {
   if (!isObject(raw)) {
     warnDrop('node', raw, 'not an object')
     return null
@@ -107,7 +117,8 @@ function coerceNode(raw: unknown, registry: Registry, validate: boolean): Node |
     warnDrop('node', raw, 'neither a text nor an element')
     return null
   }
-  const id = typeof raw.id === 'string' && raw.id !== '' ? raw.id : createId()
+  const id = typeof raw.id === 'string' && raw.id !== '' && !seen.has(raw.id) ? raw.id : freshId(seen)
+  seen.add(id)
   const registered = validate ? registry.node(raw.type) : undefined
 
   if (!registered) {
@@ -119,7 +130,7 @@ function coerceNode(raw: unknown, registry: Registry, validate: boolean): Node |
       if (c !== undefined) out[k] = c
     }
     const el = { ...out, id, type: raw.type, data: cloneData(raw.data) } as ElementNode
-    if (Array.isArray(raw.children)) el.children = coerceChildren(raw.children, registry, false)
+    if (Array.isArray(raw.children)) el.children = coerceChildren(raw.children, registry, false, seen)
     return el
   }
 
@@ -129,20 +140,20 @@ function coerceNode(raw: unknown, registry: Registry, validate: boolean): Node |
     return null
   }
   const el: ElementNode = { id, type: raw.type, data: res.data }
-  if (!registered.atom || Array.isArray(raw.children)) el.children = coerceChildren(raw.children, registry, true)
+  if (!registered.atom || Array.isArray(raw.children)) el.children = coerceChildren(raw.children, registry, true, seen)
   return el
 }
 
 /**
  * Coerces arbitrary input into a structurally valid `Doc`: fills missing id/data/marks/children,
- * validates data (repairing via `onInvalidData` or dropping the node with a warning) and keeps
+ * gives repeated element ids a fresh id (the first occurrence keeps its id), validates data (repairing via `onInvalidData` or dropping the node with a warning) and keeps
  * unknown types as given. Never throws and never mutates `raw`. Run `normalize` afterwards.
  */
 export function coerceDoc(raw: unknown, registry: Registry): Doc {
   try {
     if (!isObject(raw)) return { type: 'doc', children: [] }
     // Root-level texts/inlines are kept here; `normalize` wraps them into blocks.
-    return { type: 'doc', children: coerceChildren(raw.children, registry, true) as ElementNode[] }
+    return { type: 'doc', children: coerceChildren(raw.children, registry, true, new Set()) as ElementNode[] }
   } catch {
     return { type: 'doc', children: [] }
   }
