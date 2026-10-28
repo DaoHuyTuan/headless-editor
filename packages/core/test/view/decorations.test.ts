@@ -6,6 +6,7 @@ import { domToModel, modelToDom } from '../../src/index'
 import { createTestEditor, doc, txt } from '../../src/testing/index'
 import { testBold, testParagraph } from '../fixtures'
 import { definePlugin } from '../../src/plugin/define'
+import { groupDecorations, leafParts } from '../../src/view/decorations'
 
 const p = (id: string, ...children: Node[]): ElementNode => ({ id, type: 'paragraph', data: {}, children })
 const caret = (path: number[], offset: number): Selection => ({ anchor: { path, offset }, focus: { path, offset } })
@@ -222,3 +223,62 @@ describe('decorations and composition', () => {
   })
 })
 
+
+describe('decorations at scale', () => {
+  const bigDoc = (): ElementNode[] => [
+    p('big', txt('x'.repeat(5000))),
+    ...Array.from({ length: 500 }, (_, i) => p(`p${i}`, txt(`paragraph ${i}`))),
+  ]
+  /** ~3,000 single-text inline decorations (overlapping pairs) on the big text. */
+  const manyDecos = (shift: number): Decoration[] =>
+    Array.from({ length: 3000 }, (_, i) =>
+      inline(pt([0, 0], (i + shift) % 4990), pt([0, 0], ((i + shift) % 4990) + 3), { class: `t${i % 7}` }),
+    )
+
+  it('groups and segments many decorations in near-linear time', () => {
+    // The algorithmic part of a render, without happy-dom's DOM building (whose cost is inherent and
+    // load-sensitive). A per-decoration doc walk or a per-cut decoration scan takes hundreds of ms here.
+    const d = doc(...bigDoc())
+    const text = 'x'.repeat(5000)
+    const start = performance.now()
+    for (let shift = 1; shift <= 3; shift++) {
+      const grouped = groupDecorations(d, manyDecos(shift))
+      const parts = leafParts(text, grouped.get('0,0'), null)
+      expect(parts.map((part) => (part.kind === 'text' ? part.text : '')).join('')).toBe(text)
+    }
+    const elapsed = (performance.now() - start) / 3
+    expect(elapsed).toBeLessThan(50)
+  })
+
+  it('renders and updates many decorations (smoke bound)', () => {
+    const { view } = mount(bigDoc(), manyDecos(0))
+    const start = performance.now()
+    for (let shift = 1; shift <= 3; shift++) redecorate(view, manyDecos(shift))
+    const elapsed = (performance.now() - start) / 3
+    expect(view.renderer.leafAt([0, 0])!.textContent).toHaveLength(5000)
+    expect(view.renderer.leafAt([0, 0])!.querySelectorAll('[data-hte-deco]').length).toBeGreaterThan(2900)
+    // Generous: DOM building in happy-dom dominates and slows down under a loaded test run.
+    expect(elapsed).toBeLessThan(1500)
+  })
+
+  it('splits a decoration spanning blocks over the texts between them only', () => {
+    const d = doc(p('a', txt('ab')), p('b', txt('cd'), txt('ef', 'bold')), p('c', txt('gh')), p('z', txt('zz')))
+    const grouped = groupDecorations(d, [inline(pt([2, 0], 1), pt([0, 0], 1), { class: 'x' })])
+    expect([...grouped.keys()]).toEqual(['0,0', '1,0', '1,1', '2,0'])
+    expect(grouped.get('0,0')!.inline[0]).toMatchObject({ from: 1, to: 2 })
+    expect(grouped.get('1,1')!.inline[0]).toMatchObject({ from: 0, to: 2 })
+    expect(grouped.get('2,0')!.inline[0]).toMatchObject({ from: 0, to: 1 })
+  })
+
+  it('a selection-only update keeps an unchanged decorated leaf', () => {
+    const decos = [inline(pt([0, 0], 1), pt([0, 0], 3), { class: 'x' })]
+    const { editor, view } = mount([p('p1', txt('abcde')), p('p2', txt('fgh'))], decos)
+    const leaf = view.renderer.leafAt([0, 0])!
+    const span = leaf.querySelector('[data-hte-deco]')!
+    const nodes = Array.from(leaf.childNodes)
+    editor.dispatch(editor.createTransaction().setSelection(caret([1, 0], 2)))
+    expect(view.renderer.leafAt([0, 0])).toBe(leaf)
+    expect(leaf.querySelector('[data-hte-deco]')).toBe(span)
+    expect(Array.from(leaf.childNodes)).toEqual(nodes)
+  })
+})

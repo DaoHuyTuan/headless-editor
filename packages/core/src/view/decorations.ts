@@ -1,6 +1,6 @@
-import { getNode, isText, textEntries } from '../model/node'
+import { getNode, isText } from '../model/node'
 import { comparePath, comparePoint } from '../model/path'
-import type { DeepReadonly, Doc, Path, Point } from '../model/types'
+import type { DeepReadonly, Doc, Node, Path, Point, TextNode } from '../model/types'
 
 /** Attributes of an inline decoration's spans; `class` values of overlapping decorations are joined. */
 export type DecorationAttrs = { class?: string; [k: string]: string | undefined }
@@ -85,16 +85,48 @@ export function groupDecorations(doc: DeepReadonly<Doc>, decorations: readonly D
       continue
     }
     let { from, to } = deco
-    if (textLengthAt(doc, from.path) === null || textLengthAt(doc, to.path) === null) continue
+    const fromLength = textLengthAt(doc, from.path)
+    if (fromLength === null) continue
+    if (comparePath(from.path, to.path) === 0) {
+      // Within one text (the common case): no walk.
+      const start = clamp(Math.min(from.offset, to.offset), fromLength)
+      const end = clamp(Math.max(from.offset, to.offset), fromLength)
+      if (end > start) entry(from.path).inline.push({ from: start, to: end, attrs: deco.attrs })
+      continue
+    }
+    if (textLengthAt(doc, to.path) === null) continue
     if (comparePoint(from, to) > 0) [from, to] = [to, from]
-    const range = { start: from, end: to }
-    for (const [text, path] of textEntries(doc as Doc, range)) {
+    for (const [text, path] of textsBetween(doc, from.path, to.path)) {
       const start = comparePath(path, from.path) === 0 ? clamp(from.offset, text.text.length) : 0
       const end = comparePath(path, to.path) === 0 ? clamp(to.offset, text.text.length) : text.text.length
       if (end > start) entry(path).inline.push({ from: start, to: end, attrs: deco.attrs })
     }
   }
-  for (const e of out.values()) e.widgets.sort((a, b) => a.offset - b.offset)
+  for (const e of out.values()) {
+    // Stable: widgets at the same offset keep their decoration order.
+    if (e.widgets.length > 1) e.widgets.sort((a, b) => a.offset - b.offset)
+  }
+  return out
+}
+
+/**
+ * The texts from the text at `from` to the text at `to` (both included, `from` before `to`), in
+ * document order. Only the nodes between the two paths are visited.
+ */
+function textsBetween(doc: DeepReadonly<Doc>, from: Path, to: Path): [TextNode, Path][] {
+  const out: [TextNode, Path][] = []
+  const visit = (children: readonly Node[], prefix: Path, lo: Path | null, hi: Path | null): void => {
+    const depth = prefix.length
+    const first = lo ? lo[depth]! : 0
+    const last = hi ? hi[depth]! : children.length - 1
+    for (let i = first; i <= last && i < children.length; i++) {
+      const child = children[i]!
+      const path = [...prefix, i]
+      if (isText(child)) out.push([child, path])
+      else visit(child.children ?? [], path, lo && i === first ? lo : null, hi && i === last ? hi : null)
+    }
+  }
+  visit((doc as Doc).children, [], from, to)
   return out
 }
 
@@ -122,28 +154,53 @@ function mergeDecoAttrs(list: DecorationAttrs[]): Record<string, string> {
  */
 export function leafParts(text: string, decos: LeafDecorations | undefined, empty: LeafPart | null): LeafPart[] {
   const inline = decos?.inline ?? []
+  // Sorted by offset (see `groupDecorations`): consumed by a pointer as the sweep advances.
   const widgets = decos?.widgets ?? []
   const parts: LeafPart[] = []
-  const widgetsAt = (offset: number): void => {
-    for (const w of widgets) if (w.offset === offset) parts.push({ kind: 'widget', key: w.key, render: w.render })
+  let w = 0
+  const widgetsUpTo = (offset: number): void => {
+    for (; w < widgets.length && widgets[w]!.offset <= offset; w++) {
+      const widget = widgets[w]!
+      parts.push({ kind: 'widget', key: widget.key, render: widget.render })
+    }
   }
   if (empty) {
-    widgetsAt(0)
+    widgetsUpTo(0)
     parts.push(empty)
     return parts
   }
+  if (inline.length === 0 && widgets.length === 0) return [{ kind: 'text', text }]
   const cuts = new Set<number>([0, text.length])
   for (const d of inline) cuts.add(d.from).add(d.to)
-  for (const w of widgets) cuts.add(w.offset)
+  for (const widget of widgets) cuts.add(widget.offset)
   const sorted = [...cuts].sort((a, b) => a - b)
-  sorted.forEach((at, i) => {
-    widgetsAt(at)
+  // Sweep the cuts with the set of decorations covering the current segment (indexes, so the
+  // merged attrs follow decoration order).
+  const byStart = inline.map((_, i) => i).sort((a, b) => inline[a]!.from - inline[b]!.from)
+  let s = 0
+  let active: number[] = []
+  for (let i = 0; i < sorted.length; i++) {
+    const at = sorted[i]!
+    widgetsUpTo(at)
     const next = sorted[i + 1]
-    if (next === undefined) return
-    const covering = inline.filter((d) => d.from <= at && d.to >= next).map((d) => d.attrs)
+    if (next === undefined) break
+    let changed = false
+    if (active.some((d) => inline[d]!.to <= at)) {
+      active = active.filter((d) => inline[d]!.to > at)
+      changed = true
+    }
+    for (; s < byStart.length && inline[byStart[s]!]!.from <= at; s++) {
+      if (inline[byStart[s]!]!.to > at) active.push(byStart[s]!)
+      changed = true
+    }
+    if (changed && active.length > 1) active.sort((a, b) => a - b)
     const segment = text.slice(at, next)
-    parts.push(covering.length > 0 ? { kind: 'text', text: segment, attrs: mergeDecoAttrs(covering) } : { kind: 'text', text: segment })
-  })
+    parts.push(
+      active.length > 0
+        ? { kind: 'text', text: segment, attrs: mergeDecoAttrs(active.map((d) => inline[d]!.attrs)) }
+        : { kind: 'text', text: segment },
+    )
+  }
   return parts
 }
 

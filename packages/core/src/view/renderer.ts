@@ -82,7 +82,7 @@ interface RenderPass {
 }
 
 /** A leaf part with its widget element resolved. */
-type ResolvedPart = Exclude<LeafPart, { kind: 'widget' }> | { kind: 'widget'; el: HTMLElement }
+type ResolvedPart = Exclude<LeafPart, { kind: 'widget' }> | { kind: 'widget'; key: string; el: HTMLElement }
 
 /**
  * Renders a document into a contenteditable root and patches it on later renders.
@@ -113,6 +113,8 @@ export class Renderer {
   private readonly leafText = new WeakMap<Element, TextNode>()
   /** The decoration signature each leaf span was last rendered with (see `decorationSignature`). */
   private readonly leafDecos = new WeakMap<Element, string>()
+  /** The parts (widgets resolved) each leaf span was last rendered with: an unchanged leaf is checked against them. */
+  private readonly leafShape = new WeakMap<Element, ResolvedPart[]>()
   /** Widget elements by key, as last rendered: a widget decorated again with the same key reuses its element. */
   private widgets = new Map<string, HTMLElement>()
   /** Element types whose shells are rebuilt (node views: updated) on the next render. */
@@ -499,7 +501,6 @@ export class Renderer {
     }
     const decos = pass.decorations.get(pathKey(path))
     const signature = decorationSignature(decos)
-    const parts = this.resolveParts(text, zw, decos, pass)
     const shown = old && this.leafText.get(old)
     const stale = this.invalidatedMarks.size > 0 && text.marks.some((m) => this.invalidatedMarks.has(m.type))
     if (
@@ -508,12 +509,16 @@ export class Renderer {
       !stale &&
       shown.text === text.text &&
       sameMarkSet(shown.marks, text.marks) &&
-      (this.leafDecos.get(old) ?? '') === signature &&
-      this.leafIntact(old, text, zw, parts)
+      (this.leafDecos.get(old) ?? '') === signature
     ) {
-      this.leafText.set(old, text)
-      return old
+      // Same text, marks and decorations: the parts are those last rendered (no re-segmenting).
+      const cached = this.leafShape.get(old)
+      if (cached && this.claimWidgets(cached, pass) && this.leafIntact(old, text, zw, cached)) {
+        this.leafText.set(old, text)
+        return old
+      }
     }
+    const parts = this.resolveParts(text, zw, decos, pass)
     const leaf = old ?? this.doc.createElement('span')
     if (!old) leaf.setAttribute(LEAF_ATTR, '')
     if (zw) leaf.setAttribute(ZW_ATTR, '')
@@ -526,7 +531,23 @@ export class Renderer {
     if (!same) leaf.replaceChildren(...content)
     this.leafText.set(leaf, text)
     this.leafDecos.set(leaf, signature)
+    this.leafShape.set(leaf, parts)
     return leaf
+  }
+
+  /**
+   * Keeps the widgets of a reused leaf under their keys for this render. False (nothing claimed) when
+   * a key was already taken by another element in this render: the leaf is then rebuilt.
+   */
+  private claimWidgets(parts: ResolvedPart[], pass: RenderPass): boolean {
+    let ok = true
+    for (const part of parts) {
+      if (part.kind !== 'widget') continue
+      const taken = pass.widgets.get(part.key)
+      if (taken && taken !== part.el) ok = false
+    }
+    if (ok) for (const part of parts) if (part.kind === 'widget') pass.widgets.set(part.key, part.el)
+    return ok
   }
 
   /**
@@ -546,7 +567,7 @@ export class Renderer {
       }
       // A duplicate key gets its own element, not keyed.
       if (!taken) pass.widgets.set(part.key, el)
-      return { kind: 'widget', el }
+      return { kind: 'widget', key: part.key, el }
     })
   }
 
