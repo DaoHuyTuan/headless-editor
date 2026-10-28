@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
+import { ImageView } from '@hte/image/react'
 import { EditorContent, useEditor } from '@hte/react'
 import { CodePanel } from './CodePanel'
 import { plugins } from './editor'
+import { fakeUpload } from './fake-upload'
 import { scenarios, type ScenarioName } from './scenarios'
 import { Toolbar } from './Toolbar'
 
@@ -10,7 +12,12 @@ type Tab = 'view' | 'code'
 export function App() {
   const [scenario, setScenario] = useState<ScenarioName>('empty')
   const [tab, setTab] = useState<Tab>('view')
-  const editor = useEditor({ plugins, content: scenarios[scenario].content })
+  const editor = useEditor({
+    plugins,
+    content: scenarios[scenario].content,
+    nodeViews: { image: ImageView },
+    pluginOptions: { image: { upload: fakeUpload } },
+  })
 
   useEffect(() => {
     if (import.meta.env.DEV) window.editor = editor

@@ -59,6 +59,49 @@ button {
   outline: 2px solid #4a7dff;
   outline-offset: 1px;
 }
+/* Image node view (@hte/image/react): picture, alt input and a resize handle at the bottom right. */
+.editor .hte-image {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 100%;
+  margin: 0 0 8px;
+  white-space: normal;
+}
+.editor .hte-image img {
+  display: block;
+  max-width: 100%;
+  min-width: 16px;
+  min-height: 16px;
+  image-rendering: pixelated;
+  background: repeating-conic-gradient(#eee 0 25%, #fff 0 50%) 0 0 / 12px 12px;
+}
+.editor .hte-image[data-uploading] img {
+  opacity: 0.5;
+}
+.editor .hte-image input {
+  font: 13px system-ui, sans-serif;
+  padding: 2px 4px;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+}
+.editor .hte-image-resize {
+  position: absolute;
+  right: -5px;
+  bottom: 26px;
+  width: 10px;
+  height: 10px;
+  background: #4a7dff;
+  border: 1px solid #fff;
+  border-radius: 2px;
+  cursor: ew-resize;
+}
+.toolbar select {
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fff;
+}
 .code pre {
   padding: 8px;
   background: #fff;

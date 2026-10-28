@@ -190,6 +190,12 @@ importers:
       '@hte/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@hte/font-size':
+        specifier: workspace:*
+        version: link:../../packages/plugins/font-size
+      '@hte/image':
+        specifier: workspace:*
+        version: link:../../packages/plugins/image
       '@hte/paragraph':
         specifier: workspace:*
         version: link:../../packages/plugins/paragraph

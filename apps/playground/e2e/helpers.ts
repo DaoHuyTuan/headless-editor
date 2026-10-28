@@ -1,9 +1,9 @@
 import type { Page } from '@playwright/test'
 import type { Doc, ElementNode, Node, Selection } from '@hte/core'
 
-/** Opens the playground and waits for the dev `window.editor` to be mounted. */
-export async function openPlayground(page: Page): Promise<void> {
-  await page.goto('/')
+/** Opens the playground (at `path`, e.g. `/?uploadFail=1`) and waits for the dev `window.editor` to be mounted. */
+export async function openPlayground(page: Page, path = '/'): Promise<void> {
+  await page.goto(path)
   await page.waitForFunction(() => !!window.editor?.view)
 }
 
