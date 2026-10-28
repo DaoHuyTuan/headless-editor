@@ -1,0 +1,16 @@
+{
+  "name": "@hte/image",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@hte/core": "workspace:*",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@hte/paragraph": "workspace:*"
+  }
+}
