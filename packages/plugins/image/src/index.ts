@@ -5,6 +5,7 @@ import {
   findPathById,
   isElement,
   isNodeSelection,
+  mergeAttrs,
   nodeEntries,
   rewriteHistoryData,
   clearHistory,
@@ -14,6 +15,7 @@ import {
   type Operation,
   type Path,
   type Editor,
+  type HTMLAttributes,
   type PluginContext,
   type Selection,
 } from '@hte/core'
@@ -32,6 +34,8 @@ export interface ImageOptions {
   /** Uploads `file` and resolves with its permanent URL (must pass `safeSrc`). Required for uploads. */
   upload: (file: File) => Promise<string>
   onUploadError: ((error: unknown, file: File) => void) | undefined
+  /** Extra attributes merged into the `<img>`. */
+  HTMLAttributes: HTMLAttributes
 }
 
 export interface ImageState {
@@ -251,7 +255,7 @@ export const image = definePlugin({
     alt: z.string().default(''),
     width: z.number().int().positive().optional(),
   }),
-  options: { upload: undefined as unknown as ImageOptions['upload'], onUploadError: undefined } as ImageOptions,
+  options: { upload: undefined as unknown as ImageOptions['upload'], onUploadError: undefined, HTMLAttributes: {} } as ImageOptions,
   state: {
     init: (): ImageState => ({ pending: new Set<string>() }),
     apply: (tr, prev: ImageState): ImageState => {
@@ -276,15 +280,18 @@ export const image = definePlugin({
       },
     },
   ],
-  renderHTML: (n) => {
+  renderHTML: (n, { options }) => {
     const { src, alt, width } = n.data
     return [
       'img',
-      {
-        src: typeof src === 'string' ? (safeSrc(src) ?? undefined) : undefined,
-        alt: typeof alt === 'string' ? alt : '',
-        width: typeof width === 'number' ? width : undefined,
-      },
+      mergeAttrs(
+        {
+          src: typeof src === 'string' ? (safeSrc(src) ?? undefined) : undefined,
+          alt: typeof alt === 'string' ? alt : '',
+          width: typeof width === 'number' ? width : undefined,
+        },
+        options.HTMLAttributes,
+      ),
     ]
   },
   commands: (ctx) => ({

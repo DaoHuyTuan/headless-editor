@@ -72,6 +72,8 @@ export type {
   StorageOfPlugin,
 } from './plugin/types'
 export { definePlugin } from './plugin/define'
+export { mergeAttrs } from './plugin/attrs'
+export type { Attrs, HTMLAttributes } from './plugin/attrs'
 export { DEFAULT_PRIORITY, Registry } from './plugin/registry'
 export type { RegisteredMark, RegisteredNode, ValidateResult } from './plugin/registry'
 export type { EditorState } from './state'

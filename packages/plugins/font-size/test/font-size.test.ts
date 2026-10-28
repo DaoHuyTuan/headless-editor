@@ -65,3 +65,16 @@ describe('fontSize plugin', () => {
     expect(ed.getHTML()).toBe('<p><strong><span style="font-size: 18px;">a</span></strong></p>')
   })
 })
+
+describe('fontSize HTMLAttributes', () => {
+  it('merges style and class into the <span>', () => {
+    const ed = createTestEditor({
+      plugins: [
+        paragraph,
+        fontSize.configure({ HTMLAttributes: { class: 'fs', style: 'color: red; font-size: 1px' } }),
+      ],
+      content: '<p><span style="font-size:20px">a</span></p>',
+    })
+    expect(ed.getHTML()).toBe('<p><span style="font-size: 1px; color: red;" class="fs">a</span></p>')
+  })
+})

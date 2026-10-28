@@ -461,3 +461,28 @@ describe('Renderer: invalidate', () => {
     expect(ctx.root.querySelector('h2')).toBe(h2)
   })
 })
+
+describe('Renderer: mark invalidation', () => {
+  it('re-renders leaves carrying the invalidated mark only', () => {
+    const tag = definePlugin({
+      name: 'tagged',
+      options: { cls: 'one' },
+      mark: { render: (_d, { options }) => ({ tag: 'u', attrs: { class: options.cls } }) },
+    })
+    const editor = createTestEditor({ plugins: [testParagraph, testBold, tag] })
+    const root = document.createElement('div')
+    const renderer = new Renderer(root, editor)
+    const d = doc(p('p1', txt('a', 'tagged'), txt('b', 'bold')))
+    renderer.render(d)
+    const leaves = [...root.querySelectorAll('[data-hte-leaf]')]
+    expect(leaves[0]!.innerHTML).toBe('<u class="one">a</u>')
+    editor.setPluginOptions('tagged', { cls: 'two' })
+    renderer.render(d)
+    expect(root.querySelectorAll('[data-hte-leaf]')[0]!.innerHTML).toBe('<u class="one">a</u>')
+    renderer.invalidateMark('tagged')
+    renderer.render(d)
+    const after = [...root.querySelectorAll('[data-hte-leaf]')]
+    expect(after[0]!.innerHTML).toBe('<u class="two">a</u>')
+    expect(after[1]).toBe(leaves[1])
+  })
+})

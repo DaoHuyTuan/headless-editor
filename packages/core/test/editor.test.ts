@@ -570,3 +570,19 @@ describe('plugin storage', () => {
     expect(fn).not.toHaveBeenCalled()
   })
 })
+
+describe('keymap factory and storage', () => {
+  it('sees ctx.storage eagerly', () => {
+    let seen: unknown = 'unset'
+    const plug = definePlugin({
+      name: 'stor',
+      storage: () => ({ n: 1 }),
+      keymap: (ctx) => {
+        seen = ctx.storage
+        return {}
+      },
+    })
+    createTestEditor({ plugins: [testParagraph, plug] })
+    expect(seen).toEqual({ n: 1 })
+  })
+})

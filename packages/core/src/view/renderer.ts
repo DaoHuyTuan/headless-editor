@@ -1,5 +1,5 @@
 import type { Editor } from '../editor'
-import { checkAttrName, checkTag, isAttrs, kebab } from '../html/serialize'
+import { checkAttrName, checkTag, isAttrs, markAttrs } from '../html/serialize'
 import { deepEqualJson, isText, sameMarkSet } from '../model/node'
 import type { DeepReadonly, Doc, ElementNode, Node, Path, TextNode } from '../model/types'
 import { isOpaque } from '../model/editable'
@@ -84,6 +84,8 @@ export class Renderer {
   private readonly leafText = new WeakMap<Element, TextNode>()
   /** Element types whose shells are rebuilt (node views: updated) on the next render. */
   private readonly invalidated = new Set<string>()
+  /** Mark types whose leaves are re-rendered on the next render. */
+  private readonly invalidatedMarks = new Set<string>()
   /** Ids of node views rebuilt (new container, new instance) on the next render. */
   private readonly rebuildViews = new Set<string>()
   private readonly nodeViews: NodeViewHost
@@ -126,6 +128,7 @@ export class Renderer {
     } finally {
       this._rendering = false
       this.invalidated.clear()
+      this.invalidatedMarks.clear()
       this.rebuildViews.clear()
       for (const hook of [...this.renderedHooks]) hook()
     }
@@ -137,6 +140,11 @@ export class Renderer {
    */
   invalidate(type: string): void {
     this.invalidated.add(type)
+  }
+
+  /** Re-renders, on the next render, every text leaf that carries a mark of `type` (after its plugin's options changed). */
+  invalidateMark(type: string): void {
+    this.invalidatedMarks.add(type)
   }
 
   /** Rebuilds the node view of the element `id` on the next render: a new container and a new instance. */
@@ -447,7 +455,15 @@ export class Renderer {
       return old
     }
     const shown = old && this.leafText.get(old)
-    if (old && shown && shown.text === text.text && sameMarkSet(shown.marks, text.marks) && this.leafIntact(old, text)) {
+    const stale = this.invalidatedMarks.size > 0 && text.marks.some((m) => this.invalidatedMarks.has(m.type))
+    if (
+      old &&
+      shown &&
+      !stale &&
+      shown.text === text.text &&
+      sameMarkSet(shown.marks, text.marks) &&
+      this.leafIntact(old, text)
+    ) {
       this.leafText.set(old, text)
       return old
     }
@@ -487,10 +503,14 @@ export class Renderer {
     let out = inner
     for (let i = marks.length - 1; i >= 0; i--) {
       const mark = marks[i]!
-      const dom = registry.mark(mark.type)!.render(mark.data)
+      const dom = registry.mark(mark.type)!.render(mark.data, {
+        options: this.editor.getPluginOptions(mark.type),
+      })
       const el = this.doc.createElement(checkTag(dom.tag))
-      for (const [name, value] of Object.entries(dom.attrs ?? {})) el.setAttribute(checkAttrName(name), value)
-      for (const [prop, value] of Object.entries(dom.style ?? {})) el.style.setProperty(kebab(prop), value)
+      for (const [name, value] of Object.entries(markAttrs(dom))) {
+        checkAttrName(name)
+        if (value !== undefined) el.setAttribute(name, String(value))
+      }
       el.appendChild(out)
       out = el
     }

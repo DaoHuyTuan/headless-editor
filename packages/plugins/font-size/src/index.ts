@@ -1,12 +1,23 @@
 import { z } from 'zod'
-import { definePlugin, type Command } from '@hte/core'
+import { definePlugin, mergeAttrs, type Command, type HTMLAttributes } from '@hte/core'
 
 const SIZE_RE = /^\d+(\.\d+)?(px|pt|em|rem|%)$/
 
+export interface FontSizeOptions {
+  /** Extra attributes merged into the `<span>`. */
+  HTMLAttributes: HTMLAttributes
+}
+
 export const fontSize = definePlugin({
   name: 'fontSize',
+  options: { HTMLAttributes: {} } as FontSizeOptions,
   data: z.object({ size: z.string().regex(SIZE_RE) }),
-  mark: { render: (d) => ({ tag: 'span', style: { fontSize: d.size } }) },
+  mark: {
+    render: (d, { options }) => ({
+      tag: 'span',
+      attrs: mergeAttrs({ style: `font-size: ${d.size};` }, options.HTMLAttributes),
+    }),
+  },
   parseHTML: [{ style: 'font-size', getData: (_, v) => (v && SIZE_RE.test(v) ? { size: v } : false) }],
   commands: () => ({
     setFontSize: (size: string): Command => ({ tr }) =>

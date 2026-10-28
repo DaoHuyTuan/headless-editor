@@ -560,3 +560,13 @@ describe('I2: src policy in stored data', () => {
     expect(JSON.stringify(editor.getJSON())).not.toContain('javascript:')
   })
 })
+
+describe('image HTMLAttributes', () => {
+  it('merges attributes into <img>, extra winning', () => {
+    const ed = createTestEditor({
+      plugins: [paragraph, image.configure({ HTMLAttributes: { class: 'im', alt: 'x' } })],
+      content: '<img src="https://x/a.png" alt="">',
+    })
+    expect(ed.getHTML()).toBe('<img src="https://x/a.png" alt="x" class="im">')
+  })
+})

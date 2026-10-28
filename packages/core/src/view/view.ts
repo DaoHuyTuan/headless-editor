@@ -115,6 +115,7 @@ export class EditorView {
       editor.on('options', ({ editor: ed, plugin }) => {
         const spec = ed.registry.node(plugin)
         if (spec) this.renderer.invalidate(plugin)
+        if (ed.registry.mark(plugin)) this.renderer.invalidateMark(plugin)
         this.update(ed.state)
       }),
     )

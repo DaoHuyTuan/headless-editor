@@ -1,6 +1,7 @@
 import { deepEqualJson, isText } from '../model/node'
 import type { DeepReadonly, Doc, Json, Mark, Node } from '../model/types'
 import type { Registry } from '../plugin/registry'
+import { checkAttrName, mergeAttrs } from '../plugin/attrs'
 import type { DOMOutputSpec, MarkDOM } from '../plugin/types'
 
 const VOID_TAGS = new Set([
@@ -23,11 +24,7 @@ export function checkTag(tag: string): string {
   return tag
 }
 
-/** Returns `name`, or throws `Invalid HTML attribute name "…"` if it is not a safe attribute name. */
-export function checkAttrName(name: string): string {
-  if (!NAME.test(name)) throw new Error(`Invalid HTML attribute name "${name}"`)
-  return name
-}
+export { checkAttrName }
 
 function attrsToString(attrs: Record<string, string | number | undefined>): string {
   let out = ''
@@ -61,15 +58,16 @@ export function kebab(prop: string): string {
   return prop.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)
 }
 
+/** A mark's attributes with its `style` map folded into `attrs.style` (the map's properties win). */
+export function markAttrs(dom: MarkDOM): Record<string, string | number | undefined> {
+  const style = Object.entries(dom.style ?? {})
+    .map(([k, v]) => `${kebab(k)}: ${v};`)
+    .join(' ')
+  return style ? mergeAttrs(dom.attrs ?? {}, { style }) : { ...dom.attrs }
+}
+
 function openMark(dom: MarkDOM): string {
-  const attrs: Record<string, string> = { ...dom.attrs }
-  if (dom.style) {
-    const style = Object.entries(dom.style)
-      .map(([k, v]) => `${kebab(k)}: ${v};`)
-      .join(' ')
-    if (style) attrs.style = style
-  }
-  return `<${checkTag(dom.tag)}${attrsToString(attrs)}>`
+  return `<${checkTag(dom.tag)}${attrsToString(markAttrs(dom))}>`
 }
 
 function sameMark(a: Mark, b: Mark): boolean {
@@ -93,6 +91,9 @@ export function serializeHTML(
   registry: Registry,
   pluginOptions: (name: string) => unknown,
 ): string {
+  const markDOM = (mark: Mark): MarkDOM =>
+    registry.mark(mark.type)!.render(mark.data, { options: pluginOptions(mark.type) })
+
   const renderNodes = (nodes: Node[]): string => {
     let out = ''
     // Open mark wrappers: the mark and its closing tag.
@@ -113,7 +114,7 @@ export function serializeHTML(
       while (keep < open.length && keep < marks.length && sameMark(open[keep]!.mark, marks[keep]!)) keep++
       closeTo(keep)
       for (const mark of marks.slice(keep)) {
-        const dom = registry.mark(mark.type)!.render(mark.data)
+        const dom = markDOM(mark)
         out += openMark(dom)
         open.push({ mark, close: `</${dom.tag}>` })
       }

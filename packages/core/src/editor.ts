@@ -144,12 +144,6 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
       }
       // The plugin's own commands, bound to its own factories (not the editor-wide clash winner).
       Object.assign(ctx.commands, this.bindCommands(factories, true))
-      const keymap = plugin.spec.keymap?.(ctx)
-      if (keymap) {
-        const bindings = new Map<string, () => boolean>()
-        for (const [key, fn] of Object.entries(keymap)) bindings.set(normalizeKeyName(key, this.platform), fn)
-        this.keymaps.push({ plugin, bindings })
-      }
     }
     this.commands = this.bindCommands(this.commandFactories, true) as EditorCommands<P>
 
@@ -158,6 +152,16 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
       if (plugin.spec.storage) this.storages[plugin.name] = plugin.spec.storage(this.getContext(plugin))
     }
     this.storage = this.storages as EditorStorage<P>
+
+    // Keymaps are collected last, so a keymap factory may read ctx.storage eagerly.
+    for (const plugin of this.registry.plugins) {
+      const keymap = plugin.spec.keymap?.(this.getContext(plugin))
+      if (keymap) {
+        const bindings = new Map<string, () => boolean>()
+        for (const [key, fn] of Object.entries(keymap)) bindings.set(normalizeKeyName(key, this.platform), fn)
+        this.keymaps.push({ plugin, bindings })
+      }
+    }
 
     throwFirst(this.runHooks((plugin, ctx) => plugin.spec.onCreate?.(ctx)))
   }

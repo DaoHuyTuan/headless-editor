@@ -18,7 +18,7 @@ export type DOMOutputSpec =
 
 export interface MarkDOM {
   tag: string
-  attrs?: Record<string, string>
+  attrs?: Record<string, string | number | undefined>
   style?: Record<string, string>
 }
 
@@ -58,8 +58,8 @@ export interface PluginContext<O, S, C extends CommandMap = NoOptions, T = unkno
   /**
    * This plugin's own storage (`editor.storage[name]`), typed from its `storage` factory.
    * `undefined` until that factory has run: inside the factory itself, while the initial content is
-   * normalized, and when `commands` / `keymap` are called during construction (the functions they
-   * return run later and see it). Set from `onCreate` on.
+   * normalized, and when `commands` is called during construction (the functions it returns run later
+   * and see it). Set when `keymap` is called and from `onCreate` on.
    */
   readonly storage: T
   /**
@@ -78,11 +78,12 @@ export interface NodeSpec {
 }
 
 /**
- * Marks render from their data only: `render(data)` must not read plugin options, and mark plugins
- * have no invalidation, so an options change never re-renders existing marked text.
+ * `render(data, { options })` gets the plugin's current options. When they change
+ * (`setPluginOptions`), the view re-renders the text that carries this mark.
  */
-export interface MarkSpec<D = Data> {
-  render: (data: D) => MarkDOM
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export interface MarkSpec<D = Data, O = any> {
+  render: (data: D, ctx: { options: O }) => MarkDOM
 }
 
 export type DOMEventName = 'keydown' | 'beforeinput' | 'input'
@@ -142,7 +143,7 @@ export interface PluginSpec<
   /** Default 100; higher runs first. */
   priority?: number
   node?: NodeSpec
-  mark?: MarkSpec<D>
+  mark?: MarkSpec<D, O>
   data?: StandardSchemaV1<unknown, D>
   options?: O
   /** Gets a context without `C` (its own commands) or `T` (`ctx.storage` is `unknown`) to avoid circular inference. */
@@ -284,7 +285,7 @@ export type PluginOverrides<Spec> = Partial<
 > & {
   /* eslint-disable @typescript-eslint/no-explicit-any -- these overrides may change `D` / `S` */
   data?: StandardSchemaV1<unknown, any>
-  mark?: MarkSpec<any>
+  mark?: MarkSpec<any, OptionsOf<Spec>>
   commands?: (ctx: PluginContext<OptionsOf<Spec>, StateOf<Spec>>) => CommandMap
   state?: { init: () => unknown; apply: (tr: Transaction, prev: any, ctx: any) => unknown }
   /* eslint-enable @typescript-eslint/no-explicit-any */
