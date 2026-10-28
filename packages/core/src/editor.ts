@@ -80,6 +80,11 @@ function detectPlatform(): Platform {
   return /Mac/.test(nav.platform ?? '') || /Mac/.test(nav.userAgent ?? '') ? 'mac' : 'other'
 }
 
+/** Rethrows the first collected error, if any. */
+function throwFirst(errors: unknown[]): void {
+  if (errors.length > 0) throw errors[0]
+}
+
 function selectionEquals(a: Selection | null, b: Selection | null): boolean {
   if (a === null || b === null) return a === b
   return deepEqualJson(a as unknown as Json, b as unknown as Json)
@@ -152,6 +157,8 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
       if (plugin.spec.storage) storage[plugin.name] = plugin.spec.storage(this.getContext(plugin))
     }
     this.storage = storage as EditorStorage<P>
+
+    throwFirst(this.runHooks((plugin, ctx) => plugin.spec.onCreate?.(ctx)))
   }
 
   /** The mounted DOM view, or null when not mounted. */
@@ -213,11 +220,21 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     } finally {
       this.computing = false
     }
+    // Lifecycle hook errors are collected over the whole loop, so one throwing hook neither stops the
+    // other hooks nor the events of later trs; listener errors propagate as before.
+    const errors: unknown[] = []
     for (const { tr: t, selectionChanged } of committed) {
       this.emit('transaction', t)
-      if (t.docChanged) this.emit('update', t)
-      if (selectionChanged) this.emit('selectionUpdate', t)
+      if (t.docChanged) {
+        this.emit('update', t)
+        errors.push(...this.runHooks((plugin, ctx) => plugin.spec.onUpdate?.(ctx, { tr: t })))
+      }
+      if (selectionChanged) {
+        this.emit('selectionUpdate', t)
+        errors.push(...this.runHooks((plugin, ctx) => plugin.spec.onSelectionUpdate?.(ctx, { tr: t })))
+      }
     }
+    throwFirst(errors)
   }
 
   runKeymap(keyName: string): boolean {
@@ -267,6 +284,30 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     const plugin = this.registry.node(node.type)?.plugin
     const hook = plugin?.spec.ignoreMutation
     return !plugin || !hook || hook(record, node, this.getContext(plugin))
+  }
+
+  /**
+   * Called by the view at the end of its constructor: runs every plugin's `onMount` by priority.
+   * Returns the cleanups the hooks returned (in call order) and the errors they threw; the view
+   * decides what to do with both.
+   */
+  handleMount(view: EditorView): { cleanups: (() => void)[]; errors: unknown[] } {
+    const cleanups: (() => void)[] = []
+    const errors = this.runHooks((plugin, ctx) => {
+      const cleanup = plugin.spec.onMount?.(ctx, view)
+      if (typeof cleanup === 'function') cleanups.push(cleanup)
+    })
+    return { cleanups, errors }
+  }
+
+  /** Called by the view when focus enters its root: runs every plugin's `onFocus` by priority. */
+  handleFocus(event: FocusEvent): void {
+    throwFirst(this.runHooks((plugin, ctx) => plugin.spec.onFocus?.(ctx, event)))
+  }
+
+  /** Called by the view when focus leaves its root: runs every plugin's `onBlur` by priority. */
+  handleBlur(event: FocusEvent): void {
+    throwFirst(this.runHooks((plugin, ctx) => plugin.spec.onBlur?.(ctx, event)))
   }
 
   /** Runs each plugin's `transformPasted` on `fragment`, by priority. */
@@ -360,8 +401,12 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
   destroy(): void {
     if (this.destroyed || this.destroying) return
     this.destroying = true
-    this.unmount()
     const errors: unknown[] = []
+    try {
+      this.unmount()
+    } catch (error) {
+      errors.push(error)
+    }
     for (const plugin of [...this.registry.plugins].reverse()) {
       const hook = plugin.spec.destroy
       if (!hook) continue
@@ -403,6 +448,23 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
   }
 
   private readonly contextFn = (plugin: AnyPlugin) => this.getContext(plugin)
+
+  /**
+   * Calls `fn` for each plugin by priority, collecting what it throws instead of stopping. Stops
+   * (without error) once the editor is destroyed, e.g. by an earlier hook.
+   */
+  private runHooks(fn: (plugin: AnyPlugin, ctx: PluginContext<any, any, any>) => void): unknown[] {
+    const errors: unknown[] = []
+    for (const plugin of this.registry.plugins) {
+      if (this.destroyed || this.destroying) break
+      try {
+        fn(plugin, this.getContext(plugin))
+      } catch (error) {
+        errors.push(error)
+      }
+    }
+    return errors
+  }
 
   /** A normalized tr that replaces the whole document with `content`. */
   private contentTransaction(content: Doc | string, selection?: Selection): Transaction {

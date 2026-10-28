@@ -99,6 +99,10 @@ export class EditorView {
   /** True while the view itself writes the DOM selection. */
   private writingSelection = false
   private destroyed = false
+  /** What the plugins' `onMount` hooks returned, in call order. */
+  private mountCleanups: (() => void)[] = []
+  /** Whether focus is inside the root (as tracked by focusin/focusout). */
+  private focusInside = false
 
   constructor(
     readonly editor: Editor,
@@ -122,6 +126,24 @@ export class EditorView {
     this.attach(attachClipboard)
     this.attach(attachNodeSelect)
     this.attach(attachDrop)
+    // Already focused (e.g. a remount on the same root): no onFocus now, but leaving is a blur.
+    const active = root.ownerDocument.activeElement
+    this.focusInside = !!active && root.contains(active)
+    this.listen(root, 'focusin', (e) => this.onFocusIn(e as FocusEvent))
+    this.listen(root, 'focusout', (e) => this.onFocusOut(e as FocusEvent))
+
+    // Plugins' onMount hooks run last, on a fully set-up view. If one throws, the view is torn
+    // down (running the cleanups already returned) and the first error is rethrown.
+    const { cleanups, errors } = editor.handleMount(this)
+    this.mountCleanups = cleanups
+    if (errors.length > 0) {
+      try {
+        this.destroy()
+      } catch {
+        // The onMount error is the one reported.
+      }
+      throw errors[0]
+    }
   }
 
   /** The last 20 input events, oldest first. */
@@ -155,11 +177,24 @@ export class EditorView {
     this.writeSelection(this.editor.state.selection)
   }
 
+  /**
+   * Runs the plugins' `onMount` cleanups in reverse order, then removes every listener and destroys
+   * the renderer. A throwing cleanup does not stop the rest; the first error is rethrown at the end.
+   */
   destroy(): void {
     if (this.destroyed) return
     this.destroyed = true
+    const errors: unknown[] = []
+    for (const cleanup of this.mountCleanups.splice(0).reverse()) {
+      try {
+        cleanup()
+      } catch (error) {
+        errors.push(error)
+      }
+    }
     for (const dispose of this.disposers.splice(0).reverse()) dispose()
     this.renderer.destroy()
+    if (errors.length > 0) throw errors[0]
   }
 
   /** Attaches a view module; its disposer runs on `destroy`. */
@@ -202,6 +237,23 @@ export class EditorView {
       if (this.composing && tr.doc !== state.doc) return
     }
     this.update(state)
+  }
+
+  /** Focus entering the root from outside it is a plugin focus; moves inside the root are not. */
+  private onFocusIn(e: FocusEvent): void {
+    if (this.destroyed || this.focusInside) return
+    this.focusInside = true
+    this.editor.handleFocus(e)
+  }
+
+  /** A focusout whose `relatedTarget` is still inside the root is a move inside it, not a blur. */
+  private onFocusOut(e: FocusEvent): void {
+    if (this.destroyed || !this.focusInside) return
+    // Focus events only carry an Element (or null) here; no `instanceof Node`, which fails across realms.
+    const next = e.relatedTarget as Node | null
+    if (next && this.root.contains(next)) return
+    this.focusInside = false
+    this.editor.handleBlur(e)
   }
 
   private domSelection(): globalThis.Selection | null {

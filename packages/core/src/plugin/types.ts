@@ -4,6 +4,7 @@ import type { Transaction } from '../transaction/transaction'
 import type { EditorState } from '../state'
 import type { Editor } from '../editor'
 import type { Fragment } from '../transaction/fragment'
+import type { EditorView } from '../view/view'
 
 /** `0` marks the content hole. */
 export type DOMOutputSpec =
@@ -161,6 +162,31 @@ export interface PluginSpec<
   storage?: (ctx: PluginContext<O, S, C>) => T
   /** Called by `editor.destroy()`, in reverse priority order (lowest priority first). */
   destroy?: (ctx: PluginContext<O, S, C>) => void
+  /*
+   * Lifecycle hooks (spec §5.11). Each runs by priority with the same cached context as the other
+   * hooks. A throwing hook does not stop the others: errors are collected and the first is rethrown
+   * once all ran.
+   */
+  /** Called once at the end of the editor constructor, after every plugin's storage exists (no DOM). */
+  onCreate?: (ctx: PluginContext<O, S, C>) => void
+  /**
+   * Called each time a view is attached to a DOM root, at the end of the view constructor. A returned
+   * function is called when that view is destroyed (`unmount`, `mount(other)`, `destroy`); cleanups
+   * run in reverse order. When an `onMount` throws, the view is torn down (cleanups included) and
+   * `mount` rethrows.
+   */
+  onMount?: (ctx: PluginContext<O, S, C>, view: EditorView) => void | (() => void)
+  /**
+   * Called after a committed tr that changed the doc, right after the editor's `update` event
+   * (`editor.on` listeners run first). Outside the pipeline: dispatching from here is a nested dispatch.
+   */
+  onUpdate?: (ctx: PluginContext<O, S, C>, e: { tr: Transaction }) => void
+  /** Like `onUpdate`, for a committed tr that changed the selection (after `selectionUpdate`). */
+  onSelectionUpdate?: (ctx: PluginContext<O, S, C>, e: { tr: Transaction }) => void
+  /** Focus entered the view root from outside it. */
+  onFocus?: (ctx: PluginContext<O, S, C>, e: FocusEvent) => void
+  /** Focus left the view root. A focus move between elements inside the root is not a blur. */
+  onBlur?: (ctx: PluginContext<O, S, C>, e: FocusEvent) => void
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

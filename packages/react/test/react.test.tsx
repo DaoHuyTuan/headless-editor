@@ -2,7 +2,7 @@
 import { StrictMode, useState, type ReactNode } from 'react'
 import { act, cleanup, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { Editor, textEntries, type EditorEventName } from '@hte/core'
+import { definePlugin, Editor, textEntries, type EditorEventName } from '@hte/core'
 import { doc, el, sel, txt } from '@hte/core/testing'
 import { paragraph } from '@hte/paragraph'
 import { bold } from '@hte/bold'
@@ -173,6 +173,44 @@ describe('useEditor + EditorContent', () => {
     })
     expect(editors.size).toBe(1)
     expect(calls).toEqual(['a:1', 'b:1'])
+  })
+
+  it('StrictMode mount → unmount → mount leaves exactly one active onMount (Review Focus 5)', () => {
+    vi.useFakeTimers()
+    let mounts = 0
+    let cleanups = 0
+    const roots: HTMLElement[] = []
+    const tracker = definePlugin({
+      name: 'tracker',
+      onMount: (_ctx, view) => {
+        mounts++
+        roots.push(view.root)
+        return () => void cleanups++
+      },
+    })
+    let editor!: Editor<any>
+    function App() {
+      editor = useEditor({ plugins: [paragraph, tracker], content: content() })
+      return <EditorContent editor={editor} data-testid="content" />
+    }
+    const { getByTestId, unmount } = render(
+      <StrictMode>
+        <App />
+      </StrictMode>,
+    )
+    act(() => {
+      vi.runAllTimers()
+    })
+    expect(mounts).toBe(2)
+    expect(mounts - cleanups).toBe(1)
+    expect(roots.at(-1)).toBe(getByTestId('content'))
+    expect(editor.view?.root).toBe(getByTestId('content'))
+    unmount()
+    act(() => {
+      vi.runAllTimers()
+    })
+    expect(mounts - cleanups).toBe(0)
+    expect(cleanups).toBe(mounts)
   })
 })
 
