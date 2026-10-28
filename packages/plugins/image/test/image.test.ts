@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { Doc, ElementNode, InputIntent } from '@hte/core'
+import { FRAGMENT_MIME, nodeSelection, serializeForClipboard, toRange, type Doc, type ElementNode, type InputIntent } from '@hte/core'
 import { createTestEditor, doc, el, sel, txt } from '@hte/core/testing'
 import { paragraph } from '@hte/paragraph'
 import { image, safeSrc } from '../src/index'
@@ -414,5 +414,91 @@ describe('image HTML and commands', () => {
     const { editor } = setup()
     expect(editor.commands.insertImage('javascript:alert(1)')).toBe(false)
     expect(images(editor.state.doc as Doc)).toHaveLength(0)
+  })
+})
+
+/** Copies the node-selected image at `path` and pastes it at the end of the doc (the JSON flavour). */
+function copyPasteImage(editor: ReturnType<typeof setup>['editor'], path: number[]): void {
+  const select = editor.createTransaction()
+  select.setSelection(nodeSelection(editor.state.doc, editor.registry, path))
+  editor.dispatch(select)
+  const selected = editor.state.selection!
+  const { json, html, text } = serializeForClipboard(editor, toRange(selected), path)
+  const end = editor.createTransaction()
+  end.setSelection(sel([0, 0], 2))
+  editor.dispatch(end)
+  editor.handleIntent(intent('insertFromPaste', transfer([], { [FRAGMENT_MIME]: json, 'text/html': html, 'text/plain': text })))
+}
+
+describe('I1: copies of a pending image', () => {
+  it('a pasted copy of a pending image gets the uploaded URL too', async () => {
+    const { editor, uploads } = setup()
+    editor.storage.image.upload([png()])
+    copyPasteImage(editor, [1])
+    expect(images(editor.state.doc as Doc).map((i) => i.data.src)).toEqual(['blob:test/1', 'blob:test/1'])
+    const ids = images(editor.state.doc as Doc).map((i) => i.id)
+    expect(new Set(ids).size).toBe(2)
+
+    uploads[0]!.resolve('https://x/a.png')
+    await editor.storage.image.whenIdle()
+    expect(editor.storage.image.isUploading()).toBe(false)
+    expect(images(editor.state.doc as Doc).map((i) => i.data.src)).toEqual(['https://x/a.png', 'https://x/a.png'])
+    expect(JSON.stringify(editor.getJSON())).not.toContain('blob:')
+
+    // History's copies were rewritten too: undo the paste, redo it → the uploaded URL.
+    expect(editor.commands.undo()).toBe(true)
+    expect(editor.commands.redo()).toBe(true)
+    expect(JSON.stringify(editor.getJSON())).not.toContain('blob:')
+    expect(images(editor.state.doc as Doc).map((i) => i.data.src)).toEqual(['https://x/a.png', 'https://x/a.png'])
+  })
+
+  /** Removes the image element `id` as one undo step. */
+  function removeImage(editor: ReturnType<typeof setup>['editor'], id: string): void {
+    const tr = editor.createTransaction()
+    tr.meta.origin = 'command'
+    tr.removeNode([(editor.state.doc as Doc).children.findIndex((n) => n.id === id)])
+    editor.dispatch(tr)
+  }
+
+  it('the original deleted while pending: the copy is updated, undo restores the original uploaded', async () => {
+    const { editor, uploads } = setup()
+    editor.storage.image.upload([png()])
+    const original = images(editor.state.doc as Doc)[0]!.id
+    copyPasteImage(editor, [1])
+    removeImage(editor, original)
+    uploads[0]!.resolve('https://x/a.png')
+    await editor.storage.image.whenIdle()
+    expect(images(editor.state.doc as Doc).map((i) => i.data.src)).toEqual(['https://x/a.png'])
+    expect(editor.commands.undo()).toBe(true)
+    expect(images(editor.state.doc as Doc)).toHaveLength(2)
+    expect(JSON.stringify(editor.getJSON())).not.toContain('blob:')
+  })
+
+  it('a pasted copy deleted while pending: undo restores it with the uploaded URL', async () => {
+    const { editor, uploads } = setup()
+    editor.storage.image.upload([png()])
+    const original = images(editor.state.doc as Doc)[0]!.id
+    copyPasteImage(editor, [1])
+    const copy = images(editor.state.doc as Doc).find((i) => i.id !== original)!.id
+    removeImage(editor, copy)
+    uploads[0]!.resolve('https://x/a.png')
+    await editor.storage.image.whenIdle()
+    expect(images(editor.state.doc as Doc).map((i) => i.data.src)).toEqual(['https://x/a.png'])
+    expect(editor.commands.undo()).toBe(true)
+    expect(images(editor.state.doc as Doc).map((i) => i.id).sort()).toEqual([copy, original].sort())
+    expect(JSON.stringify(editor.getJSON())).not.toContain('blob:')
+  })
+
+  it('a failed upload removes the copies too, and undo / redo bring no blob back', async () => {
+    const { editor, uploads, onUploadError } = setup()
+    editor.storage.image.upload([png()])
+    copyPasteImage(editor, [1])
+    uploads[0]!.reject(new Error('boom'))
+    await editor.storage.image.whenIdle()
+    expect(onUploadError).toHaveBeenCalledTimes(1)
+    expect(images(editor.state.doc as Doc)).toHaveLength(0)
+    editor.commands.undo()
+    editor.commands.redo()
+    expect(JSON.stringify(editor.getJSON())).not.toContain('blob:')
   })
 })

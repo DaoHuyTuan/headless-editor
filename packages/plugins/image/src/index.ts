@@ -3,13 +3,16 @@ import {
   createId,
   definePlugin,
   findPathById,
-  getNode,
   isElement,
   isNodeSelection,
+  nodeEntries,
   rewriteHistoryData,
   clearHistory,
   type Command,
   type Data,
+  type Node,
+  type Operation,
+  type Path,
   type Editor,
   type PluginContext,
   type Selection,
@@ -46,9 +49,10 @@ export interface ImageStorage {
   /**
    * Inserts each image file (`type` starting with `image/`; others are skipped) at the selection
    * with a `blob:` preview, as one undo step per file, then uploads it with `options.upload`: on
-   * success `src` becomes the uploaded URL outside history (history's stored copies are rewritten
-   * too); on failure the image is removed outside history (or, when it is no longer in the doc,
-   * history is cleared so undo / redo cannot restore the dead preview) and `onUploadError` is called.
+   * success `src` becomes the uploaded URL outside history, on the image and on every copy of it
+   * still showing the preview (history's stored copies are rewritten too); on failure the image and
+   * its copies are removed outside history (or, when one is no longer in the doc, history is cleared
+   * so undo / redo cannot restore the dead preview) and `onUploadError` is called.
    * Throws when `options.upload` is not set or `URL.createObjectURL` is unavailable.
    */
   upload(files: File[]): void
@@ -69,13 +73,19 @@ interface Runtime {
   blobs: Set<string>
   /** `whenIdle` resolvers still waiting. */
   waiters: Set<() => void>
+  /**
+   * Per pending preview blob, the ids of every image element that has shown it: the uploaded node
+   * and its copies (a copy / paste gives a fresh id). Lets settling reach copies that are only in
+   * history (e.g. a pasted copy that was deleted or undone).
+   */
+  holders: Map<string, Set<string>>
 }
 
 const runtimes = new WeakMap<Editor, Runtime>()
 
 function runtimeOf(editor: Editor): Runtime {
   let rt = runtimes.get(editor)
-  if (!rt) runtimes.set(editor, (rt = { destroyed: false, blobs: new Set(), waiters: new Set() }))
+  if (!rt) runtimes.set(editor, (rt = { destroyed: false, blobs: new Set(), waiters: new Set(), holders: new Map() }))
   return rt
 }
 
@@ -83,6 +93,21 @@ const isImageFile = (file: File): boolean => typeof file.type === 'string' && fi
 
 function pendingOf(ctx: Ctx): ReadonlySet<string> {
   return ctx.getState()?.pending ?? new Set()
+}
+
+/** Records the image elements `tr` inserted that show a pending preview (copies of an uploading image). */
+function trackCopies(ctx: Ctx, rt: Runtime, ops: readonly Operation[]): void {
+  if (rt.holders.size === 0) return
+  const note = (node: Node) => {
+    if (!isElement(node) || node.type !== ctx.name) return
+    const src = node.data.src
+    if (typeof src === 'string') rt.holders.get(src)?.add(node.id)
+  }
+  for (const op of ops) {
+    if (op.type !== 'insert_node') continue
+    note(op.node)
+    if (isElement(op.node)) for (const [n] of nodeEntries(op.node)) note(n)
+  }
 }
 
 function dispatchMeta(editor: Editor, meta: ImageUploadMeta): void {
@@ -93,19 +118,20 @@ function dispatchMeta(editor: Editor, meta: ImageUploadMeta): void {
   editor.dispatch(tr)
 }
 
-function onUploaded(ctx: Ctx, id: string, blob: string, url: string): void {
+function onUploaded(ctx: Ctx, ids: ReadonlySet<string>, blob: string, url: string): void {
   const editor = ctx.editor
-  const path = findPathById(editor.state.doc, id)
-  if (path) {
-    // Only replace our own preview: a src the user set meanwhile wins.
-    const node = getNode(editor.state.doc, path)
-    if (!isElement(node) || node.data.src !== blob) return
-    const tr = editor.createTransaction()
-    tr.meta.origin = 'plugin'
-    tr.meta.addToHistory = false
-    tr.setNodeData(path, { src: url })
-    if (tr.rejected === null) editor.dispatch(tr)
-  } else {
+  // Every image still showing our preview: the uploaded node and any copy of it (a copy / paste
+  // gives it a fresh id). A src the user set meanwhile wins, since only `src === blob` is replaced.
+  const tr = editor.createTransaction()
+  tr.meta.origin = 'plugin'
+  tr.meta.addToHistory = false
+  for (const [node, path] of nodeEntries(editor.state.doc)) {
+    if (isElement(node) && node.type === ctx.name && node.data.src === blob) tr.setNodeData(path, { src: url })
+  }
+  // One data-only tr: history rewrites its stored copies of these elements as well.
+  if (tr.docChanged && tr.rejected === null) editor.dispatch(tr)
+  for (const id of ids) {
+    if (findPathById(editor.state.doc, id)) continue
     // Deleted or undone: patch history's stored copies so redo / undo restores the uploaded URL.
     // Limitation: this merge is unconditional, so a src the user set before removing the image is
     // overwritten in history too.
@@ -122,21 +148,24 @@ function report(error: unknown): void {
   console.error('@hte/image:', error)
 }
 
-function onFailed(ctx: Ctx, id: string, file: File, error: unknown): void {
+function onFailed(ctx: Ctx, ids: ReadonlySet<string>, blob: string, file: File, error: unknown): void {
   const editor = ctx.editor
   try {
-    const path = findPathById(editor.state.doc, id)
-    if (path) {
+    // The preview and every copy of it: removed outside history (deepest / last first, so the
+    // earlier paths stay valid).
+    const paths: Path[] = []
+    for (const [node, path] of nodeEntries(editor.state.doc))
+      if (isElement(node) && node.type === ctx.name && node.data.src === blob) paths.push(path)
+    if (paths.length > 0) {
       const tr = editor.createTransaction()
       tr.meta.origin = 'plugin'
       tr.meta.addToHistory = false
-      tr.removeNode(path)
+      for (const path of paths.reverse()) tr.removeNode(path)
       editor.dispatch(tr)
-    } else {
-      // Deleted or undone: history still holds the blob preview, which will never be uploaded, so
-      // undo / redo must not bring it back.
-      clearHistory(editor)
     }
+    // One deleted or undone: history still holds the blob preview, which will never be uploaded,
+    // so undo / redo must not bring it back.
+    if ([...ids].some((id) => !findPathById(editor.state.doc, id))) clearHistory(editor)
   } catch (e) {
     report(e)
   }
@@ -174,6 +203,8 @@ function uploadFiles(ctx: Ctx, files: readonly File[], at?: Selection | null): v
       continue
     }
     rt.blobs.add(blob)
+    const holders = new Set([id])
+    rt.holders.set(blob, holders)
 
     let request: Promise<string>
     try {
@@ -185,12 +216,20 @@ function uploadFiles(ctx: Ctx, files: readonly File[], at?: Selection | null): v
       .then(
         (url) => {
           if (rt.destroyed) return
+          rt.holders.delete(blob)
           if (typeof url !== 'string' || safeSrc(url) === null)
-            onFailed(ctx, id, file, new Error(`@hte/image: upload resolved with an unsafe or invalid URL: ${String(url)}`))
-          else onUploaded(ctx, id, blob, url)
+            onFailed(
+              ctx,
+              holders,
+              blob,
+              file,
+              new Error(`@hte/image: upload resolved with an unsafe or invalid URL: ${String(url)}`),
+            )
+          else onUploaded(ctx, holders, blob, url)
         },
         (error: unknown) => {
-          if (!rt.destroyed) onFailed(ctx, id, file, error)
+          rt.holders.delete(blob)
+          if (!rt.destroyed) onFailed(ctx, holders, blob, file, error)
         },
       )
       // A throw while applying a successful upload is reported, not treated as an upload failure.
@@ -261,6 +300,7 @@ export const image = definePlugin({
   }),
   storage: (ctx): ImageStorage => {
     const rt = runtimeOf(ctx.editor)
+    ctx.editor.on('transaction', ({ tr }) => trackCopies(ctx, rt, tr.ops))
     return {
       upload: (files) => uploadFiles(ctx, files),
       isUploading: () => !rt.destroyed && pendingOf(ctx).size > 0,
