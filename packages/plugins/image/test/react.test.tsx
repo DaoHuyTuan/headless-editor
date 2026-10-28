@@ -148,6 +148,24 @@ describe('ImageView', () => {
     expect(t.input().value).toBe('dog')
   })
 
+  it('an outside alt change while focused survives blur when the draft was not edited', () => {
+    const t = setup()
+    t.input().focus()
+    fireEvent.focus(t.input())
+    act(() => {
+      const e = t.editor()
+      const tr = e.createTransaction()
+      tr.setNodeData([1], { alt: 'outside' })
+      e.dispatch(tr)
+    })
+    const spy = vi.fn()
+    t.editor().on('transaction', spy)
+    fireEvent.blur(t.input())
+    expect(spy).not.toHaveBeenCalled()
+    expect(dataOf(t.editor()).alt).toBe('outside')
+    expect(t.input().value).toBe('outside')
+  })
+
   it('data-selected follows the node selection', () => {
     const t = setup()
     expect(t.figure().getAttribute('data-selected')).toBe('false')

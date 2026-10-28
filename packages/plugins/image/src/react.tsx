@@ -26,6 +26,8 @@ export function ImageView({ node, selected, editor, updateData }: NodeViewProps<
   const draftRef = useRef(alt)
   const committedRef = useRef(alt)
   const focusedRef = useRef(false)
+  /** Set only by user input; a clean draft never overwrites the model. */
+  const dirtyRef = useRef(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -37,12 +39,15 @@ export function ImageView({ node, selected, editor, updateData }: NodeViewProps<
     }
   }, [alt])
 
-  const changeDraft = (value: string) => {
+  const changeDraft = (value: string, dirty = false) => {
+    dirtyRef.current = dirty
     draftRef.current = value
     setDraft(value)
   }
 
   const commit = () => {
+    if (!dirtyRef.current) return
+    dirtyRef.current = false
     const next = draftRef.current
     if (next === committedRef.current) return
     const previous = committedRef.current
@@ -120,7 +125,7 @@ export function ImageView({ node, selected, editor, updateData }: NodeViewProps<
         onFocus={() => {
           focusedRef.current = true
         }}
-        onChange={(e) => changeDraft(e.target.value)}
+        onChange={(e) => changeDraft(e.target.value, true)}
         onBlur={() => {
           focusedRef.current = false
           commit()
@@ -132,6 +137,7 @@ export function ImageView({ node, selected, editor, updateData }: NodeViewProps<
       <span
         data-editor-ignore=""
         className="hte-image-resize"
+        style={{ touchAction: 'none' }}
         onPointerDown={startResize}
         onPointerMove={moveResize}
         onPointerUp={(e) => endResize(e, true)}
