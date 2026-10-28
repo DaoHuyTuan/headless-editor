@@ -226,6 +226,28 @@ test.describe('the image scenario', () => {
     await expect(page.locator('[data-testid=editor] p')).toHaveText(['before', 'xy', 'after'])
   })
 
+  test('an IME composition while the image is selected replaces it with a paragraph of the composed text', async ({
+    page,
+  }) => {
+    await editorImg(page).click()
+    await expect.poll(async () => (await getSelection(page))?.node).toEqual([1])
+    const cdp = await page.context().newCDPSession(page)
+    await cdp.send('Input.imeSetComposition', { text: 'ê', selectionStart: 1, selectionEnd: 1 })
+    await cdp.send('Input.imeSetComposition', { text: 'ế', selectionStart: 1, selectionEnd: 1 })
+    await cdp.send('Input.insertText', { text: 'ế' })
+    await expect.poll(() => types(page)).toEqual(['paragraph', 'paragraph', 'paragraph'])
+    expect(await getText(page)).toBe('before\nế\nafter')
+    await expect(editorImg(page)).toHaveCount(0)
+    await expect(page.locator('[data-testid=editor] p')).toHaveText(['before', 'ế', 'after'])
+    const sel = await getSelection(page)
+    expect(sel?.node).toBeUndefined()
+    expect(sel?.focus).toEqual({ path: [1, 0], offset: 1 })
+    expect(sel?.anchor).toEqual({ path: [1, 0], offset: 1 })
+    // The DOM caret agrees: typing continues after the composed text.
+    await page.keyboard.type('x')
+    expect(await getText(page)).toBe('before\nếx\nafter')
+  })
+
   test('typing alt text then tabbing away commits the alt; the text is unchanged', async ({ page }) => {
     const before = await getText(page)
     const alt = page.getByLabel('Alt text')
