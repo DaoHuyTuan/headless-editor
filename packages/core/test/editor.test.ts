@@ -523,6 +523,25 @@ describe('plugin storage', () => {
     expect(calls).toEqual(['lo', 'hi'])
   })
 
+  it('a destroy hook calling editor.destroy() again does not recurse; every hook runs once', () => {
+    const calls: string[] = []
+    const reentrant = definePlugin({
+      name: 'reentrant',
+      priority: 200,
+      destroy: (ctx) => {
+        calls.push(ctx.name)
+        ctx.editor.destroy()
+      },
+    })
+    const other = definePlugin({ name: 'other', priority: 50, destroy: (ctx) => void calls.push(ctx.name) })
+    const first = definePlugin({ name: 'first', priority: 300, destroy: (ctx) => void calls.push(ctx.name) })
+    const ed = createTestEditor({ plugins: [testParagraph, first, reentrant, other] })
+    expect(() => ed.destroy()).not.toThrow()
+    expect(calls).toEqual(['other', 'reentrant', 'first'])
+    ed.destroy()
+    expect(calls).toEqual(['other', 'reentrant', 'first'])
+  })
+
   it('a throwing destroy hook does not stop the others; the first error is rethrown', () => {
     const calls: string[] = []
     const a = definePlugin({ name: 'a', priority: 300, destroy: () => void calls.push('a') })

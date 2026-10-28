@@ -101,6 +101,8 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
   private readonly listeners = new Map<EditorEventName | 'options', Set<(e: any) => void>>()
   private readonly nodeViews = new Map<string, NodeViewFactory<any, any>>()
   private destroyed = false
+  /** Set while `destroy()` runs its hooks, so a re-entrant call returns at once. */
+  private destroying = false
   /** True while `dispatch` runs the pipeline (before events are emitted). */
   private computing = false
 
@@ -352,10 +354,12 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
 
   /**
    * Unmounts, then runs every plugin's `destroy` hook in reverse priority order. A throwing hook
-   * does not stop the others; the first error is rethrown once all ran. Idempotent.
+   * does not stop the others; the first error is rethrown once all ran. Idempotent, including when
+   * called again from a destroy hook (the nested call returns immediately).
    */
   destroy(): void {
-    if (this.destroyed) return
+    if (this.destroyed || this.destroying) return
+    this.destroying = true
     this.unmount()
     const errors: unknown[] = []
     for (const plugin of [...this.registry.plugins].reverse()) {
