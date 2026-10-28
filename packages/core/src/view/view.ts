@@ -1,6 +1,6 @@
 import type { Editor } from '../editor'
 import { nextPath, pointEquals } from '../model/path'
-import type { Path, Selection } from '../model/types'
+import type { Path, Point, Selection } from '../model/types'
 import { transformPath } from '../ops/transform'
 import type { Operation } from '../ops/types'
 import type { EditorState } from '../state'
@@ -8,7 +8,7 @@ import type { Transaction } from '../transaction/transaction'
 import { attachClipboard } from './clipboard'
 import { attachComposition } from './composition'
 import { attachDrop } from './drop'
-import { readDomSelection, writeDomSelection } from './dom-selection'
+import { modelToDom, readDomSelection, writeDomSelection } from './dom-selection'
 import { isInIgnoredElement } from './ignore'
 import { attachInput } from './input'
 import { attachMutation } from './mutation'
@@ -181,6 +181,36 @@ export class EditorView {
     if (this.destroyed) return
     this.root.focus()
     this.writeSelection(this.editor.state.selection)
+  }
+
+  /**
+   * Viewport coordinates of the caret position at `point` (left edge, top and bottom of its line), or
+   * null when the point has no rendered leaf. A collapsed range can report an all-zero rect (e.g. in an
+   * empty leaf), so this falls back to the first client rect, then to the leaf element's left edge.
+   */
+  coordsAt(point: Point): { left: number; top: number; bottom: number } | null {
+    if (this.destroyed) return null
+    const leaf = this.renderer.leafAt(point.path)
+    if (!leaf) return null
+    let range: Range | null = null
+    try {
+      const pos = modelToDom(this.renderer, point)
+      range = this.root.ownerDocument.createRange()
+      range.setStart(pos.node, pos.offset)
+      range.collapse(true)
+    } catch {
+      range = null
+    }
+    const empty = (r: { left: number; top: number; bottom: number }): boolean =>
+      r.left === 0 && r.top === 0 && r.bottom === 0
+    if (range) {
+      const bounding = range.getBoundingClientRect()
+      if (!empty(bounding)) return { left: bounding.left, top: bounding.top, bottom: bounding.bottom }
+      const first = range.getClientRects()[0]
+      if (first && !empty(first)) return { left: first.left, top: first.top, bottom: first.bottom }
+    }
+    const rect = leaf.getBoundingClientRect()
+    return { left: rect.left, top: rect.top, bottom: rect.bottom }
   }
 
   /**

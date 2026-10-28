@@ -8,7 +8,7 @@ import { coerceDoc } from './load'
 import { firstEditableCaret, isEditablePoint, isOpaqueAt } from './model/editable'
 import { deepEqualJson, getNode, isElement } from './model/node'
 import { comparePoint } from './model/path'
-import type { Data, Doc, ElementNode, Json, Selection } from './model/types'
+import type { Data, Doc, ElementNode, Json, Point, Selection } from './model/types'
 import { normalize } from './normalize'
 import { Registry } from './plugin/registry'
 import type {
@@ -416,6 +416,11 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     if (this._view?.root === el) return
     this.unmount()
     this._view = new EditorView(this as unknown as Editor, el)
+  }
+
+  /** Viewport coordinates of `point` in the mounted view (left, top, bottom), or null when unmounted or not rendered. */
+  coordsAt(point: Point): { left: number; top: number; bottom: number } | null {
+    return this._view?.coordsAt(point) ?? null
   }
 
   /** Removes the view's listeners (the rendered content stays). Idempotent. */
