@@ -245,6 +245,57 @@ Not built in v1, but these are mandatory so OT/CRDT (e.g. Yjs) can be plugged in
 - `meta.origin` on transactions distinguishes local from remote changes.
 - An `editor.applyRemote(ops)` entry point or equivalent (reserve the place in the design; no implementation needed yet).
 
+### 5.11 Plugin authoring guidelines (added 2026-10-29, project owner approved)
+
+Goal: every plugin can be customized at several depths without rewriting its behaviour, and every plugin is customized the same way. Built-in plugins must follow these rules; third-party plugins are encouraged to.
+
+#### Layers of a plugin
+1. **Logic** (`@hte/<plugin>`): `definePlugin` spec only (schema, commands, keymap, input handling, HTML in/out, storage, lifecycle). No framework imports.
+2. **Headless hooks** (`@hte/<plugin>/react`, later `/vue`): behaviour without markup, e.g. `useImageResize(props) → { width, handleProps }`. Hooks return every prop the element needs, **including** `data-editor-ignore` where required, so users can't forget it.
+3. **Parts**: small components, each wiring one hook to one element, accepting `className`, e.g. `Image.Root`, `Image.Img`, `Image.AltInput`, `Image.ResizeHandle`. Split into 2–4 meaningful parts per plugin, not per tag. Parts that depend on each other share state through a context provided by `Root`.
+4. **Default view**: the parts assembled, plus the standard customization props `parts` (replace a part, or `false` to hide it) and `classNames` (per part).
+
+#### Customization levels (what users can do, least to most effort)
+| Level | How | Stability |
+|---|---|---|
+| 0 | Use the default view | stable |
+| 1 | CSS on stable `data-*` attributes | stable |
+| 2 | `HTMLAttributes` option (HTML output) and `classNames` (view parts) | stable |
+| 3 | `parts` to hide/replace single parts | experimental until validated on Image, Mention and Code block |
+| 4 | Own view built from the headless hooks | experimental (same) |
+| 5 | Change behaviour via `extend(parent => …)` | stable |
+
+"Experimental" APIs are marked `@experimental` in JSDoc and may change after M3 without a deprecation cycle.
+
+#### Conventions
+- **`HTMLAttributes` option**: every plugin that renders DOM (`renderHTML` or `mark.render`) accepts `options.HTMLAttributes` and merges it into its output with the core helper `mergeAttrs(base, extra)` (`class` concatenated, `style` merged, other attributes overridden by `extra`). Mark render receives options for this purpose: `mark.render(data, { options })`.
+- **Stable `data-*` attributes**: state is exposed as boolean-style attributes, present when true and absent otherwise: `data-selected`, `data-uploading`, `data-active`, `data-open`, plus a plugin marker `data-hte-<plugin>` on the root of its view. These names are API: renaming one is a breaking change. Each plugin documents its list.
+- **Typed own access**: plugin hooks and node views reach their own storage and state with full types and no casts: `ctx.storage` (like `ctx.commands`), and `props.storage` / `props.state` on node views.
+
+#### Lifecycle hooks
+In addition to the existing data-flow hooks (`state`, `storage`, `parseHTML`/`renderHTML`, `handleDOMEvents`, `keymap`, `onBeforeInput`, `filterTransaction`, `appendTransaction`, `normalize`, `transformPasted`, `stopEvent`, `ignoreMutation`, `destroy`), a plugin may declare:
+
+| Hook | When | Cleanup |
+|---|---|---|
+| `onCreate(ctx)` | once, after the editor is constructed (headless; no DOM) | — |
+| `onMount(ctx, view)` | each time a view is attached to a DOM root | return a function → called on unmount |
+| `onUpdate(ctx, { tr })` | after a committed transaction that changed the doc | — |
+| `onSelectionUpdate(ctx, { tr })` | after a committed transaction that changed the selection | — |
+| `onFocus(ctx, event)` / `onBlur(ctx, event)` | focus enters / leaves the editor root | — |
+| `destroy(ctx)` | editor destroyed (existing) | — |
+
+Order: plugins are called by priority (as everywhere else). Update/selection/focus hooks run after the editor's own event emission order (transaction → update → selectionUpdate). `onMount` cleanups run in reverse order on unmount, and StrictMode mount → unmount → mount must leave exactly one active mount.
+
+#### Overriding with access to the original: `extend(parent => overrides)`
+`extend` keeps accepting an object (shallow override) and also accepts a function receiving the parent spec, so any hook can wrap the original instead of copying it:
+```ts
+image.extend((parent) => ({
+  renderHTML: (node, ctx) => addClass(parent.renderHTML!(node, ctx), 'rounded'),
+  keymap: (ctx) => ({ ...parent.keymap?.(ctx), 'Mod-Shift-i': () => … }),
+}))
+```
+Not provided on purpose: a generic mechanism for plugin A to intercept plugin B's hooks. Cross-plugin intervention stays with `priority`, returning `true` to stop a handler chain, `filterTransaction`, `appendTransaction` and `normalize`.
+
 ## 6. v1 plugins
 
 Easy to hard. Each one proves a capability of the plugin system.
