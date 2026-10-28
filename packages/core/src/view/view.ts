@@ -7,6 +7,7 @@ import type { EditorState } from '../state'
 import type { Transaction } from '../transaction/transaction'
 import { attachClipboard } from './clipboard'
 import { attachComposition } from './composition'
+import { attachDrop } from './drop'
 import { readDomSelection, writeDomSelection } from './dom-selection'
 import { isInIgnoredElement } from './ignore'
 import { attachInput } from './input'
@@ -120,6 +121,7 @@ export class EditorView {
     this.attach(attachMutation)
     this.attach(attachClipboard)
     this.attach(attachNodeSelect)
+    this.attach(attachDrop)
   }
 
   /** The last 20 input events, oldest first. */

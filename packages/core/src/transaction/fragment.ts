@@ -3,7 +3,7 @@ import { createId } from '../model/id'
 import { getNode, isElement, isText, nodeEntries } from '../model/node'
 import { comparePoint, parentPath } from '../model/path'
 import type { DeepReadonly, Doc, ElementNode, Json, Node, Path, Point, Range, Selection, TextNode } from '../model/types'
-import { blockPathOf, deleteRange, replaceSelectedNode, splitBlockAt } from './text'
+import { blockPathOf, deleteRange, insertBlockNode, replaceSelectedNode, splitBlockAt } from './text'
 import type { Transaction } from './transaction'
 
 /**
@@ -198,10 +198,23 @@ export function insertFragment(tr: Transaction, fragment: Fragment, at?: Range |
   const first = nodes[0]!
   const isBlockFragment = isElement(first) && tr.registry.node(first.type)?.kind !== 'inline'
 
-  let end: Point
-  if (!isBlockFragment) end = insertInline(tr, point, nodes)
-  else if (nodes.length === 1) end = insertInline(tr, point, (first as ElementNode).children ?? [])
-  else end = insertBlocks(tr, point, nodes, freshId(used))
+  if (!isBlockFragment) return caretAt(tr, insertInline(tr, point, nodes))
+  const opaque = (n: Node): boolean => isElement(n) && isOpaque(n, tr.registry)
+  if (nodes.length === 1) {
+    // A lone opaque block (e.g. a copied node selection) goes in whole, as a block of its own.
+    if (!opaque(first)) return caretAt(tr, insertInline(tr, point, (first as ElementNode).children ?? []))
+    tr.setSelection({ anchor: point, focus: point })
+    return insertBlockNode(tr, first as ElementNode)
+  }
+  // Opaque edge blocks have no children to merge into the split halves: pad the fragment with a
+  // childless block on that side, so they are inserted whole as middle blocks.
+  const pad: ElementNode = { id: '', type: '', data: {}, children: [] }
+  const last = nodes[nodes.length - 1]!
+  const blocks = [...(opaque(first) ? [pad] : []), ...nodes, ...(opaque(last) ? [pad] : [])]
+  return caretAt(tr, insertBlocks(tr, point, blocks, freshId(used)))
+}
+
+function caretAt(tr: Transaction, end: Point): true {
   tr.setSelection({ anchor: end, focus: end })
   return true
 }

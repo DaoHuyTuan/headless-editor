@@ -220,3 +220,36 @@ describe('insertFragment of existing content under unknown elements', () => {
     expect(JSON.stringify(ed.getJSON())).toContain('"bad"')
   })
 })
+
+describe('insertFragment of opaque blocks', () => {
+  const atom = definePlugin({ name: 'atom', node: { kind: 'block', atom: true } })
+  const ed = (content: Doc, selection: Selection) =>
+    createTestEditor({ plugins: [testParagraph, testBold, atom], doc: content, selection })
+  const insert = (e: ReturnType<typeof ed>, frag: Fragment) => {
+    const tr = e.createTransaction()
+    tr.insertFragment(frag)
+    e.dispatch(tr)
+  }
+
+  it('a fragment of one atom block inserts the block itself, splitting the caret block', () => {
+    const e = ed(doc(p('abcd')), sel([0, 0], 2))
+    insert(e, [el('atom', { k: 1 })])
+    expect(stripIds(e.getJSON())).toEqual(stripIds(doc(p('ab'), el('atom', { k: 1 }), p('cd'))))
+    expect(e.state.selection).toEqual(sel([2, 0], 0))
+  })
+
+  it('a fragment of one atom block replaces an empty block', () => {
+    const e = ed(doc(p('ab'), p('')), sel([1, 0], 0))
+    insert(e, [el('atom')])
+    expect(e.getJSON().children.map((b) => b.type)).toEqual(['paragraph', 'atom', 'paragraph'])
+  })
+
+  it('atom blocks at the edges of a block fragment are inserted whole', () => {
+    const e = ed(doc(p('abcd')), sel([0, 0], 2))
+    insert(e, [el('atom', { k: 1 }), p('x'), el('atom', { k: 2 })])
+    expect(stripIds(e.getJSON())).toEqual(
+      stripIds(doc(p('ab'), el('atom', { k: 1 }), p('x'), el('atom', { k: 2 }), p('cd'))),
+    )
+    expect(e.state.selection).toEqual(sel([4, 0], 0))
+  })
+})

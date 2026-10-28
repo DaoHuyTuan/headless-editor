@@ -5,7 +5,7 @@ import { domToModel } from './dom-selection'
 import { isIgnoredEvent } from './ignore'
 import type { EditorView, ViewModule } from './view'
 
-/** Input types owned by the clipboard module (Task 22): left alone here, not even prevented. */
+/** Input types owned by the clipboard module (`paste` / `cut` events): left alone here, not even prevented. */
 const CLIPBOARD_INPUT = new Set(['insertFromPaste', 'deleteByCut'])
 
 /** The model selection of the event's first target range, or null when there is none (or it is outside). */
@@ -40,7 +40,7 @@ function onBeforeInput(view: EditorView, e: InputEvent): void {
   if (view.composing || e.inputType === 'insertCompositionText') return
   if (CLIPBOARD_INPUT.has(e.inputType)) return
   if (e.inputType === 'insertFromDrop') {
-    // Drag and drop arrives in M2.
+    // Drops are handled by the drop module on `drop` (prevented there, so this rarely fires).
     e.preventDefault()
     return
   }

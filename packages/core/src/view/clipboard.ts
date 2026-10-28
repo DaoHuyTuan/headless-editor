@@ -2,11 +2,13 @@ import type { Editor } from '../editor'
 import { serializeHTML } from '../html/serialize'
 import { parseHTML } from '../html/parse'
 import { defaultBlock, isBlock, sanitizeFragment } from '../content/sanitize'
+import { isNodeSelection } from '../model/editable'
 import { isText } from '../model/node'
 import { isCollapsed, toRange } from '../model/path'
-import type { Doc, ElementNode, Node, Range } from '../model/types'
+import type { Doc, ElementNode, Node, Path, Range } from '../model/types'
 import type { Registry } from '../plugin/registry'
 import { getFragment, type Fragment } from '../transaction/fragment'
+import { replaceSelectedNode } from '../transaction/text'
 import { isIgnoredEvent } from './ignore'
 import type { EditorView, ViewModule } from './view'
 
@@ -20,11 +22,16 @@ function textOf(node: Node): string {
 /**
  * The three clipboard flavors of `range`: `json` is the fragment itself, `html` the fragment
  * serialized as a doc (inline content is wrapped into a default block first), `text` the text of
- * each block (inline elements included) joined by `\n`.
+ * each block (inline elements included) joined by `\n`. With `node` (a node selection's
+ * `selection.node`), the fragment is that node alone.
  */
-export function serializeForClipboard(editor: Editor, range: Range): { html: string; text: string; json: string } {
+export function serializeForClipboard(
+  editor: Editor,
+  range: Range,
+  node?: Path,
+): { html: string; text: string; json: string } {
   const { registry } = editor
-  const fragment = getFragment(editor.state.doc, range)
+  const fragment = getFragment(editor.state.doc, range, node)
   const blocks = fragment.length > 0 && isBlock(fragment[0]!, registry)
   const doc: Doc = {
     type: 'doc',
@@ -70,13 +77,15 @@ export function parseFromClipboard(editor: Editor, data: { json?: string; html?:
 }
 
 /** The model range to copy, or null when the browser should handle the event (collapsed, or outside the root). */
-function copyRange(view: EditorView): Range | null {
+function copyRange(view: EditorView): { range: Range; node?: Path } | null {
   view.syncSelection()
   const domSel = view.root.ownerDocument.getSelection()
   const inside = (n: globalThis.Node | null | undefined) => !!n && view.root.contains(n)
   if (!domSel || !inside(domSel.anchorNode) || !inside(domSel.focusNode)) return null
   const sel = view.editor.state.selection
-  return sel && !isCollapsed(sel) ? toRange(sel) : null
+  // A node selection copies its node, although its caret is collapsed.
+  if (isNodeSelection(sel)) return { range: toRange(sel), node: sel.node }
+  return sel && !isCollapsed(sel) ? { range: toRange(sel) } : null
 }
 
 function onCopy(view: EditorView, e: ClipboardEvent, cut: boolean): void {
@@ -84,39 +93,38 @@ function onCopy(view: EditorView, e: ClipboardEvent, cut: boolean): void {
   // A cut while composing would change the IME's text: the composition owns the DOM.
   if (cut && view.composing) return
   const data = e.clipboardData
-  const range = data && copyRange(view)
-  if (!data || !range) return
+  const target = data && copyRange(view)
+  if (!data || !target) return
   e.preventDefault()
-  const { html, text, json } = serializeForClipboard(view.editor, range)
+  const { html, text, json } = serializeForClipboard(view.editor, target.range, target.node)
   data.setData('text/plain', text)
   data.setData('text/html', html)
   data.setData(FRAGMENT_MIME, json)
   if (!cut) return
   const tr = view.editor.createTransaction()
-  tr.deleteRange(range).setMeta('origin', 'input').setMeta('inputType', 'deleteByCut')
+  // A node selection: the node is removed and the caret goes where node deletion puts it.
+  if (target.node) replaceSelectedNode(tr, 'delete')
+  else tr.deleteRange(target.range)
+  tr.setMeta('origin', 'input').setMeta('inputType', 'deleteByCut')
   view.editor.dispatch(tr)
 }
 
+/** Paste goes through the intent pipeline (`insertFromPaste`): plugins first, then the core default. */
 function onPaste(view: EditorView, e: ClipboardEvent): void {
   if (isIgnoredEvent(view, e)) return
   if (view.composing) return
   view.syncSelection()
   e.preventDefault()
-  const data = e.clipboardData
-  if (!data) return
   const { editor } = view
-  const fragment = parseFromClipboard(editor, {
-    json: data.getData(FRAGMENT_MIME),
-    html: data.getData('text/html'),
-    text: data.getData('text/plain'),
+  editor.handleIntent({
+    inputType: 'insertFromPaste',
+    data: null,
+    dataTransfer: e.clipboardData,
+    range: editor.state.selection,
   })
-  if (fragment.length === 0 || !editor.state.selection) return
-  const tr = editor.createTransaction()
-  tr.insertFragment(fragment).setMeta('origin', 'paste').setMeta('inputType', 'insertFromPaste')
-  editor.dispatch(tr)
 }
 
-/** `copy` / `cut` / `paste` handling: the editor owns the clipboard flavors and the paste insertion. */
+/** `copy` / `cut` / `paste` handling: the editor owns the clipboard flavors; paste becomes an intent. */
 export const attachClipboard: ViewModule = (view) => {
   view.listen(view.root, 'copy', (e) => onCopy(view, e as ClipboardEvent, false))
   view.listen(view.root, 'cut', (e) => onCopy(view, e as ClipboardEvent, true))

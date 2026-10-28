@@ -1,10 +1,12 @@
 import { sanitizeFragment } from './content/sanitize'
+import type { Editor } from './editor'
 import { isNodeSelection } from './model/editable'
 import type { Data, Path } from './model/types'
 import { definePlugin } from './plugin/define'
 import type { Command, InputIntent } from './plugin/types'
 import { insertFragment, type Fragment } from './transaction/fragment'
 import { addMark, removeMark, toggleMark } from './transaction/marks'
+import { FRAGMENT_MIME, parseFromClipboard } from './view/clipboard'
 import type { Transaction } from './transaction/transaction'
 import { deleteBackward, deleteForward, insertText, selectAll, splitBlock, type DeleteUnit } from './transaction/text'
 
@@ -24,6 +26,31 @@ function insertIntentText(tr: Transaction, intent: InputIntent): boolean {
   // With a node selection the model selection is authoritative (the DOM range is only its caret):
   // typing replaces the selected node.
   return insertText(tr, text, isNodeSelection(tr.selection) ? undefined : (intent.range ?? undefined))
+}
+
+/** Transfer input types the core inserts itself, and the origin of their tr. */
+const PASTE_INPUT: Record<string, 'paste' | 'input'> = { insertFromPaste: 'paste', insertFromDrop: 'input' }
+
+/**
+ * Default paste / drop: parses the `dataTransfer` flavors (json, html, text) and inserts the
+ * fragment at the selection (replacing a node selection). A transfer without usable content is still
+ * consumed, so the browser never inserts anything itself.
+ */
+function insertTransfer(intent: InputIntent, editor: Editor): boolean {
+  const transfer = intent.dataTransfer
+  if (!transfer) return false
+  const fragment = parseFromClipboard(editor, {
+    json: transfer.getData(FRAGMENT_MIME),
+    html: transfer.getData('text/html'),
+    text: transfer.getData('text/plain'),
+  })
+  if (fragment.length === 0) return true
+  const tr = editor.createTransaction()
+  tr.meta.origin = PASTE_INPUT[intent.inputType]!
+  tr.meta.inputType = intent.inputType
+  const at = isNodeSelection(tr.selection) ? undefined : (intent.range ?? undefined)
+  if (insertFragment(tr, fragment, at) && tr.ops.length > 0) editor.dispatch(tr)
+  return true
 }
 
 /** Default `beforeinput` handling: inputType → edit on the tr. Returning false leaves the intent unhandled. */
@@ -100,6 +127,7 @@ export const corePlugin = definePlugin({
   // Handled input types are consumed even when there is nothing to change (e.g. Backspace at the
   // doc start), so the browser never edits the DOM on its own; the tr is dispatched only if it has ops.
   onBeforeInput: (intent, ctx) => {
+    if (Object.hasOwn(PASTE_INPUT, intent.inputType)) return insertTransfer(intent, ctx.editor)
     const action = INPUT_ACTIONS[intent.inputType]
     if (!action) return false
     // An insert intent without any text is left unhandled, so nothing is deleted.

@@ -8,7 +8,9 @@ import {
   nodeEntries,
   parseFromClipboard,
   serializeForClipboard,
+  nodeSelection,
   type AnyPlugin,
+  type InputIntent,
   type Editor,
   type Fragment,
 } from '../../src/index'
@@ -323,5 +325,105 @@ describe('clipboard view module', () => {
     root.dispatchEvent(e)
     expect(e.defaultPrevented).toBe(false)
     expect(editor.getJSON().children[0]!.children).toEqual([txt('ab')])
+  })
+})
+
+/** A paste event whose `clipboardData` also carries `files` (a plain stand-in for a FileList). */
+function pasteWithFiles(data: Record<string, string>, files: File[]) {
+  const { e } = clipboardEvent('paste', data)
+  Object.defineProperty((e as unknown as { clipboardData: object }).clipboardData, 'files', { value: files })
+  return e
+}
+
+describe('paste through the intent pipeline', () => {
+  it('a plugin onBeforeInput claiming insertFromPaste with files gets the intent; the default does not insert', () => {
+    const intents: InputIntent[] = []
+    const files = definePlugin({
+      name: 'files',
+      onBeforeInput: (intent) => {
+        if (intent.inputType !== 'insertFromPaste' || !intent.dataTransfer?.files.length) return false
+        intents.push(intent)
+        return true
+      },
+    })
+    const editor = setup(doc(p('p1', txt('ab'))), caret([0, 0], 1), [testParagraph, testBold, files])
+    const root = mount(editor)
+    const e = pasteWithFiles({ 'text/plain': 'zz' }, [new File(['x'], 'a.png', { type: 'image/png' })])
+    root.dispatchEvent(e)
+    expect(e.defaultPrevented).toBe(true)
+    expect(intents).toHaveLength(1)
+    expect(intents[0]!.data).toBeNull()
+    expect(intents[0]!.dataTransfer!.files[0]!.name).toBe('a.png')
+    expect(intents[0]!.range).toEqual(caret([0, 0], 1))
+    expect(editor.getJSON().children[0]!.children).toEqual([txt('ab')])
+  })
+
+  it('without a claiming plugin, a text paste is inserted by the core default', () => {
+    const seen: string[] = []
+    const spy = definePlugin({
+      name: 'spy',
+      onBeforeInput: (intent) => {
+        seen.push(intent.inputType)
+        return false
+      },
+    })
+    const editor = setup(doc(p('p1', txt('ab'))), caret([0, 0], 1), [testParagraph, testBold, spy])
+    const root = mount(editor)
+    root.dispatchEvent(pasteWithFiles({ 'text/plain': 'zz' }, []))
+    expect(seen).toEqual(['insertFromPaste'])
+    expect(editor.getJSON().children[0]!.children).toEqual([txt('azzb')])
+  })
+})
+
+describe('clipboard with a node selection', () => {
+  const atom = definePlugin({ name: 'atom', node: { kind: 'block', atom: true } })
+  const content = () => doc(p('p1', txt('ab')), { id: 'a1', type: 'atom', data: { k: 1 } }, p('p2', txt('cd')))
+
+  function setupNode() {
+    const editor = setup(content(), caret([0, 0], 0), [testParagraph, testBold, atom])
+    const tr = editor.createTransaction()
+    tr.setSelection(nodeSelection(editor.state.doc, editor.registry, [1]))
+    editor.dispatch(tr)
+    const root = mount(editor)
+    return { editor, root }
+  }
+
+  it('copy puts the selected node in the json flavor', () => {
+    const { editor, root } = setupNode()
+    const { e, store } = clipboardEvent('copy')
+    root.dispatchEvent(e)
+    expect(e.defaultPrevented).toBe(true)
+    expect(JSON.parse(store.get(HTE_MIME)!)).toEqual([editor.state.doc.children[1]])
+    expect(editor.state.doc.children[1]).toMatchObject({ type: 'atom', data: { k: 1 } })
+    expect(store.has('text/plain')).toBe(true)
+    expect(store.has('text/html')).toBe(true)
+    expect(stripIds(editor.getJSON())).toEqual(stripIds(content()))
+  })
+
+  it('cut removes the node (origin input / deleteByCut); pasting it elsewhere inserts it with a fresh id', () => {
+    const { editor, root } = setupNode()
+    const metas: unknown[] = []
+    editor.on('transaction', ({ tr }) => metas.push({ ...tr.meta }))
+    const cut = clipboardEvent('cut')
+    root.dispatchEvent(cut.e)
+    expect(cut.e.defaultPrevented).toBe(true)
+    expect(stripIds(editor.getJSON())).toEqual(stripIds(doc(p('p1', txt('ab')), p('p2', txt('cd')))))
+    expect(editor.state.selection).toEqual(caret([0, 0], 2))
+    expect(metas).toContainEqual(expect.objectContaining({ origin: 'input', inputType: 'deleteByCut' }))
+
+    // Paste it twice: the second copy must get a fresh id.
+    for (let i = 0; i < 2; i++) root.dispatchEvent(clipboardEvent('paste', Object.fromEntries(cut.store)).e)
+    const blocks = editor.getJSON().children
+    expect(blocks.map((b) => b.type)).toEqual(['paragraph', 'atom', 'atom', 'paragraph'])
+    expect(blocks[1]!.data).toEqual({ k: 1 })
+    const all = ids(editor.getJSON())
+    expect(new Set(all).size).toBe(all.length)
+  })
+
+  it('paste with a node selection replaces the node', () => {
+    const { editor, root } = setupNode()
+    root.dispatchEvent(clipboardEvent('paste', { 'text/plain': 'zz' }).e)
+    expect(stripIds(editor.getJSON())).toEqual(stripIds(doc(p('p1', txt('abzz')), p('p2', txt('cd')))))
+    expect(editor.state.selection).toEqual(caret([0, 0], 4))
   })
 })
