@@ -18,6 +18,13 @@ import { safeSrc } from './src-policy'
 
 export { safeSrc } from './src-policy'
 
+/** The `data` of an image node. */
+export interface ImageData {
+  src: string
+  alt: string
+  width?: number
+}
+
 export interface ImageOptions {
   /** Uploads `file` and resolves with its permanent URL (must pass `safeSrc`). Required for uploads. */
   upload: (file: File) => Promise<string>
