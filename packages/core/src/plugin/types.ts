@@ -130,7 +130,8 @@ export interface NodeViewProps<D = Data, O = unknown, T = unknown, S = unknown> 
   /**
    * For a non-atom node: the element the core renders the node's children into (`<div data-hte-content
    * contenteditable="true">`, a `<span>` for an inline node). Created with the view and the same in
-   * every update. The view places it inside its own DOM and never changes it; the core owns it.
+   * every update. The view places it inside its own DOM, never under a `contenteditable="false"`
+   * element (see `NodeViewFactory`), and never changes it; the core owns it.
    * Undefined for atoms.
    */
   contentDOM?: HTMLElement
@@ -147,10 +148,14 @@ export interface NodeViewInstance<D = Data, O = unknown, T = unknown, S = unknow
  * Renders a node into `container` (created by the renderer: `<div>` for a block, `<span>` for an
  * inline node; `contenteditable="false"` for an atom). Called once per element id; the container is
  * never rebuilt for a data change. Elements inside it marked `data-editor-ignore` are fully left to
- * the view. A non-atom node's view gets `props.contentDOM` and places it in its DOM; everything else
- * it renders must be `contenteditable="false"` (or `data-editor-ignore` for controls). Inside
- * `contentDOM`, events, mutations, selection and composition are the editor's as in any block;
- * outside it the atom rules apply (`stopEvent`, `ignoreMutation`).
+ * the view. A non-atom node's view gets `props.contentDOM` and places it in its DOM (synchronously or
+ * later, e.g. on a React commit). The elements on the path from the container down to `contentDOM`
+ * must stay editable (no `contenteditable` attribute): a `contenteditable="false"` ancestor would make
+ * `contentDOM` a separate editing host that the caret, selection extension and select-all do not
+ * cross (the editor warns). Only the view's elements beside that path (headers, labels) are marked
+ * `contenteditable="false"`, and its controls `data-editor-ignore`. Inside `contentDOM`, events,
+ * mutations, selection and composition are the editor's as in any block; outside it the atom rules
+ * apply (`stopEvent`, `ignoreMutation`).
  */
 export type NodeViewFactory<D = Data, O = unknown, T = unknown, S = unknown> = (
   container: HTMLElement,

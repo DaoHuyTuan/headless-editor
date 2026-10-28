@@ -44,6 +44,8 @@ export interface NodeContentProps {
  * Where a non-atom React node view shows its editable content: renders a placeholder and moves the
  * view's `contentDOM` (created and filled by the core) into it. Render it exactly once per node view.
  * The core owns `contentDOM`: unmounting only detaches it, and re-renders never move or recreate it.
+ * Never render it inside a `contentEditable={false}` element: mark only its siblings (headers, labels)
+ * non-editable, or the content becomes a separate editing host (the core warns).
  */
 export function NodeContent({ as: Tag = 'div', className }: NodeContentProps) {
   const ctx = useContext(NodeContentContext)
@@ -67,7 +69,8 @@ export function NodeContent({ as: Tag = 'div', className }: NodeContentProps) {
         if (unused && contentDOM.parentNode === placeholder) placeholder.removeChild(contentDOM)
       })
     }
-  }, [ctx, contentDOM])
+    // `Tag`: another tag is another placeholder element, which must take contentDOM.
+  }, [ctx, contentDOM, Tag])
   // Outside a non-atom node view (no context) it renders an empty placeholder.
   return <Tag ref={ref as never} className={className} />
 }

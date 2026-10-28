@@ -8,6 +8,17 @@ function isComposingChange(view: EditorView, record: MutationRecord): boolean {
   return !!leaf && leaf.contains(record.target)
 }
 
+/** The node views' contentDOMs `record` added to the root, directly or inside an added subtree. */
+function placedContentDOMs(view: EditorView, record: MutationRecord): globalThis.Node[] {
+  const out: globalThis.Node[] = []
+  for (const node of Array.from(record.addedNodes)) {
+    if (node.nodeType !== 1 || !view.root.contains(node)) continue
+    const candidates = [node, ...Array.from((node as Element).querySelectorAll('[data-hte-content]'))]
+    for (const c of candidates) if (view.renderer.isContentDOM(c)) out.push(c)
+  }
+  return out
+}
+
 /** Whether every node `record` adds or removes is a node view's `contentDOM`. */
 function movesContentDOM(view: EditorView, record: MutationRecord): boolean {
   const nodes = [...Array.from(record.addedNodes), ...Array.from(record.removedNodes)]
@@ -50,13 +61,22 @@ export const attachMutation: ViewModule = (view) => {
   const observer = new Observer((records) => {
     if (view.renderer.rendering) return
     let revert = false
+    let placed = false
     for (const record of records) {
+      // A node view placed its contentDOM after the render (e.g. a React portal commit), maybe
+      // inside a subtree of its own.
+      for (const node of placedContentDOMs(view, record)) {
+        placed = true
+        view.renderer.checkContentPlacement(node)
+      }
       const action = classify(view, record)
       if (action === 'ignore') continue
       revert = true
       if (action !== 'revert') view.renderer.invalidateNodeView(action.rebuild)
     }
+    // The update shows the selection; otherwise a newly placed contentDOM can now show it.
     if (revert) view.update(view.editor.state)
+    else if (placed) view.refreshSelection()
   })
   observer.observe(view.root, {
     characterData: true,

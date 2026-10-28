@@ -253,6 +253,10 @@ export class EditorView {
     const domSel = this.domSelection()
     const anchor = domSel?.anchorNode
     if (!domSel || !anchor || !this.root.contains(anchor)) return
+    // The model selection is in a leaf whose node view has not placed its contentDOM yet: the DOM
+    // selection cannot show it, and reading a stale one (e.g. a caret the browser collapsed into the
+    // root) would overwrite it. A DOM selection inside a leaf (the user put it there) is still read.
+    if (this.selectionDetached() && !(this.inLeaf(anchor) && this.inLeaf(domSel.focusNode))) return
     const sel = readDomSelection(this.renderer, domSel)
     // Also covers the async selectionchange fired after our own writes: it maps back to the model.
     if (!sel || sameSelection(sel, this.editor.state.selection)) return
@@ -261,7 +265,33 @@ export class EditorView {
     this.editor.dispatch(tr)
   }
 
+  /**
+   * Shows the model selection in the DOM again when the editor has focus and is not composing:
+   * called when a node view placed its `contentDOM` after the render (e.g. a React portal commit).
+   */
+  refreshSelection(): void {
+    if (this.destroyed || this.composing || !this.hasFocus()) return
+    this.writeSelection(this.editor.state.selection)
+  }
+
   // --- internals ---
+
+  /** Whether a point of the model selection is in a rendered leaf that is not inside the root. */
+  private selectionDetached(): boolean {
+    const sel = this.editor.state.selection
+    if (!sel) return false
+    return this.renderer.isLeafDetached(sel.anchor.path) || this.renderer.isLeafDetached(sel.focus.path)
+  }
+
+  /** Whether `node` is inside a rendered leaf of the root. */
+  private inLeaf(node: globalThis.Node | null): boolean {
+    let cur: globalThis.Node | null = node
+    while (cur && cur !== this.root) {
+      if (cur.nodeType === 1 && this.renderer.pathOfLeaf(cur as Element)) return true
+      cur = cur.parentNode
+    }
+    return false
+  }
 
   private onTransaction(state: EditorState, tr: Transaction): void {
     if (this.composition) {

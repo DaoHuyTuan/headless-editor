@@ -100,12 +100,8 @@ export function writeDomSelection(r: Renderer, sel: Selection | null, domSel: gl
     }
     // Not rendered: show its caret.
   }
-  // A leaf not (yet) in the root, e.g. in a contentDOM its view has not placed: nothing to show.
-  const shown = (path: Path) => {
-    const leaf = r.leafAt(path)
-    return !!leaf && r.root.contains(leaf)
-  }
-  if (!shown(sel.anchor.path) || !shown(sel.focus.path)) return
+  // `leafAt` is null for a leaf not in the root (e.g. in a contentDOM its view has not placed yet).
+  if (!r.leafAt(sel.anchor.path) || !r.leafAt(sel.focus.path)) return
   if (current && !current.node && pointEquals(current.anchor, sel.anchor) && pointEquals(current.focus, sel.focus)) {
     return
   }

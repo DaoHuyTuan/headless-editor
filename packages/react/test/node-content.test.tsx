@@ -142,6 +142,62 @@ describe('NodeContent', () => {
     expect(errors).not.toHaveBeenCalled()
   })
 
+  it('a caret in a newly inserted box survives the portal commit and is shown in its contentDOM', async () => {
+    let editor!: TestEditor
+    const { getByTestId } = render(
+      <StrictMode>
+        <App onEditor={(e) => (editor = e)} view={BoxView} onBump={() => {}} />
+      </StrictMode>,
+    )
+    const root = getByTestId('content')
+    act(() => editor.view!.focus())
+    act(() => {
+      const tr = editor.createTransaction()
+      tr.insertNode([1], el('box', txt('world')))
+      tr.setSelection(sel([1, 0], 5))
+      editor.dispatch(tr)
+    })
+    // The portal commit placed contentDOM; then the observer, a stale selectionchange and a sync.
+    await act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)))
+    act(() => {
+      document.dispatchEvent(new Event('selectionchange'))
+      editor.view!.syncSelection()
+    })
+    expect(editor.state.selection).toEqual(sel([1, 0], 5))
+    const content = root.querySelectorAll<HTMLElement>('[data-hte-content]')[0]!
+    expect(content.textContent).toBe('world')
+    const domSel = document.getSelection()!
+    expect(content.contains(domSel.anchorNode)).toBe(true)
+    expect(domSel.anchorOffset).toBe(5)
+    expect(errors).not.toHaveBeenCalled()
+  })
+
+  it('changing `as` moves contentDOM into the new placeholder', async () => {
+    const SwitchView: ReactNodeView<{ inline?: boolean }> = ({ node }) => (
+      <section className="switch-view">
+        <NodeContent as={node.data.inline ? 'span' : 'div'} className="body" />
+      </section>
+    )
+    let editor!: TestEditor
+    const { getByTestId } = render(
+      <StrictMode>
+        <App onEditor={(e) => (editor = e)} view={SwitchView} onBump={() => {}} />
+      </StrictMode>,
+    )
+    const root = getByTestId('content')
+    const content = root.querySelector<HTMLElement>('[data-hte-content]')!
+    expect(content.parentElement!.tagName).toBe('DIV')
+    act(() => {
+      editor.commands.setNodeData([1], { inline: true })
+    })
+    await act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)))
+    expect(root.querySelector('[data-hte-content]')).toBe(content)
+    expect(content.parentElement!.tagName).toBe('SPAN')
+    expect(content.parentElement!.className).toBe('body')
+    expect(root.contains(content)).toBe(true)
+    expect(errors).not.toHaveBeenCalled()
+  })
+
   it('warns in dev when a non-atom view renders without NodeContent', async () => {
     render(
       <StrictMode>

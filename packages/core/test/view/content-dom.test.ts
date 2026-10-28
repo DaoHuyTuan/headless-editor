@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   definePlugin,
   modelToDom,
@@ -97,6 +97,7 @@ function setDomCaret(editor: Editor, path: number[], offset: number): void {
 }
 
 afterEach(() => {
+  vi.restoreAllMocks()
   document.getSelection()?.removeAllRanges()
   document.body.replaceChildren()
 })
@@ -288,18 +289,76 @@ describe('non-atom node views: selection', () => {
     expect(readDomSelection(editor.view!.renderer, domSel)).toEqual(range)
   })
 
-  it('a contentDOM inside a non-editable wrapper still maps to its text', () => {
-    const factory: NodeViewFactory = (c, props) => {
+  it('the sibling-header layout keeps the path to contentDOM editable (no warning)', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { root } = mount(doc(p('a'), b('hello')), { selection: sel([1, 0], 2) })
+    for (let cur = contentOf(root).parentElement; cur && cur !== root; cur = cur.parentElement) {
+      expect(cur.getAttribute('contenteditable')).not.toBe('false')
+    }
+    expect(warn).not.toHaveBeenCalled()
+  })
+
+  it('warns once when contentDOM is placed under a contenteditable="false" ancestor', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    let later: (() => void) | undefined
+    const wrapped: NodeViewFactory = (c, props) => {
       const wrap = document.createElement('div')
       wrap.setAttribute('contenteditable', 'false')
       wrap.append(props.contentDOM!)
       c.append(wrap)
       return { update: () => {}, destroy: () => {} }
     }
-    const { editor, root } = mount(doc(p('a'), b('hello')), { selection: sel([1, 0], 2), factory })
+    mount(doc(p('a'), b('hello')), { factory: wrapped })
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(String(warn.mock.calls[0]![0])).toContain('contenteditable="false"')
+    document.body.replaceChildren()
+    warn.mockClear()
+    // Placed later (after the render): seen by the mutation module.
+    const deferred: NodeViewFactory = (c, props) => {
+      const wrap = document.createElement('div')
+      wrap.setAttribute('contenteditable', 'false')
+      c.append(wrap)
+      later = () => wrap.append(props.contentDOM!)
+      return { update: () => {}, destroy: () => {} }
+    }
+    mount(doc(p('a'), b('hello')), { factory: deferred })
+    expect(warn).not.toHaveBeenCalled()
+    later!()
+    await flush()
+    expect(warn).toHaveBeenCalledTimes(1)
+  })
+
+  it('syncSelection does not overwrite a selection whose leaves are not placed yet; placing them shows it', async () => {
+    let place: (() => void) | undefined
+    const deferred: NodeViewFactory = (c, props) => {
+      place = () => c.append(props.contentDOM!)
+      return { update: () => {}, destroy: () => {} }
+    }
+    const { editor, root, view } = mount(doc(p('a'), b('hello')), { selection: sel([1, 0], 5), factory: deferred })
+    expect(root.contains(view.renderer.leafAt([1, 0]))).toBe(false)
+    // A stale DOM caret the browser collapsed into the root.
+    document.getSelection()!.setBaseAndExtent(root, 1, root, 1)
+    let dispatched = 0
+    editor.on('transaction', () => dispatched++)
+    view.syncSelection()
+    expect(dispatched).toBe(0)
+    expect(editor.state.selection).toEqual(sel([1, 0], 5))
+
+    place!()
+    await flush()
     const domSel = document.getSelection()!
     expect(contentOf(root).contains(domSel.anchorNode)).toBe(true)
-    expect(readDomSelection(editor.view!.renderer, domSel)).toEqual(sel([1, 0], 2))
+    expect(readDomSelection(view.renderer, domSel)).toEqual(sel([1, 0], 5))
+    view.syncSelection()
+    expect(dispatched).toBe(0)
+  })
+
+  it('a DOM caret the user put in a placed leaf is still read while another leaf is detached', () => {
+    const deferred: NodeViewFactory = () => ({ update: () => {}, destroy: () => {} })
+    const { editor, view } = mount(doc(p('abc'), b('hello')), { selection: sel([1, 0], 5), factory: deferred })
+    setDomCaret(editor, [0, 0], 2)
+    view.syncSelection()
+    expect(editor.state.selection).toEqual(sel([0, 0], 2))
   })
 
   it('a DOM position in the header maps to a boundary of the box text', () => {

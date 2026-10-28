@@ -116,6 +116,8 @@ export class Renderer {
   private readonly byDom = new WeakMap<Element, ElementEntry>()
   /** Node-view entries by their `contentDOM`. */
   private readonly byContent = new WeakMap<Element, ElementEntry>()
+  /** contentDOMs already warned about by `checkContentPlacement`. */
+  private readonly warnedContent = new WeakSet<Element>()
   /** The text each leaf span currently shows; missing when unknown (skipped while the model moved on). */
   private readonly leafText = new WeakMap<Element, TextNode>()
   /** The decoration signature each leaf span was last rendered with (see `decorationSignature`). */
@@ -221,6 +223,27 @@ export class Renderer {
     return entry && this.byId.get(entry.node.id) === entry ? entry.node : null
   }
 
+  /**
+   * Warns (once per contentDOM) when a node view placed its `contentDOM` below a
+   * `contenteditable="false"` element of its container: that makes it a separate editing host, which
+   * the caret, selection extension and select-all do not cross. Only the view's own DOM beside the
+   * path to `contentDOM` (headers, controls) may be non-editable.
+   */
+  checkContentPlacement(contentDOM: globalThis.Node): void {
+    const entry = this.byContent.get(contentDOM as Element)
+    if (!entry || this.warnedContent.has(contentDOM as Element)) return
+    for (let cur = contentDOM.parentNode; cur && cur !== entry.dom; cur = cur.parentNode) {
+      if (cur.nodeType === 1 && (cur as Element).getAttribute('contenteditable') === 'false') {
+        this.warnedContent.add(contentDOM as Element)
+        console.warn(
+          `[hte] The node view of "${entry.node.type}" placed its contentDOM inside a contenteditable="false" ` +
+            'element: mark only the elements beside contentDOM (headers, controls) as non-editable, never an ancestor.',
+        )
+        return
+      }
+    }
+  }
+
   /** Whether `node` is the `contentDOM` of a current non-atom node view. */
   isContentDOM(node: globalThis.Node): boolean {
     if (node.nodeType !== 1 || !(node as Element).hasAttribute(CONTENT_ATTR)) return false
@@ -273,6 +296,15 @@ export class Renderer {
   leafAt(path: Path): HTMLElement | null {
     const dom = this.domAt(path)
     return dom && this.isLeaf(dom) ? dom : null
+  }
+
+  /**
+   * Whether the text at `path` is rendered by a leaf that is not inside the root: its node view has
+   * not placed its `contentDOM` (yet). `leafAt` returns null for such a leaf.
+   */
+  isLeafDetached(path: Path): boolean {
+    const dom = this.domAt(path)
+    return !!dom && dom.hasAttribute(LEAF_ATTR) && !this.root.contains(dom)
   }
 
   /** The element root rendered for the element at `path`. */
@@ -417,6 +449,8 @@ export class Renderer {
       // Views are keyed by id: a duplicate id gets a container showing only its content.
       if (entry.nodeView && !duplicate) {
         this.nodeViews.create(entry.nodeView, entry.dom, node, selected, entry.contentDOM)
+        // Placed by the factory itself (a later placement is checked by the mutation module).
+        if (entry.contentDOM?.parentNode) this.checkContentPlacement(entry.contentDOM)
       } else if (entry.contentDOM) {
         entry.dom.appendChild(entry.contentDOM)
       }
