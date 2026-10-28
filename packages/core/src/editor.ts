@@ -26,6 +26,7 @@ import type { EditorState } from './state'
 import type { Fragment } from './transaction/fragment'
 import { isMarkActive } from './transaction/marks'
 import { Transaction } from './transaction/transaction'
+import type { Decoration } from './view/decorations'
 import { EditorView } from './view/view'
 
 export interface EditorOptions<P extends readonly AnyPlugin[] = readonly AnyPlugin[]> {
@@ -329,6 +330,16 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
   /** Called by the view when focus leaves its root: runs every plugin's `onBlur` by priority. */
   handleBlur(event: FocusEvent): void {
     throwFirst(this.runHooks((plugin, ctx) => plugin.spec.onBlur?.(ctx, event)))
+  }
+
+  /** Every plugin's `decorations` for `state`, by priority (what the view draws on its next render). */
+  getDecorations(state: EditorState): Decoration[] {
+    const out: Decoration[] = []
+    for (const plugin of this.registry.plugins) {
+      const hook = plugin.spec.decorations
+      if (hook) out.push(...hook(state, this.getContext(plugin)))
+    }
+    return out
   }
 
   /** Runs each plugin's `transformPasted` on `fragment`, by priority. */

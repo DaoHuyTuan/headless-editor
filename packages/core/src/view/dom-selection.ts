@@ -1,13 +1,13 @@
 import { nodeSelection } from '../model/editable'
 import { pointEquals } from '../model/path'
 import type { Path, Point, Selection } from '../model/types'
+import { textsOutsideWidgets, widgetAround } from './decorations'
 import type { Renderer } from './renderer'
 
 const LEAF_ATTR = 'data-hte-leaf'
 const ID_ATTR = 'data-hte-id'
 const ZW_ATTR = 'data-hte-zw'
 const ZW = '​'
-const SHOW_TEXT = 4
 const PRECEDING = 2
 
 /**
@@ -38,6 +38,13 @@ export function modelToDom(r: Renderer, p: Point): { node: globalThis.Node; offs
 export function domToModel(r: Renderer, node: globalThis.Node, offset: number): Point | null {
   const root = r.root
   if (!root.contains(node)) return null
+
+  // A position inside a decoration widget (not model text) is the boundary before the widget.
+  const widget = widgetAround(root, node)
+  if (widget) {
+    node = widget.parentNode!
+    offset = indexOf(widget)
+  }
 
   const leaf = leafAround(r, node)
   if (leaf) return pointInLeaf(r, leaf, node, offset)
@@ -117,11 +124,9 @@ function samePath(a: Path, b: Path): boolean {
   return a.length === b.length && a.every((v, i) => v === b[i])
 }
 
+/** The DOM texts inside `el`, in order; texts of decoration widgets are not model text and are skipped. */
 function textsIn(el: globalThis.Node): Text[] {
-  const walker = el.ownerDocument!.createTreeWalker(el, SHOW_TEXT)
-  const out: Text[] = []
-  for (let n = walker.nextNode(); n; n = walker.nextNode()) out.push(n as Text)
-  return out
+  return textsOutsideWidgets(el)
 }
 
 /** The model text length of a leaf (zero-width placeholders excluded). */

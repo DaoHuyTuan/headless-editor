@@ -109,7 +109,7 @@ export class EditorView {
     readonly root: HTMLElement,
   ) {
     this.renderer = new Renderer(root, editor)
-    this.renderer.render(editor.state.doc)
+    this.renderer.render(editor.state.doc, { decorations: editor.getDecorations(editor.state) })
 
     this.disposers.push(
       editor.on('options', ({ editor: ed, plugin }) => {
@@ -159,15 +159,20 @@ export class EditorView {
 
   /**
    * Renders `state` and, when the editor has focus, shows its selection in the DOM. While composing,
-   * the composing leaf is left to the IME and the DOM selection is not touched.
+   * the composing leaf is left to the IME and the DOM selection is not touched. The plugins'
+   * decorations are computed for `state` on every update; the composing leaf gets them once the
+   * composition ends.
    */
   update(state: EditorState): void {
     if (this.destroyed) return
     const target = this.composing ? this.composition : null
     const selectedNode = state.selection?.node
+    const decorations = this.editor.getDecorations(state)
     this.renderer.render(
       state.doc,
-      target ? { skipLeaf: target.leaf, skipPath: target.path, selectedNode } : { selectedNode },
+      target
+        ? { skipLeaf: target.leaf, skipPath: target.path, selectedNode, decorations }
+        : { selectedNode, decorations },
     )
     if (!this.composing && this.hasFocus()) this.writeSelection(state.selection)
   }

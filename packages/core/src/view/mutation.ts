@@ -1,3 +1,4 @@
+import { widgetAround } from './decorations'
 import { isInIgnoredElement } from './ignore'
 import type { EditorView, ViewModule } from './view'
 
@@ -10,7 +11,8 @@ function isComposingChange(view: EditorView, record: MutationRecord): boolean {
 /**
  * What to do with a record that is neither the renderer's own nor the IME's: `'ignore'` when its
  * target is no longer inside the root, inside a
- * `data-editor-ignore` element, or inside a node view unless its plugin's `ignoreMutation` returns
+ * `data-editor-ignore` element, inside a decoration widget (its content belongs to whoever rendered
+ * it), or inside a node view unless its plugin's `ignoreMutation` returns
  * false (then the id of the node view to rebuild); `'revert'` anywhere else.
  */
 function classify(view: EditorView, record: MutationRecord): 'ignore' | 'revert' | { rebuild: string } {
@@ -18,6 +20,7 @@ function classify(view: EditorView, record: MutationRecord): 'ignore' | 'revert'
   // subtree replaced by a React portal update): the detaching record, if foreign, is judged itself.
   if (!view.root.contains(record.target)) return 'ignore'
   if (isComposingChange(view, record) || isInIgnoredElement(view, record.target)) return 'ignore'
+  if (widgetAround(view.root, record.target)) return 'ignore'
   const container = view.renderer.nodeViewAround(record.target)
   const node = container && view.renderer.nodeOfElement(container)
   if (!node) return 'revert'
