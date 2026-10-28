@@ -131,7 +131,8 @@ describe('insertFragment / insertContent', () => {
     })
     ed.commands.insertContent([txt('X'), el('mention', txt('@m'))])
     expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p('aX', el('mention', txt('@m')), 'b'))))
-    expect(ed.state.selection).toEqual(sel([0, 0], 2))
+    // Right after the atom: the start of the text following it.
+    expect(ed.state.selection).toEqual(sel([0, 2], 0))
   })
 
   it('places the caret at the start of the remainder when the last block is empty', () => {

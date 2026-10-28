@@ -247,3 +247,84 @@ describe('read/writeDomSelection: node selections', () => {
     expect(readDomSelection(renderer, domSel())?.node).toBeUndefined()
   })
 })
+
+describe('inline atoms: DOM <-> model mapping', () => {
+  const domSel = () => document.getSelection()!
+  const chip = definePlugin({
+    name: 'chip',
+    node: { kind: 'inline', atom: true },
+    renderHTML: () => ['span', { class: 'chip' }, '@abcd'],
+  })
+  const viewChip = definePlugin({ name: 'viewChip', node: { kind: 'inline', atom: true } })
+
+  function setupChip(...children: (Node | string)[]) {
+    const editor = createTestEditor({ plugins: [testParagraph, testBold, chip, viewChip] })
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    const renderer = new Renderer(root, editor)
+    renderer.render(doc(p('p1', ...children)))
+    return { root, renderer }
+  }
+
+  it('renders the inline atom root non-editable and empty texts beside it as zero-width leaves', () => {
+    const { renderer } = setupChip(txt(''), node('c1', 'chip'), txt(''))
+    const chipDom = renderer.elementAt([0, 1])!
+    expect(chipDom.getAttribute('contenteditable')).toBe('false')
+    for (const path of [[0, 0], [0, 2]]) {
+      const leaf = renderer.leafAt(path)!
+      expect(leaf.querySelector('br')).toBeNull()
+      expect(leaf.textContent).toBe('​')
+    }
+  })
+
+  it('model -> DOM -> model round-trips at every caret around the chip', () => {
+    const { renderer } = setupChip(txt(''), node('c1', 'chip'), txt('ab'), node('c2', 'chip'), txt(''))
+    for (const point of [
+      { path: [0, 0], offset: 0 },
+      { path: [0, 2], offset: 0 },
+      { path: [0, 2], offset: 1 },
+      { path: [0, 2], offset: 2 },
+      { path: [0, 4], offset: 0 },
+    ]) {
+      const dom = modelToDom(renderer, point)
+      expect(domToModel(renderer, dom.node, dom.offset)).toEqual(point)
+    }
+  })
+
+  it('maps a DOM text offset after the zero-width placeholder to model offset 0', () => {
+    const { renderer } = setupChip(txt('a'), node('c1', 'chip'), txt(''))
+    const t = textIn(renderer.leafAt([0, 2])!)
+    expect(domToModel(renderer, t, 1)).toEqual({ path: [0, 2], offset: 0 })
+  })
+
+  it('maps positions inside the chip to the boundary before it, or after it past its middle', () => {
+    const { renderer } = setupChip(txt('x'), node('c1', 'chip'), txt('y'))
+    const chipText = textIn(renderer.elementAt([0, 1])!)
+    expect(chipText.data).toBe('@abcd')
+    expect(domToModel(renderer, chipText, 0)).toEqual({ path: [0, 0], offset: 1 })
+    expect(domToModel(renderer, chipText, 2)).toEqual({ path: [0, 0], offset: 1 })
+    expect(domToModel(renderer, chipText, 3)).toEqual({ path: [0, 2], offset: 0 })
+    expect(domToModel(renderer, chipText, 5)).toEqual({ path: [0, 2], offset: 0 })
+    const chipDom = renderer.elementAt([0, 1])!
+    expect(domToModel(renderer, chipDom, 0)).toEqual({ path: [0, 0], offset: 1 })
+    expect(domToModel(renderer, chipDom, 1)).toEqual({ path: [0, 2], offset: 0 })
+  })
+
+  it('maps container positions next to the chip to the adjacent text leaves', () => {
+    const { renderer } = setupChip(txt('x'), node('c1', 'chip'), txt('y'))
+    const chipDom = renderer.elementAt([0, 1])!
+    const parent = chipDom.parentNode!
+    const i = Array.prototype.indexOf.call(parent.childNodes, chipDom) as number
+    expect(domToModel(renderer, parent, i)).toEqual({ path: [0, 0], offset: 1 })
+    expect(domToModel(renderer, parent, i + 1)).toEqual({ path: [0, 2], offset: 0 })
+  })
+
+  it('writeDomSelection places the caret in the text leaves beside the chip', () => {
+    const { renderer } = setupChip(txt(''), node('c1', 'viewChip'), txt(''))
+    const sel: Selection = { anchor: { path: [0, 0], offset: 0 }, focus: { path: [0, 2], offset: 0 } }
+    writeDomSelection(renderer, sel, domSel())
+    expect(renderer.leafAt([0, 0])!.contains(domSel().anchorNode)).toBe(true)
+    expect(renderer.leafAt([0, 2])!.contains(domSel().focusNode)).toBe(true)
+    expect(readDomSelection(renderer, domSel())).toEqual(sel)
+  })
+})

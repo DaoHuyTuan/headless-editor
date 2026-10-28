@@ -44,7 +44,7 @@ describe('normalize: core rules', () => {
   it('rule 2: consecutive root texts/inlines are wrapped into one default block', () => {
     const d = rawDoc(txt('a'), el('link', txt('l')), el('paragraph', txt('p')), txt('b'))
     expect(normalized(d)).toEqual(
-      stripIds(doc(el('paragraph', txt('a'), el('link', txt('l'))), el('paragraph', txt('p')), el('paragraph', txt('b')))),
+      stripIds(doc(el('paragraph', txt('a'), el('link', txt('l')), txt('')), el('paragraph', txt('p')), el('paragraph', txt('b')))),
     )
   })
 
@@ -83,12 +83,20 @@ describe('normalize: core rules', () => {
     expect(tr.selection).toEqual(sel([0, 0], 0, [0, 0], 1))
   })
 
-  it('rule 4 re-homes a caret next to an inline element into the inline’s edge text', () => {
-    const after = run(doc(el('paragraph', el('link', txt('ab')), txt('', 'bold'))), base, sel([0, 1], 0))
-    expect(stripIds(after.doc)).toEqual(stripIds(doc(el('paragraph', el('link', txt('ab'))))))
-    expect(after.selection).toEqual(sel([0, 0, 0], 2))
-    const before = run(doc(el('paragraph', txt('', 'bold'), el('link', txt('ab')))), base, sel([0, 0], 0))
-    expect(before.selection).toEqual(sel([0, 0, 0], 0))
+  it('rule 4 keeps the empty texts rule 10 needs beside an inline element, with the caret in them', () => {
+    const d = doc(el('paragraph', txt('', 'bold'), el('link', txt('ab')), txt('', 'bold')))
+    const tr = run(d, base, sel([0, 2], 0))
+    expect(tr.ops).toEqual([])
+    expect(tr.selection).toEqual(sel([0, 2], 0))
+  })
+
+  it('rule 4 re-homes a caret past an unknown (opaque) element to the nearest editable text', () => {
+    const widget: ElementNode = { id: 'w', type: 'widget', data: {}, children: [txt('hidden')] }
+    const after = run(doc(el('paragraph', txt('a'), widget, txt('', 'bold'))), base, sel([0, 2], 0))
+    expect(stripIds(after.doc)).toEqual(stripIds(doc(el('paragraph', txt('a'), widget))))
+    expect(after.selection).toEqual(sel([0, 0], 1))
+    const before = run(doc(el('paragraph', txt('', 'bold'), widget, txt('b'))), base, sel([0, 0], 0))
+    expect(before.selection).toEqual(sel([0, 1], 0))
   })
 
   it('rule 5:a non-atom block with no children gets an empty text; atoms are left alone', () => {

@@ -10,9 +10,13 @@ import type { EditorView, ViewModule } from './view'
 
 const INPUT_TYPE = 'insertCompositionText'
 
-/** The text an IME left in a leaf: its DOM text (a lone `<br data-hte-break>` counts as empty). */
+/**
+ * The text an IME left in a leaf: its DOM text (a lone `<br data-hte-break>` counts as empty). In a
+ * zero-width leaf (an empty text beside an inline atom) the zero-width placeholder is not text.
+ */
 function leafDomText(leaf: HTMLElement): string {
-  return leaf.textContent ?? ''
+  const text = leaf.textContent ?? ''
+  return leaf.hasAttribute('data-hte-zw') ? text.split('​').join('') : text
 }
 
 function isHighSurrogate(code: number): boolean {

@@ -11,6 +11,9 @@ const ID_ATTR = 'data-hte-id'
 const LEAF_ATTR = 'data-hte-leaf'
 const NODE_VIEW_ATTR = 'data-hte-node-view'
 const SELECTED_ATTR = 'data-hte-selected'
+const ZW_ATTR = 'data-hte-zw'
+/** What an empty text beside an inline element shows: a caret can sit in it, and it adds no line break. */
+const ZW = '​'
 
 /**
  * The rendered DOM of one element (or of the root, for the doc). Children occupy the hole's
@@ -67,8 +70,11 @@ interface RenderPass {
  * DOM contract: each element's root is the first element produced by its `renderHTML` (a `<div>` /
  * `<span>` wrapper for block / inline types without one) carrying `data-hte-id`; children go into the
  * content hole. Each text is a `<span data-hte-leaf>` holding its marks nested by rank (lowest
- * outermost) around the DOM text, or `<br data-hte-break>` when empty. Unknown elements render as an
- * empty `<div data-hte-id data-hte-unknown="<type>" contenteditable="false">`.
+ * outermost) around the DOM text, or `<br data-hte-break>` when empty. An empty text next to an element
+ * sibling (e.g. beside an inline atom) shows a zero-width space instead, and its leaf carries
+ * `data-hte-zw`: that character is not model text. Unknown elements render as an empty
+ * `<div data-hte-id data-hte-unknown="<type>" contenteditable="false">`; inline atoms' roots get
+ * `contenteditable="false"` too.
  *
  * Patching is keyed by element id: an element's DOM is reused while its id stays in the doc, and its
  * own root is re-rendered only when its type or data changes (or its spec DOM was damaged). Text
@@ -296,7 +302,8 @@ export class Renderer {
         this.leafText.delete(skipLeaf)
         kids.push(skipLeaf)
       } else {
-        kids.push(this.leaf(oldLeaves[leafIndex++], child, skipLeaf))
+        const zw = child.text === '' && [children[i - 1], children[i + 1]].some((n) => n !== undefined && !isText(n))
+        kids.push(this.leaf(oldLeaves[leafIndex++], child, zw, skipLeaf))
       }
     })
 
@@ -403,6 +410,8 @@ export class Renderer {
       throw new Error(`renderHTML for "${node.type}" must return an element spec`)
     }
     dom.setAttribute(ID_ATTR, node.id)
+    // An inline atom is one character: the user never edits inside it.
+    if (registered.atom && registered.kind === 'inline') dom.setAttribute('contenteditable', 'false')
     // Without a hole, children are appended after the spec's own content.
     const fallback: HolePosition = { hole: dom, before: dom.lastChild, anchor: null }
     return {
@@ -448,7 +457,7 @@ export class Renderer {
     return { dom: el, hole }
   }
 
-  private leaf(old: HTMLElement | undefined, text: TextNode, skipLeaf?: HTMLElement): HTMLElement {
+  private leaf(old: HTMLElement | undefined, text: TextNode, zw: boolean, skipLeaf?: HTMLElement): HTMLElement {
     if (old && old === skipLeaf) {
       // Composition owns this leaf's DOM; forget what it shows so a later render checks it again.
       this.leafText.delete(old)
@@ -462,14 +471,16 @@ export class Renderer {
       !stale &&
       shown.text === text.text &&
       sameMarkSet(shown.marks, text.marks) &&
-      this.leafIntact(old, text)
+      this.leafIntact(old, text, zw)
     ) {
       this.leafText.set(old, text)
       return old
     }
     const leaf = old ?? this.doc.createElement('span')
     if (!old) leaf.setAttribute(LEAF_ATTR, '')
-    const content = this.leafContent(text)
+    if (zw) leaf.setAttribute(ZW_ATTR, '')
+    else if (leaf.hasAttribute(ZW_ATTR)) leaf.removeAttribute(ZW_ATTR)
+    const content = this.leafContent(text, zw)
     if (!(old && leaf.childNodes.length === 1 && leaf.firstChild!.isEqualNode(content))) leaf.replaceChildren(content)
     this.leafText.set(leaf, text)
     return leaf
@@ -479,7 +490,8 @@ export class Renderer {
    * Cheap check that a leaf still has the shape we rendered: a single-child chain with one wrapper
    * per known mark, ending in the text (or the break). Attributes on wrappers are not compared.
    */
-  private leafIntact(leaf: HTMLElement, text: TextNode): boolean {
+  private leafIntact(leaf: HTMLElement, text: TextNode, zw: boolean): boolean {
+    if (leaf.hasAttribute(ZW_ATTR) !== zw) return false
     const markCount = text.marks.filter((m) => this.editor.registry.mark(m.type)).length
     let cur: globalThis.Node = leaf
     for (let depth = 0; depth <= markCount; depth++) {
@@ -487,15 +499,15 @@ export class Renderer {
       cur = cur.firstChild!
       if (depth < markCount && cur.nodeType !== 1) return false
     }
-    if (text.text === '') return cur.nodeName === 'BR' && (cur as Element).hasAttribute('data-hte-break')
-    return cur.nodeType === 3 && (cur as Text).data === text.text
+    if (text.text === '' && !zw) return cur.nodeName === 'BR' && (cur as Element).hasAttribute('data-hte-break')
+    return cur.nodeType === 3 && (cur as Text).data === (zw ? ZW : text.text)
   }
 
-  /** The leaf's content: mark wrappers nested by rank around the text (or a break when empty). */
-  private leafContent(text: TextNode): globalThis.Node {
-    const inner: globalThis.Node =
-      text.text === '' ? this.doc.createElement('br') : this.doc.createTextNode(text.text)
-    if (text.text === '') (inner as Element).setAttribute('data-hte-break', '')
+  /** The leaf's content: mark wrappers nested by rank around the text (or a break, or `ZW`, when empty). */
+  private leafContent(text: TextNode, zw: boolean): globalThis.Node {
+    const empty = text.text === '' && !zw
+    const inner: globalThis.Node = empty ? this.doc.createElement('br') : this.doc.createTextNode(zw ? ZW : text.text)
+    if (empty) (inner as Element).setAttribute('data-hte-break', '')
     const registry = this.editor.registry
     const marks = text.marks
       .filter((m) => registry.mark(m.type))

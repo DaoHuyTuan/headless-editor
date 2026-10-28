@@ -169,6 +169,16 @@ export class Transaction {
     return this
   }
 
+  /**
+   * Inserts the inline element `node` (e.g. an inline atom) at the caret, replacing the selection;
+   * the caret ends right after it. Its id is refreshed when already in the doc. Does nothing in a
+   * text-only block or for a type that is not a registered inline type; invalid data leaves the tr `rejected`.
+   */
+  insertInlineNode(node: ElementNode): this {
+    fragmentEdit.insertInlineNode(this, node)
+    return this
+  }
+
   /** Splits the block at the caret (after deleting the selection); the caret ends in the new block. */
   splitBlock(): this {
     textEdit.splitBlock(this)

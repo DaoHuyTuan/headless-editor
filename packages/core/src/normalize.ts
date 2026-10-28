@@ -1,3 +1,4 @@
+import { isOpaque } from './model/editable'
 import { createId } from './model/id'
 import { getNode, isElement, isText, nodeEntries, sameMarkSet } from './model/node'
 import { nextPath } from './model/path'
@@ -130,9 +131,10 @@ function fixElement(tr: Transaction, node: ElementNode, path: Path): boolean {
       tr.apply({ type: 'merge_node', path: [...path, i], position: prev.text.length, properties: { marks: c.marks } })
       return true
     }
-    // Rule 4: drop empty texts when the element has other children.
+    // Rule 4: drop empty texts when the element has other children, except one that rule 10 needs
+    // (beside an inline element, with no other text on that side).
     // Merging into a previous text keeps a caret inside it valid (it maps to the end of `prev`).
-    if (c.text === '' && children.length > 1) {
+    if (c.text === '' && children.length > 1 && !neededByRule10(children, i, registry)) {
       if (prev && isText(prev)) {
         tr.apply({ type: 'merge_node', path: [...path, i], position: prev.text.length, properties: { marks: c.marks } })
       } else {
@@ -143,6 +145,24 @@ function fixElement(tr: Transaction, node: ElementNode, path: Path): boolean {
     }
     // Rule 6: marks are sorted by rank (duplicate types keep the first).
     if (fixMarks(tr, c, [...path, i])) return true
+  }
+
+  // Rule 10: in inline content, every inline element has a text sibling on each side (an empty one
+  // is added where needed), so a caret can always sit right before and right after it.
+  if (holdsInline(spec)) {
+    for (let i = 0; i < children.length; i++) {
+      if (!isInlineElement(children[i]!, registry)) continue
+      const prev = children[i - 1]
+      const next = children[i + 1]
+      if (!prev || !isText(prev)) {
+        tr.insertNode([...path, i], { text: '', marks: [] })
+        return true
+      }
+      if (!next || !isText(next)) {
+        tr.insertNode([...path, i + 1], { text: '', marks: [] })
+        return true
+      }
+    }
   }
 
   for (let i = 0; i < children.length; i++) {
@@ -191,13 +211,14 @@ function fixMarks(tr: Transaction, text: TextNode, path: Path): boolean {
   return true
 }
 
-/** First (`last` = false) or last text inside `node` (itself if a text), with its path. */
-function edgeText(node: Node, path: Path, last: boolean): [TextNode, Path] | null {
+/** First (`last` = false) or last editable text inside `node` (itself if a text), with its path. */
+function edgeText(node: Node, path: Path, last: boolean, registry: Registry): [TextNode, Path] | null {
   if (isText(node)) return [node, path]
+  if (isOpaque(node, registry)) return null
   const kids = node.children ?? []
   for (let k = 0; k < kids.length; k++) {
     const idx = last ? kids.length - 1 - k : k
-    const found = edgeText(kids[idx]!, [...path, idx], last)
+    const found = edgeText(kids[idx]!, [...path, idx], last, registry)
     if (found) return found
   }
   return null
@@ -205,8 +226,8 @@ function edgeText(node: Node, path: Path, last: boolean): [TextNode, Path] | nul
 
 /**
  * Before removing the empty text at `[...parent, i]`, moves selection points inside it to the
- * end of the previous sibling's last text, or else the start of the next sibling's first text,
- * so the selection survives the removal.
+ * end of the closest editable text among the previous siblings, or else the start of the closest
+ * one among the next siblings (opaque elements are skipped), so the selection survives the removal.
  */
 function rehomeSelection(tr: Transaction, siblings: Node[], parent: Path, i: number): void {
   const sel = tr.selection
@@ -214,17 +235,40 @@ function rehomeSelection(tr: Transaction, siblings: Node[], parent: Path, i: num
   const at = [...parent, i]
   const inside = (p: Path) => p.length === at.length && p.every((v, k) => v === at[k])
   if (!inside(sel.anchor.path) && !inside(sel.focus.path)) return
-  const before = i > 0 ? edgeText(siblings[i - 1]!, [...parent, i - 1], true) : null
-  const after = before ? null : i + 1 < siblings.length ? edgeText(siblings[i + 1]!, [...parent, i + 1], false) : null
-  const target = before
-    ? { path: before[1], offset: before[0].text.length }
-    : after
-      ? { path: after[1], offset: 0 }
-      : null
+  let target: Point | null = null
+  for (let k = i - 1; k >= 0 && !target; k--) {
+    const found = edgeText(siblings[k]!, [...parent, k], true, tr.registry)
+    if (found) target = { path: found[1], offset: found[0].text.length }
+  }
+  for (let k = i + 1; k < siblings.length && !target; k++) {
+    const found = edgeText(siblings[k]!, [...parent, k], false, tr.registry)
+    if (found) target = { path: found[1], offset: 0 }
+  }
   if (!target) return
   const move = (pt: Point) => (inside(pt.path) ? target : pt)
   // Applied as an op directly so stored marks are kept (Transaction.setSelection clears them).
   tr.apply({ type: 'set_selection', selection: { ...sel, anchor: move(sel.anchor), focus: move(sel.focus) }, prevSelection: sel })
+}
+
+/** Whether an element of `spec` holds inline content: a `content: 'inline'` block or a (non-atom) inline element. */
+function holdsInline(spec: { kind: 'block' | 'inline'; content?: 'inline' | 'text' }): boolean {
+  return spec.kind === 'inline' || spec.content === 'inline'
+}
+
+/** A registered inline element (atom or not); unknown types are left alone (rule 7). */
+function isInlineElement(n: Node, registry: Registry): boolean {
+  return isElement(n) && registry.node(n.type)?.kind === 'inline'
+}
+
+/** Whether the empty text `children[i]` is the only text between an inline element and its other side. */
+function neededByRule10(children: Node[], i: number, registry: Registry): boolean {
+  const prev = children[i - 1]
+  const next = children[i + 1]
+  const notText = (n: Node | undefined) => !n || !isText(n)
+  return (
+    (!!prev && isInlineElement(prev, registry) && notText(next)) ||
+    (!!next && isInlineElement(next, registry) && notText(prev))
+  )
 }
 
 function isInlineContent(n: Node, registry: Registry): boolean {
