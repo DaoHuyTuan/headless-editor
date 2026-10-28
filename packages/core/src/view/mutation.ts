@@ -8,11 +8,15 @@ function isComposingChange(view: EditorView, record: MutationRecord): boolean {
 }
 
 /**
- * What to do with a record that is neither the renderer's own nor the IME's: `'ignore'` inside a
+ * What to do with a record that is neither the renderer's own nor the IME's: `'ignore'` when its
+ * target is no longer inside the root, inside a
  * `data-editor-ignore` element, or inside a node view unless its plugin's `ignoreMutation` returns
  * false (then the id of the node view to rebuild); `'revert'` anywhere else.
  */
 function classify(view: EditorView, record: MutationRecord): 'ignore' | 'revert' | { rebuild: string } {
+  // A target no longer inside the root was detached later in the same batch (e.g. a node view's
+  // subtree replaced by a React portal update): the detaching record, if foreign, is judged itself.
+  if (!view.root.contains(record.target)) return 'ignore'
   if (isComposingChange(view, record) || isInIgnoredElement(view, record.target)) return 'ignore'
   const container = view.renderer.nodeViewAround(record.target)
   const node = container && view.renderer.nodeOfElement(container)

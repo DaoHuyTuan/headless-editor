@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import type { ElementNode, Node, Selection } from '../../src/model/types'
 import { createTestEditor, doc, txt } from '../../src/testing/index'
 import { testBold, testParagraph } from '../fixtures'
+import { definePlugin } from '../../src/plugin/define'
 
 const p = (id: string, ...children: Node[]): ElementNode => ({
   id,
@@ -91,6 +92,41 @@ describe('mutation safety net', () => {
     await flush()
     expect(Array.from(root.querySelectorAll('p')).map((el) => el.textContent)).toEqual(['abê', 'cd'])
     expect(view.renderer.leafAt([0, 0])).toBe(leaf)
+  })
+
+  it('ignores records whose target was detached from the root in the same batch (no revert)', async () => {
+    const atom = definePlugin({ name: 'atom', node: { kind: 'block', atom: true } })
+    const editor = createTestEditor({
+      plugins: [testParagraph, testBold, atom],
+      doc: doc(p('p1', txt('a')), { id: 'a1', type: 'atom', data: {}, children: [] }),
+      selection: caret([0, 0], 0),
+      nodeViews: {
+        atom: (container) => {
+          const span = document.createElement('span')
+          span.className = 'view'
+          span.textContent = 'view'
+          container.append(span)
+          return { update: () => {}, destroy: () => {} }
+        },
+      },
+    })
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    editor.mount(root)
+    const view = editor.view!
+    let renders = 0
+    const original = view.renderer.render.bind(view.renderer)
+    view.renderer.render = (...args) => {
+      renders++
+      original(...args)
+    }
+    const span = root.querySelector('.view')!
+    // A subtree change, then the subtree's removal (as a React portal update does): the first
+    // record's target is detached by the time the observer runs.
+    span.textContent = 'changed'
+    span.remove()
+    await flush()
+    expect(renders).toBe(0)
   })
 
   it('stops observing on destroy', async () => {

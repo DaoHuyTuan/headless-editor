@@ -1,9 +1,24 @@
-import { useLayoutEffect, useRef, type HTMLAttributes } from 'react'
+import { useLayoutEffect, useRef, useSyncExternalStore, type HTMLAttributes } from 'react'
+import { createPortal } from 'react-dom'
 import type { AnyPlugin, Editor } from '@hte/core'
+import { getPortalStore, type PortalEntry, type PortalStore } from './node-views'
 
 export type EditorContentProps = { editor: Editor<readonly AnyPlugin[]> } & HTMLAttributes<HTMLDivElement>
 
-/** Renders the editor's root `<div>`; the editor mounts its view on it and owns its children. */
+const NO_ENTRIES: readonly PortalEntry[] = []
+const noStore: PortalStore = {
+  add: () => {},
+  update: () => {},
+  remove: () => {},
+  subscribe: () => () => {},
+  getSnapshot: () => NO_ENTRIES,
+}
+
+/**
+ * Renders the editor's root `<div>`; the editor mounts its view on it and owns its children. The
+ * React node views (`useEditor`'s `nodeViews`) are rendered next to it as portals into the
+ * containers the core creates inside the div.
+ */
 export function EditorContent({ editor, ...divProps }: EditorContentProps) {
   const ref = useRef<HTMLDivElement>(null)
   useLayoutEffect(() => {
@@ -12,5 +27,12 @@ export function EditorContent({ editor, ...divProps }: EditorContentProps) {
     editor.mount(el)
     return () => editor.unmount()
   }, [editor])
-  return <div {...divProps} ref={ref} />
+  const store = getPortalStore(editor) ?? noStore
+  const entries = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot)
+  return (
+    <>
+      <div {...divProps} ref={ref} />
+      {entries.map(({ id, container, Component, props }) => createPortal(<Component {...props} />, container, id))}
+    </>
+  )
 }
