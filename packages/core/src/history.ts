@@ -35,7 +35,8 @@ type HistoryAction = 'undo' | 'redo'
 const EMPTY: HistoryState = { undo: [], redo: [] }
 
 function entryKind(tr: Transaction): string {
-  if (tr.meta.origin !== 'input') return 'other'
+  // A fired input rule is its own step: never merged into the typing before or after it.
+  if (tr.meta.origin !== 'input' || tr.meta.inputRule === true) return 'other'
   const inputType = tr.meta.inputType ?? ''
   if (inputType.startsWith('insert')) return 'insert'
   if (inputType.startsWith('delete')) return 'delete'

@@ -330,7 +330,7 @@ export function insertText(tr: Transaction, text: string, at?: Selection | Range
 
 // --- segmentation ---
 
-interface BlockText {
+export interface BlockText {
   texts: [TextNode, Path][]
   text: string
 }
@@ -340,7 +340,7 @@ function readBlock(tr: Transaction, blockPath: Path): BlockText {
   return { texts, text: texts.map(([t]) => t.text).join('') }
 }
 
-function toBlockOffset(block: BlockText, point: Point): number {
+export function toBlockOffset(block: BlockText, point: Point): number {
   let acc = 0
   for (const [t, p] of block.texts) {
     if (pathEquals(p, point.path)) return acc + point.offset
@@ -349,7 +349,7 @@ function toBlockOffset(block: BlockText, point: Point): number {
   throw new Error(`Point [${point.path}] is not in the block`)
 }
 
-function fromBlockOffset(block: BlockText, offset: number): Point {
+export function fromBlockOffset(block: BlockText, offset: number): Point {
   let acc = 0
   for (const [t, p] of block.texts) {
     if (offset <= acc + t.text.length) return { path: p, offset: offset - acc }
@@ -418,13 +418,13 @@ function adjacentOpaque(tr: Transaction, blockPath: Path, backward: boolean): Pa
 }
 
 /** Editable texts of a block that no inline opaque element separates, with the ones right before and after it (null at the block's edges). */
-interface Run extends BlockText {
+export interface Run extends BlockText {
   before: Path | null
   after: Path | null
 }
 
 /** The run of the block at `blockPath` that holds `point`: grapheme and word edits never leave it. */
-function runAt(tr: Transaction, blockPath: Path, point: Point): Run {
+export function runAt(tr: Transaction, blockPath: Path, point: Point): Run {
   const runs: Run[] = []
   let current: Run = { texts: [], text: '', before: null, after: null }
   const walk = (nodes: Node[], base: Path, parentType: string) => {

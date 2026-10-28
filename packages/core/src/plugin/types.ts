@@ -1,5 +1,5 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
-import type { Data, DeepReadonly, ElementNode, Node, Path, Selection } from '../model/types'
+import type { Data, DeepReadonly, ElementNode, Node, Path, Range, Selection } from '../model/types'
 import type { Transaction } from '../transaction/transaction'
 import type { EditorState } from '../state'
 import type { Editor } from '../editor'
@@ -34,6 +34,20 @@ export interface InputIntent {
   data: string | null
   range: Selection | null
   dataTransfer?: DataTransfer | null
+}
+
+/**
+ * A rule run after the core inserts text from an `insertText` intent (not composition, not paste).
+ * `match` is tested against the text of the caret's block from the start of its text run (an inline
+ * atom ends a run) to the caret; anchor it with `$` (a match not ending at the caret is ignored).
+ * `range` covers the matched text. Returning true applies the changes made on `tr`, dispatched as
+ * their own history step (so one undo reverts the rule and keeps the typed text), and stops the
+ * remaining rules; returning false discards `tr`.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export interface InputRule<Ctx = PluginContext<any, any, any, any>> {
+  match: RegExp
+  handler: (ctx: Ctx, match: RegExpMatchArray, range: Range, tr: Transaction) => boolean
 }
 
 export type Command = (props: { tr: Transaction; state: EditorState; editor: Editor }) => boolean
@@ -150,6 +164,8 @@ export interface PluginSpec<
   commands?: (ctx: PluginContext<O, S>) => C
   keymap?: (ctx: PluginContext<O, S, C, T>) => Record<string, () => boolean>
   onBeforeInput?: (intent: InputIntent, ctx: PluginContext<O, S, C, T>) => boolean
+  /** Input rules, run in plugin priority order, then in array order (see `InputRule`). */
+  inputRules?: InputRule<PluginContext<O, S, C, T>>[]
   handleDOMEvents?: Partial<Record<DOMEventName, (event: Event, ctx: PluginContext<O, S, C, T>) => boolean>>
   filterTransaction?: (tr: Transaction, state: EditorState) => boolean
   appendTransaction?: (trs: Transaction[], oldState: EditorState, newState: EditorState) => Transaction | null

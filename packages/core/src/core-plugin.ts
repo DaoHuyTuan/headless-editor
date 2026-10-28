@@ -135,7 +135,13 @@ export const corePlugin = definePlugin({
     const tr = ctx.editor.createTransaction()
     tr.meta.origin = 'input'
     tr.meta.inputType = intent.inputType
-    if (action(tr, intent) && tr.ops.length > 0) ctx.editor.dispatch(tr)
+    if (action(tr, intent) && tr.ops.length > 0) {
+      const docBefore = ctx.editor.state.doc
+      ctx.editor.dispatch(tr)
+      // Typed text (not composition, paste or replacement text) runs the input rules; a rule that
+      // fires is dispatched as its own tr, so it is its own undo step.
+      if (intent.inputType === 'insertText' && ctx.editor.state.doc !== docBefore) ctx.editor.runInputRules()
+    }
     return true
   },
 })

@@ -53,6 +53,7 @@ export type {
   DOMOutputSpec,
   ExtendedSpec,
   InputIntent,
+  InputRule,
   MarkDOM,
   MarkSpec,
   NodeSpec,
@@ -101,6 +102,8 @@ export type {
 export { eventToKeyName, normalizeKeyName } from './keymap'
 export type { Platform } from './keymap'
 export { corePlugin } from './core-plugin'
+export { findTrigger } from './suggestion'
+export type { FindTriggerOptions, TriggerMatch } from './suggestion'
 export { clearHistory, historyPlugin, rewriteHistoryData } from './history'
 export { Renderer } from './view/renderer'
 export { domToModel, modelToDom, readDomSelection, writeDomSelection } from './view/dom-selection'

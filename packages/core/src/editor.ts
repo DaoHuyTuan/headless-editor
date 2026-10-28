@@ -3,6 +3,7 @@ import { historyPlugin } from './history'
 import { normalizeKeyName, type Platform } from './keymap'
 import { parseHTML } from './html/parse'
 import { serializeHTML } from './html/serialize'
+import { runInputRules } from './input-rules'
 import { coerceDoc } from './load'
 import { firstEditableCaret, isEditablePoint, isOpaqueAt } from './model/editable'
 import { deepEqualJson, getNode, isElement } from './model/node'
@@ -265,6 +266,14 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
       if (handler && handler(intent, this.getContext(plugin))) return true
     }
     return false
+  }
+
+  /**
+   * Runs the plugins' input rules against the text before the caret (called by the core after it
+   * inserted text from an `insertText` intent). True when a rule fired.
+   */
+  runInputRules(): boolean {
+    return runInputRules(this, this.contextFn)
   }
 
   /** Asks each plugin's `handleDOMEvents[type]` by priority; true when one of them handled `event`. */
