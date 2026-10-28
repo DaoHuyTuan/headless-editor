@@ -312,9 +312,13 @@ function closeQuietly(ctx: Ctx): void {
 /**
  * Mention: an inline atom `{ userId, label }` and an `@` suggestion popup (plugin state, see
  * `MentionState`). Typing the trigger at a line start or after whitespace opens the popup (not in a
- * text-only block such as a code block); while it is open with items, ArrowUp / ArrowDown / Enter go
- * to the popup, and Esc closes it. A space, the caret leaving the trigger, Esc, a blur or an unmount
- * close it.
+ * text-only block such as a code block); while it is open, ArrowUp / ArrowDown / Enter always go to
+ * the popup (no-ops while it has no items, e.g. results still pending), and Esc closes it. A space,
+ * the caret leaving the trigger, Esc, a blur or an unmount close it.
+ *
+ * The trigger is recomputed on every doc and selection change, not only on typing: putting the caret
+ * after an existing plain-text `@foo` (at a line start or after whitespace) opens the popup too
+ * (like Tiptap), and ↑ ↓ Enter are then captured until the caret leaves the trigger or Esc dismisses it.
  *
  * Limitations of the trigger detection (`findTrigger`): inside a link only the link's text is
  * searched, and a trigger glued to an inline atom without a space does not open the popup.
@@ -377,20 +381,30 @@ export const mention = definePlugin({
       // Closed, composing (the IME owns Enter) or modified: the editor handles the key.
       if (!st.open || e.isComposing || e.keyCode === 229 || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey)
         return false
-      let handled = false
-      if (e.key === 'ArrowDown') handled = ctx.commands.moveSuggestion(1)
-      else if (e.key === 'ArrowUp') handled = ctx.commands.moveSuggestion(-1)
-      else if (e.key === 'Enter') handled = ctx.commands.acceptSuggestion()
-      else if (e.key === 'Escape') handled = ctx.commands.closeSuggestion()
-      if (handled) e.preventDefault()
-      return handled
+      // While open, ↑ ↓ Enter always belong to the popup: without items (e.g. results still pending
+      // after a query change) they are no-ops, so Enter never splits the block under the popup.
+      const hasItems = st.items.length > 0
+      if (e.key === 'ArrowDown') {
+        if (hasItems) ctx.commands.moveSuggestion(1)
+      } else if (e.key === 'ArrowUp') {
+        if (hasItems) ctx.commands.moveSuggestion(-1)
+      } else if (e.key === 'Enter') {
+        if (hasItems) ctx.commands.acceptSuggestion()
+      } else if (e.key === 'Escape') {
+        ctx.commands.closeSuggestion()
+      } else return false
+      e.preventDefault()
+      return true
     },
   },
-  // Keyboards that send no usable keydown (e.g. Android) still accept with Enter.
+  // Keyboards that send no usable keydown (e.g. Android): Enter while open accepts the highlighted
+  // item, or is swallowed when there is none yet (the block is never split under the popup).
   onBeforeInput: (intent, ctx) => {
     if (intent.inputType !== 'insertParagraph') return false
     const st = ctx.getState()
-    return st.open && st.items.length > 0 && ctx.commands.acceptSuggestion()
+    if (!st.open) return false
+    if (st.items.length > 0) ctx.commands.acceptSuggestion()
+    return true
   },
   onUpdate: (ctx) => ctx.storage.refresh(),
   onSelectionUpdate: (ctx) => ctx.storage.refresh(),

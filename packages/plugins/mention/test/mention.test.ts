@@ -151,13 +151,40 @@ describe('mention suggestion: keyboard', () => {
     expect(editor.getJSON().children).toHaveLength(2)
   })
 
-  it('Enter while open without items is left to the editor; arrows too', () => {
-    const { state, type, key } = setup()
+  it('while open without items (results pending), arrows and Enter are captured as no-ops', () => {
+    const { editor, state, type, key } = setup()
     type('@jo')
-    expect(state().open).toBe(true)
-    expect(key('ArrowDown').defaultPrevented).toBe(false)
-    expect(key('Enter').defaultPrevented).toBe(false)
+    expect(state()).toMatchObject({ open: true, items: [] })
+    const docBefore = editor.state.doc
+    const selBefore = editor.state.selection
+    for (const k of ['ArrowDown', 'ArrowUp', 'Enter']) expect(key(k).defaultPrevented).toBe(true)
+    expect(editor.state.doc).toBe(docBefore)
+    expect(editor.state.selection).toEqual(selBefore)
+    expect(state()).toMatchObject({ open: true, index: 0 })
     expect(key('Escape').defaultPrevented).toBe(true)
+    expect(state().open).toBe(false)
+  })
+
+  it('Enter while results are pending does not split the block', () => {
+    const { editor, root, state, type, key } = setup()
+    type('@jo')
+    expect(key('Enter').defaultPrevented).toBe(true)
+    // A browser that still sent the intent (no keydown): captured as well.
+    const e = new InputEvent('beforeinput', { bubbles: true, cancelable: true, inputType: 'insertParagraph' })
+    root.dispatchEvent(e)
+    expect(e.defaultPrevented).toBe(true)
+    expect(editor.getJSON().children).toHaveLength(1)
+    expect(stripIds(editor.getJSON())).toEqual(stripIds(doc(p(txt('@jo')))))
+    expect(state().open).toBe(true)
+  })
+
+  it('ArrowDown while open and empty does not move the caret', () => {
+    const { editor, type, key } = setup(doc(p(txt(''))))
+    type('@jo')
+    const before = editor.state.selection
+    expect(key('ArrowDown').defaultPrevented).toBe(true)
+    expect(key('ArrowUp').defaultPrevented).toBe(true)
+    expect(editor.state.selection).toEqual(before)
   })
 
   it('keys during an IME composition and modified keys are not taken', async () => {
@@ -320,6 +347,26 @@ describe('mention suggestion: bookkeeping trs and history', () => {
     key('Enter')
     editor.commands.undo()
     expect(stripIds(editor.getJSON())).toEqual(stripIds(doc(p(txt('@jo')))))
+  })
+
+  it('moveSuggestion / closeSuggestion command trs add no undo entry and keep typing grouped', async () => {
+    const { editor, state, type, key, last } = setup()
+    const depth = () => editor.getPluginState<{ undo: unknown[] }>('history').undo.length
+    type('@j')
+    last().resolve([joe, bob])
+    await flush()
+    expect(depth()).toBe(1)
+    expect(key('ArrowDown').defaultPrevented).toBe(true)
+    expect(state().index).toBe(1)
+    expect(depth()).toBe(1)
+    type('o')
+    expect(key('Escape').defaultPrevented).toBe(true)
+    expect(state().open).toBe(false)
+    expect(depth()).toBe(1)
+    type('e')
+    expect(depth()).toBe(1)
+    editor.commands.undo()
+    expect(stripIds(editor.getJSON())).toEqual(stripIds(doc(p(txt('')))))
   })
 })
 
