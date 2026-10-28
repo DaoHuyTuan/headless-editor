@@ -51,7 +51,7 @@ export function domToModel(r: Renderer, node: globalThis.Node, offset: number): 
 
   // Content the user cannot place a caret in counts as one opaque node at its outermost ancestor:
   // its position is the boundary before it, or after it for an inline atom past its middle.
-  const opaque = outermostNonEditable(root, node)
+  const opaque = outermostNonEditable(r, node)
   if (opaque) {
     const after = isInlineAtomRoot(r, opaque) && pastMiddle(opaque, node, offset)
     return boundaryPoint(r, opaque.parentNode!, indexOf(opaque) + (after ? 1 : 0))
@@ -100,7 +100,12 @@ export function writeDomSelection(r: Renderer, sel: Selection | null, domSel: gl
     }
     // Not rendered: show its caret.
   }
-  if (!r.leafAt(sel.anchor.path) || !r.leafAt(sel.focus.path)) return
+  // A leaf not (yet) in the root, e.g. in a contentDOM its view has not placed: nothing to show.
+  const shown = (path: Path) => {
+    const leaf = r.leafAt(path)
+    return !!leaf && r.root.contains(leaf)
+  }
+  if (!shown(sel.anchor.path) || !shown(sel.focus.path)) return
   if (current && !current.node && pointEquals(current.anchor, sel.anchor) && pointEquals(current.focus, sel.focus)) {
     return
   }
@@ -219,11 +224,14 @@ function pointInLeaf(r: Renderer, leaf: Element, node: globalThis.Node, offset: 
   return { path, offset: Math.min(before, length) }
 }
 
-/** The outermost ancestor-or-self of `node` below the root with `contenteditable="false"`. */
-function outermostNonEditable(root: HTMLElement, node: globalThis.Node): Element | null {
+/**
+ * The outermost ancestor-or-self of `node` below the root with `contenteditable="false"`, not looking
+ * past a node view's `contentDOM` (editable content, even inside a non-editable wrapper of its view).
+ */
+function outermostNonEditable(r: Renderer, node: globalThis.Node): Element | null {
   let found: Element | null = null
   let cur: globalThis.Node | null = node
-  while (cur && cur !== root) {
+  while (cur && cur !== r.root && !r.isContentDOM(cur)) {
     if (cur.nodeType === 1 && (cur as Element).getAttribute('contenteditable') === 'false') found = cur as Element
     cur = cur.parentNode
   }

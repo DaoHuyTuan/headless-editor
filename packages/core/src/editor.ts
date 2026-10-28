@@ -40,7 +40,7 @@ export interface EditorOptions<P extends readonly AnyPlugin[] = readonly AnyPlug
   platform?: Platform
   /**
    * Node views keyed by node type: the renderer mounts each into a container it creates (see
-   * `NodeViewFactory`). Atom types only in M2; a non-atom type throws.
+   * `NodeViewFactory`). A non-atom type's view also gets a `contentDOM` holding its children.
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   nodeViews?: Record<string, NodeViewFactory<any, any, any, any>>
@@ -123,7 +123,6 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     for (const [type, factory] of Object.entries(options.nodeViews ?? {})) {
       const registered = this.registry.node(type)
       if (!registered) throw new Error(`Unknown node type "${type}" in nodeViews`)
-      if (!registered.atom) throw new Error('Non-atom node views arrive in M3')
       this.nodeViews.set(type, factory)
     }
 

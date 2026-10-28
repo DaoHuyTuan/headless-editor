@@ -90,13 +90,13 @@ afterEach(() => {
 })
 
 describe('node views: registration', () => {
-  it('throws for a non-atom node type', () => {
+  it('throws for an unknown node type; accepts a non-atom type (see content-dom.test.ts)', () => {
+    expect(() => createTestEditor({ plugins: [testParagraph], nodeViews: { nope: recordingView().factory } })).toThrow(
+      'Unknown node type "nope" in nodeViews',
+    )
     expect(() =>
-      createTestEditor({
-        plugins: [testParagraph],
-        nodeViews: { paragraph: recordingView().factory },
-      }),
-    ).toThrow('Non-atom node views arrive in M3')
+      createTestEditor({ plugins: [testParagraph], nodeViews: { paragraph: recordingView().factory } }),
+    ).not.toThrow()
   })
 })
 

@@ -127,6 +127,13 @@ export interface NodeViewProps<D = Data, O = unknown, T = unknown, S = unknown> 
    * False when the node is gone or the change was rejected.
    */
   updateData(partial: Partial<D>): boolean
+  /**
+   * For a non-atom node: the element the core renders the node's children into (`<div data-hte-content
+   * contenteditable="true">`, a `<span>` for an inline node). Created with the view and the same in
+   * every update. The view places it inside its own DOM and never changes it; the core owns it.
+   * Undefined for atoms.
+   */
+  contentDOM?: HTMLElement
 }
 
 export interface NodeViewInstance<D = Data, O = unknown, T = unknown, S = unknown> {
@@ -138,8 +145,12 @@ export interface NodeViewInstance<D = Data, O = unknown, T = unknown, S = unknow
 
 /**
  * Renders a node into `container` (created by the renderer: `<div>` for a block, `<span>` for an
- * inline node, `contenteditable="false"`). Called once per element id; the container is never rebuilt
- * for a data change. Elements inside it marked `data-editor-ignore` are fully left to the view.
+ * inline node; `contenteditable="false"` for an atom). Called once per element id; the container is
+ * never rebuilt for a data change. Elements inside it marked `data-editor-ignore` are fully left to
+ * the view. A non-atom node's view gets `props.contentDOM` and places it in its DOM; everything else
+ * it renders must be `contenteditable="false"` (or `data-editor-ignore` for controls). Inside
+ * `contentDOM`, events, mutations, selection and composition are the editor's as in any block;
+ * outside it the atom rules apply (`stopEvent`, `ignoreMutation`).
  */
 export type NodeViewFactory<D = Data, O = unknown, T = unknown, S = unknown> = (
   container: HTMLElement,
@@ -175,12 +186,14 @@ export interface PluginSpec<
   renderHTML?: (node: ElementNode, ctx: { options: O }) => DOMOutputSpec
   transformPasted?: (fragment: Fragment, ctx: PluginContext<O, S, C, T>) => Fragment
   /**
-   * For an event inside a node view of this plugin's type: true makes the editor ignore it (no
+   * For an event inside a node view of this plugin's type (outside its `contentDOM`, whose events
+   * are editor content): true makes the editor ignore it (no
    * handling, no `preventDefault`). Events inside `data-editor-ignore` are ignored without asking.
    */
   stopEvent?: (event: Event, node: ElementNode, ctx: PluginContext<O, S, C, T>) => boolean
   /**
-   * For a DOM mutation inside a node view of this plugin's type: false has it reverted (the node
+   * For a DOM mutation inside a node view of this plugin's type (outside its `contentDOM`, whose
+   * mutations are reverted from the model like any content; moving `contentDOM` itself is ignored): false has it reverted (the node
    * view is rebuilt). Without this hook such mutations are ignored; inside `data-editor-ignore` they
    * always are.
    */

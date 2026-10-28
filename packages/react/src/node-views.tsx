@@ -2,8 +2,9 @@ import type { ComponentType } from 'react'
 import type { AnyPlugin, Data, Editor, NodeViewFactory, NodeViewProps } from '@hte/core'
 
 /**
- * A React component rendered as the node view of an atom node type. Type it from the plugin with
- * `ComponentType<NodeViewPropsOf<typeof plugin>>` to get typed `storage` and `state`.
+ * A React component rendered as a node view (a non-atom one shows its content with
+ * `<NodeContent />`). Type it from the plugin with `ComponentType<NodeViewPropsOf<typeof plugin>>`
+ * to get typed `storage` and `state`.
  */
 export type ReactNodeView<D = Data, O = unknown, T = unknown, S = unknown> = ComponentType<NodeViewProps<D, O, T, S>>
 

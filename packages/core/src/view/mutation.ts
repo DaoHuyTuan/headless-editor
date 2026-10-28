@@ -8,12 +8,19 @@ function isComposingChange(view: EditorView, record: MutationRecord): boolean {
   return !!leaf && leaf.contains(record.target)
 }
 
+/** Whether every node `record` adds or removes is a node view's `contentDOM`. */
+function movesContentDOM(view: EditorView, record: MutationRecord): boolean {
+  const nodes = [...Array.from(record.addedNodes), ...Array.from(record.removedNodes)]
+  return nodes.length > 0 && nodes.every((n) => view.renderer.isContentDOM(n))
+}
+
 /**
  * What to do with a record that is neither the renderer's own nor the IME's: `'ignore'` when its
  * target is no longer inside the root, inside a
  * `data-editor-ignore` element, inside a decoration widget (its content belongs to whoever rendered
- * it), or inside a node view unless its plugin's `ignoreMutation` returns
- * false (then the id of the node view to rebuild); `'revert'` anywhere else.
+ * it), only moving a node view's `contentDOM`, or inside a node view (outside its `contentDOM`) unless
+ * its plugin's `ignoreMutation` returns false (then the id of the node view to rebuild); `'revert'`
+ * anywhere else (inside a `contentDOM` included).
  */
 function classify(view: EditorView, record: MutationRecord): 'ignore' | 'revert' | { rebuild: string } {
   // A target no longer inside the root was detached later in the same batch (e.g. a node view's
@@ -21,6 +28,9 @@ function classify(view: EditorView, record: MutationRecord): 'ignore' | 'revert'
   if (!view.root.contains(record.target)) return 'ignore'
   if (isComposingChange(view, record) || isInIgnoredElement(view, record.target)) return 'ignore'
   if (widgetAround(view.root, record.target)) return 'ignore'
+  // A node view placing (moving) its contentDOM: the view's business, never reverted.
+  if (record.type === 'childList' && movesContentDOM(view, record)) return 'ignore'
+  // Inside a contentDOM, nodeViewAround is null: the record is judged as editor content.
   const container = view.renderer.nodeViewAround(record.target)
   const node = container && view.renderer.nodeOfElement(container)
   if (!node) return 'revert'

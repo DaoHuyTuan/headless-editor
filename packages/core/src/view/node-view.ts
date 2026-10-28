@@ -26,10 +26,19 @@ export class NodeViewHost {
     return this.views.has(id)
   }
 
-  /** Calls `factory` for the element `node`, rendered into `container`. */
-  create(factory: NodeViewFactory, container: HTMLElement, node: ElementNode, selected: boolean): void {
+  /**
+   * Calls `factory` for the element `node`, rendered into `container`; `contentDOM` (non-atom nodes)
+   * is the element the renderer renders the children into, passed in every props.
+   */
+  create(
+    factory: NodeViewFactory,
+    container: HTMLElement,
+    node: ElementNode,
+    selected: boolean,
+    contentDOM?: HTMLElement,
+  ): void {
     this.destroy(node.id)
-    const props = this.props(node, selected)
+    const props = this.props(node, selected, contentDOM)
     const instance = factory(container, props)
     this.views.set(node.id, { instance, container, props })
   }
@@ -46,7 +55,7 @@ export class NodeViewHost {
     const changed =
       force || prev.selected !== selected || (prev.node !== node && !deepEqualJson(prev.node.data as Data, node.data))
     if (!changed) return
-    view.props = this.props(node, selected)
+    view.props = this.props(node, selected, prev.contentDOM)
     view.instance.update(view.props)
   }
 
@@ -67,12 +76,13 @@ export class NodeViewHost {
     this.prune(new Set())
   }
 
-  private props(node: ElementNode, selected: boolean): NodeViewProps {
+  private props(node: ElementNode, selected: boolean, contentDOM: HTMLElement | undefined): NodeViewProps {
     const { editor } = this
     const id = node.id
     const type = node.type
     const getPos = (): Path | null => findPathById(editor.state.doc, id)
     return {
+      ...(contentDOM ? { contentDOM } : {}),
       node,
       selected,
       editor,

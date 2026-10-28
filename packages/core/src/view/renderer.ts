@@ -21,6 +21,7 @@ import {
 const ID_ATTR = 'data-hte-id'
 const LEAF_ATTR = 'data-hte-leaf'
 const NODE_VIEW_ATTR = 'data-hte-node-view'
+const CONTENT_ATTR = 'data-hte-content'
 const SELECTED_ATTR = 'data-hte-selected'
 const ZW_ATTR = 'data-hte-zw'
 /** What an empty text beside an inline element shows: a caret can sit in it, and it adds no line break. */
@@ -48,6 +49,8 @@ interface ElementEntry extends Holder {
   rendersChildren: boolean
   /** The node view factory when `dom` is a node-view container. */
   nodeView?: NodeViewFactory
+  /** A non-atom node view's content element: the hole, placed by the view inside `dom`. */
+  contentDOM?: HTMLElement
 }
 
 interface HolePosition {
@@ -97,7 +100,9 @@ type ResolvedPart = Exclude<LeafPart, { kind: 'widget' }> | { kind: 'widget'; ke
  * (`contenteditable="false"`, `data-hte-widget`, reused by key); a leaf is kept while its text, marks
  * and decoration signature are unchanged and its DOM is intact. Unknown elements render as an empty
  * `<div data-hte-id data-hte-unknown="<type>" contenteditable="false">`; inline atoms' roots get
- * `contenteditable="false"` too.
+ * `contenteditable="false"` too. A node view's root is a container (`data-hte-node-view`) whose
+ * content is the view's: an atom's is `contenteditable="false"`; a non-atom's children go into its
+ * `contentDOM` (`data-hte-content contenteditable="true"`, the whole hole), which the view places.
  *
  * Patching is keyed by element id: an element's DOM is reused while its id stays in the doc, and its
  * own root is re-rendered only when its type or data changes (or its spec DOM was damaged). Text
@@ -109,6 +114,8 @@ export class Renderer {
   private readonly rootHolder: Holder
   private byId = new Map<string, ElementEntry>()
   private readonly byDom = new WeakMap<Element, ElementEntry>()
+  /** Node-view entries by their `contentDOM`. */
+  private readonly byContent = new WeakMap<Element, ElementEntry>()
   /** The text each leaf span currently shows; missing when unknown (skipped while the model moved on). */
   private readonly leafText = new WeakMap<Element, TextNode>()
   /** The decoration signature each leaf span was last rendered with (see `decorationSignature`). */
@@ -214,10 +221,21 @@ export class Renderer {
     return entry && this.byId.get(entry.node.id) === entry ? entry.node : null
   }
 
-  /** The closest current node-view container that is or contains `node` (within the root), or null. */
+  /** Whether `node` is the `contentDOM` of a current non-atom node view. */
+  isContentDOM(node: globalThis.Node): boolean {
+    if (node.nodeType !== 1 || !(node as Element).hasAttribute(CONTENT_ATTR)) return false
+    const entry = this.byContent.get(node as Element)
+    return !!entry && this.byId.get(entry.node.id) === entry
+  }
+
+  /**
+   * The closest current node-view container that is or contains `node` (within the root), or null.
+   * Null too when `node` is inside that view's `contentDOM` (or a nested one): that is editor content.
+   */
   nodeViewAround(node: globalThis.Node): HTMLElement | null {
     let cur: globalThis.Node | null = node
     while (cur && cur !== this.root) {
+      if (this.isContentDOM(cur)) return null
       if (cur.nodeType === 1 && (cur as Element).hasAttribute(NODE_VIEW_ATTR)) {
         const entry = this.byDom.get(cur as Element)
         if (entry?.nodeView && this.byId.get(entry.node.id) === entry) return cur as HTMLElement
@@ -394,9 +412,14 @@ export class Renderer {
       // Keep the old children's DOM so they are moved into the new shell, not recreated.
       if (prev && entry.rendersChildren) entry.kids = prev.kids
       this.byDom.set(entry.dom, entry)
+      if (entry.contentDOM) this.byContent.set(entry.contentDOM, entry)
       if (prev?.nodeView) this.nodeViews.destroy(node.id)
-      // Views are keyed by id: a duplicate id gets an empty container.
-      if (entry.nodeView && !duplicate) this.nodeViews.create(entry.nodeView, entry.dom, node, selected)
+      // Views are keyed by id: a duplicate id gets a container showing only its content.
+      if (entry.nodeView && !duplicate) {
+        this.nodeViews.create(entry.nodeView, entry.dom, node, selected, entry.contentDOM)
+      } else if (entry.contentDOM) {
+        entry.dom.appendChild(entry.contentDOM)
+      }
     }
     if (selected) entry.dom.setAttribute(SELECTED_ATTR, '')
     else if (entry.dom.hasAttribute(SELECTED_ATTR)) entry.dom.removeAttribute(SELECTED_ATTR)
@@ -423,14 +446,22 @@ export class Renderer {
       dom.setAttribute('contenteditable', 'false')
       return { dom, node, hole: dom, before: null, anchor: null, kids: [], rendersChildren: false }
     }
-    const nodeView = registered.atom ? this.editor.nodeViewFactory(node.type) : undefined
+    const nodeView = this.editor.nodeViewFactory(node.type)
     if (nodeView) {
-      // The view owns the container's content; the renderer never looks inside it.
-      const dom = this.doc.createElement(registered.kind === 'inline' ? 'span' : 'div')
+      // The view owns the container's content; the renderer only manages a non-atom's contentDOM,
+      // which the view places somewhere inside it.
+      const tag = registered.kind === 'inline' ? 'span' : 'div'
+      const dom = this.doc.createElement(tag)
       dom.setAttribute(ID_ATTR, node.id)
       dom.setAttribute(NODE_VIEW_ATTR, '')
-      dom.setAttribute('contenteditable', 'false')
-      return { dom, node, hole: dom, before: null, anchor: null, kids: [], rendersChildren: false, nodeView }
+      if (registered.atom) {
+        dom.setAttribute('contenteditable', 'false')
+        return { dom, node, hole: dom, before: null, anchor: null, kids: [], rendersChildren: false, nodeView }
+      }
+      const contentDOM = this.doc.createElement(tag)
+      contentDOM.setAttribute(CONTENT_ATTR, '')
+      contentDOM.setAttribute('contenteditable', 'true')
+      return { dom, node, hole: contentDOM, before: null, anchor: null, kids: [], rendersChildren: true, nodeView, contentDOM }
     }
     const render = registered.plugin.spec.renderHTML
     const spec = render?.(node, { options: this.editor.getPluginOptions(registered.plugin.name) })
