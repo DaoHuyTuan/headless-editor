@@ -162,6 +162,81 @@ describe('image upload', () => {
     expect(onUploadError).toHaveBeenCalledTimes(1)
   })
 
+  it('delete while pending, then the upload fails: undo restores no blob image', async () => {
+    const { editor, uploads, onUploadError } = setup()
+    editor.storage.image.upload([png()])
+    const tr = editor.createTransaction()
+    tr.meta.origin = 'command'
+    tr.removeNode([1])
+    editor.dispatch(tr)
+    uploads[0]!.reject(new Error('boom'))
+    await editor.storage.image.whenIdle()
+    expect(onUploadError).toHaveBeenCalledTimes(1)
+    editor.commands.undo()
+    expect(images(editor.state.doc as Doc)).toHaveLength(0)
+    expect(editor.getHTML()).not.toContain('blob:')
+  })
+
+  it('undo, then the upload fails: redo restores no blob image', async () => {
+    const { editor, uploads } = setup()
+    editor.storage.image.upload([png()])
+    editor.commands.undo()
+    uploads[0]!.reject(new Error('boom'))
+    await editor.storage.image.whenIdle()
+    editor.commands.redo()
+    expect(images(editor.state.doc as Doc)).toHaveLength(0)
+    expect(editor.getHTML()).not.toContain('blob:')
+  })
+
+  it('a throw in the success path keeps the image and is reported, not treated as a failure', async () => {
+    const { editor, uploads, onUploadError } = setup()
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      editor.storage.image.upload([png()])
+      const off = editor.on('transaction', ({ tr }) => {
+        if (tr.docChanged && tr.meta.origin === 'plugin') throw new Error('listener boom')
+      })
+      uploads[0]!.resolve('https://x/a.png')
+      await editor.storage.image.whenIdle()
+      off()
+      expect(images(editor.state.doc as Doc)).toHaveLength(1)
+      expect(images(editor.state.doc as Doc)[0]!.data.src).toBe('https://x/a.png')
+      expect(onUploadError).not.toHaveBeenCalled()
+      expect(errorSpy).toHaveBeenCalledWith('@hte/image:', expect.objectContaining({ message: 'listener boom' }))
+    } finally {
+      errorSpy.mockRestore()
+    }
+  })
+
+  it('a throwing onUploadError is reported, not an unhandled rejection', async () => {
+    const { editor, uploads, onUploadError } = setup()
+    onUploadError.mockImplementation(() => {
+      throw new Error('handler boom')
+    })
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      editor.storage.image.upload([png()])
+      uploads[0]!.reject(new Error('boom'))
+      await editor.storage.image.whenIdle()
+      await flush()
+      expect(images(editor.state.doc as Doc)).toHaveLength(0)
+      expect(editor.storage.image.isUploading()).toBe(false)
+      expect(errorSpy).toHaveBeenCalledWith('@hte/image:', expect.objectContaining({ message: 'handler boom' }))
+    } finally {
+      errorSpy.mockRestore()
+    }
+  })
+
+  it('isUploading / isPending are false after destroy', () => {
+    const { editor } = setup()
+    editor.storage.image.upload([png()])
+    const id = images(editor.state.doc as Doc)[0]!.id
+    expect(editor.storage.image.isPending(id)).toBe(true)
+    editor.destroy()
+    expect(editor.storage.image.isUploading()).toBe(false)
+    expect(editor.storage.image.isPending(id)).toBe(false)
+  })
+
   it('leaves a src the user changed while the upload was pending', async () => {
     const { editor, uploads } = setup()
     editor.storage.image.upload([png()])
@@ -228,6 +303,22 @@ describe('Review Focus 4: paste / drop', () => {
     expect(images(editor.state.doc as Doc)).toHaveLength(1)
     expect(uploads).toHaveLength(1)
     expect(text(editor.state.doc as Doc)).toBe('ab')
+  })
+
+  it('without a configured upload, an image paste falls back to the default and does not throw', () => {
+    const editor = createTestEditor({
+      plugins: [paragraph, image],
+      doc: doc(p(txt('ab'))),
+      selection: sel([0, 0], 2),
+    })
+    let handled = false
+    expect(() => {
+      handled = editor.handleIntent(intent('insertFromPaste', transfer([png()], { 'text/plain': 'hi' })))
+    }).not.toThrow()
+    expect(handled).toBe(true)
+    expect(images(editor.state.doc as Doc)).toHaveLength(0)
+    expect(text(editor.state.doc as Doc)).toBe('abhi')
+    expect(() => editor.storage.image.upload([png()])).toThrow(/options\.upload/)
   })
 
   it('a drop inserts the image at the drop range', () => {

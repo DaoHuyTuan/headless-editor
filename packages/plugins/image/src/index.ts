@@ -7,6 +7,7 @@ import {
   isElement,
   isNodeSelection,
   rewriteHistoryData,
+  clearHistory,
   type Command,
   type Data,
   type Editor,
@@ -39,7 +40,8 @@ export interface ImageStorage {
    * Inserts each image file (`type` starting with `image/`; others are skipped) at the selection
    * with a `blob:` preview, as one undo step per file, then uploads it with `options.upload`: on
    * success `src` becomes the uploaded URL outside history (history's stored copies are rewritten
-   * too); on failure the image is removed outside history and `onUploadError` is called.
+   * too); on failure the image is removed outside history (or, when it is no longer in the doc,
+   * history is cleared so undo / redo cannot restore the dead preview) and `onUploadError` is called.
    * Throws when `options.upload` is not set or `URL.createObjectURL` is unavailable.
    */
   upload(files: File[]): void
@@ -104,17 +106,38 @@ function onUploaded(ctx: Ctx, id: string, blob: string, url: string): void {
   }
 }
 
+/**
+ * Errors thrown by the editor or app code while settling an upload (a throwing listener, a throwing
+ * `onUploadError`) are reported with `console.error`, never left as unhandled rejections and never
+ * turned into an upload failure.
+ */
+function report(error: unknown): void {
+  console.error('@hte/image:', error)
+}
+
 function onFailed(ctx: Ctx, id: string, file: File, error: unknown): void {
   const editor = ctx.editor
-  const path = findPathById(editor.state.doc, id)
-  if (path) {
-    const tr = editor.createTransaction()
-    tr.meta.origin = 'plugin'
-    tr.meta.addToHistory = false
-    tr.removeNode(path)
-    editor.dispatch(tr)
+  try {
+    const path = findPathById(editor.state.doc, id)
+    if (path) {
+      const tr = editor.createTransaction()
+      tr.meta.origin = 'plugin'
+      tr.meta.addToHistory = false
+      tr.removeNode(path)
+      editor.dispatch(tr)
+    } else {
+      // Deleted or undone: history still holds the blob preview, which will never be uploaded, so
+      // undo / redo must not bring it back.
+      clearHistory(editor)
+    }
+  } catch (e) {
+    report(e)
   }
-  ctx.options.onUploadError?.(error, file)
+  try {
+    ctx.options.onUploadError?.(error, file)
+  } catch (e) {
+    report(e)
+  }
 }
 
 /** Inserts the preview of each image file and starts its upload. `at` (first file only) overrides the selection. */
@@ -152,18 +175,23 @@ function uploadFiles(ctx: Ctx, files: readonly File[], at?: Selection | null): v
       request = Promise.reject(error)
     }
     void request
-      .then((url) => {
-        if (rt.destroyed) return
-        if (typeof url !== 'string' || safeSrc(url) === null)
-          throw new Error(`@hte/image: upload resolved with an unsafe or invalid URL: ${String(url)}`)
-        onUploaded(ctx, id, blob, url)
-      })
-      .catch((error: unknown) => {
-        if (!rt.destroyed) onFailed(ctx, id, file, error)
-      })
+      .then(
+        (url) => {
+          if (rt.destroyed) return
+          if (typeof url !== 'string' || safeSrc(url) === null)
+            onFailed(ctx, id, file, new Error(`@hte/image: upload resolved with an unsafe or invalid URL: ${String(url)}`))
+          else onUploaded(ctx, id, blob, url)
+        },
+        (error: unknown) => {
+          if (!rt.destroyed) onFailed(ctx, id, file, error)
+        },
+      )
+      // A throw while applying a successful upload is reported, not treated as an upload failure.
+      .catch(report)
       .finally(() => {
         if (!rt.destroyed) dispatchMeta(editor, { end: id })
       })
+      .catch(report)
   }
 }
 
@@ -228,8 +256,8 @@ export const image = definePlugin({
     const rt = runtimeOf(ctx.editor)
     return {
       upload: (files) => uploadFiles(ctx, files),
-      isUploading: () => pendingOf(ctx).size > 0,
-      isPending: (id) => pendingOf(ctx).has(id),
+      isUploading: () => !rt.destroyed && pendingOf(ctx).size > 0,
+      isPending: (id) => !rt.destroyed && pendingOf(ctx).has(id),
       whenIdle: () =>
         new Promise<void>((resolve) => {
           if (rt.destroyed || pendingOf(ctx).size === 0) return resolve()
@@ -250,7 +278,8 @@ export const image = definePlugin({
   onBeforeInput: (intent, ctx) => {
     if (intent.inputType !== 'insertFromPaste' && intent.inputType !== 'insertFromDrop') return false
     const files = Array.from(intent.dataTransfer?.files ?? [])
-    if (!files.some(isImageFile)) return false
+    // Without an upload function there is nowhere to put the files: let the default insert the rest.
+    if (!files.some(isImageFile) || typeof ctx.options.upload !== 'function') return false
     if (intent.inputType === 'insertFromDrop' && intent.range && !isNodeSelection(ctx.editor.state.selection))
       uploadFiles(ctx, files, intent.range)
     else storageOf(ctx).upload(files)

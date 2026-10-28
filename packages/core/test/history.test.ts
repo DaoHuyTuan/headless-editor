@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { historyPlugin } from '../src/history'
-import { definePlugin, findPathById, getNode, rewriteHistoryData } from '../src/index'
+import { clearHistory, definePlugin, findPathById, getNode, rewriteHistoryData } from '../src/index'
 import type { Data, Doc, ElementNode, Node, Selection } from '../src/model/types'
 import { createTestEditor, doc, el, sel, stripIds, txt } from '../src/testing/index'
 import { testBold, testParagraph } from './fixtures'
@@ -346,5 +346,37 @@ describe('history rewrites data-only changes made outside history', () => {
     ed.dispatch(tr)
     expect(stacks().undo).toHaveLength(0)
     expect(stacks().redo).toHaveLength(0)
+  })
+})
+
+describe('clearHistory', () => {
+  it('empties both stacks without changing the doc or selection', () => {
+    const { ed, type, text, stacks } = setup()
+    type('a')
+    ed.commands.splitBlock()
+    type('b')
+    ed.commands.undo()
+    expect(stacks().undo.length).toBeGreaterThan(0)
+    expect(stacks().redo.length).toBeGreaterThan(0)
+    const before = text()
+    const sel0 = ed.state.selection
+    const metas: Record<string, unknown>[] = []
+    ed.on('transaction', ({ tr }) => metas.push({ ...tr.meta }))
+    clearHistory(ed)
+    expect(stacks()).toEqual({ undo: [], redo: [] })
+    expect(text()).toEqual(before)
+    expect(ed.state.selection).toEqual(sel0)
+    expect(metas).toEqual([{ origin: 'plugin', addToHistory: false, historyClear: true }])
+    expect(ed.commands.undo()).toBe(false)
+    expect(ed.commands.redo()).toBe(false)
+  })
+
+  it('a tr with historyClear set to something other than true leaves the stacks alone', () => {
+    const { ed, type, stacks } = setup()
+    type('a')
+    const tr = ed.createTransaction()
+    tr.setMeta('historyClear', 'yes')
+    ed.dispatch(tr)
+    expect(stacks().undo).toHaveLength(1)
   })
 })

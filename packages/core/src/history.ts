@@ -175,6 +175,7 @@ function isHistoryRewrite(v: unknown): v is { id: string; data: Data } {
 
 function applyHistory(prev: HistoryState, tr: Transaction, options: HistoryOptions): HistoryState {
   if (!tr.docChanged) {
+    if (tr.meta.historyClear === true) return EMPTY
     const rewrite = tr.meta.historyRewrite
     // Only for elements outside the doc: patching the stacks of one in the doc would desync them.
     if (isHistoryRewrite(rewrite) && findPathById(tr.doc, rewrite.id) === null)
@@ -260,6 +261,19 @@ export function rewriteHistoryData(editor: Editor, id: string, data: Data): void
   tr.meta.origin = 'plugin'
   tr.meta.addToHistory = false
   tr.meta.historyRewrite = { id, data }
+  editor.dispatch(tr)
+}
+
+/**
+ * Empties both history stacks (a tr with no doc ops and meta `historyClear: true`), e.g. when stored
+ * entries would bring back content that can no longer be valid (an image whose upload failed while
+ * it was undone or deleted).
+ */
+export function clearHistory(editor: Editor): void {
+  const tr = editor.createTransaction()
+  tr.meta.origin = 'plugin'
+  tr.meta.addToHistory = false
+  tr.meta.historyClear = true
   editor.dispatch(tr)
 }
 
