@@ -249,7 +249,9 @@ export const image = definePlugin({
   name: 'image',
   node: { kind: 'block', atom: true },
   data: z.object({
-    src: z.string(),
+    // The src policy is part of the schema: unsafe srcs never reach stored data (loads / pastes drop
+    // the node with a warning, `setNodeData` / `updateData` are rejected).
+    src: z.string().refine((src) => safeSrc(src) !== null, 'Unsafe image src'),
     alt: z.string().default(''),
     width: z.number().int().positive().optional(),
   }),

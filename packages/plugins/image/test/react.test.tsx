@@ -70,9 +70,12 @@ describe('ImageView', () => {
     expect(errors).not.toHaveBeenCalled()
   })
 
-  it('does not render an unsafe src', () => {
+  it('never renders an unsafe src: the image is dropped on load', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const t = setup({ src: 'javascript:alert(1)' })
-    expect(t.figure().querySelector('img')!.hasAttribute('src')).toBe(false)
+    expect(t.figure()).toBeNull()
+    expect(t.root.innerHTML).not.toContain('javascript:')
+    expect(warn).toHaveBeenCalled()
     expect(errors).not.toHaveBeenCalled()
   })
 

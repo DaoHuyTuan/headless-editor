@@ -1,6 +1,14 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { FRAGMENT_MIME, nodeSelection, serializeForClipboard, toRange, type Doc, type ElementNode, type InputIntent } from '@hte/core'
+import {
+  FRAGMENT_MIME,
+  nodeSelection,
+  serializeForClipboard,
+  serializeHTML,
+  toRange,   type Doc,
+  type ElementNode,
+  type InputIntent,
+} from '@hte/core'
 import { createTestEditor, doc, el, sel, txt } from '@hte/core/testing'
 import { paragraph } from '@hte/paragraph'
 import { image, safeSrc } from '../src/index'
@@ -394,12 +402,11 @@ describe('image HTML and commands', () => {
     expect(editor.getHTML()).toBe('<img src="https://x/a.png" alt="">')
   })
 
-  it('serializes an unsafe stored src without the src attribute', () => {
-    const editor = createTestEditor({
-      plugins: [paragraph, image],
-      doc: doc(el('image', { src: 'javascript:alert(1)', alt: 'x', width: 5 })),
-    })
-    expect(editor.getHTML()).toBe('<img alt="x" width="5">')
+  it('renderHTML omits an unsafe src (defense in depth: the schema keeps it out of stored data)', () => {
+    const editor = createTestEditor({ plugins: [paragraph, image] })
+    // An unvalidated doc handed straight to the serializer.
+    const raw = doc(el('image', { src: 'javascript:alert(1)', alt: 'x', width: 5 }))
+    expect(serializeHTML(raw, editor.registry, (name) => editor.getPluginOptions(name))).toBe('<img alt="x" width="5">')
   })
 
   it('insertImage inserts an image at the caret', () => {
@@ -500,5 +507,56 @@ describe('I1: copies of a pending image', () => {
     editor.commands.undo()
     editor.commands.redo()
     expect(JSON.stringify(editor.getJSON())).not.toContain('blob:')
+  })
+})
+
+describe('I2: src policy in stored data', () => {
+  const unsafe = ['javascript:alert(1)', 'data:text/html,<script>alert(1)</script>', 'vbscript:x', 'file:///etc/passwd']
+
+  it.each(unsafe)('loading an image with src %s drops it (with a warning)', (src) => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const editor = createTestEditor({
+        plugins: [paragraph, image],
+        doc: doc(el('image', { src, alt: 'x' }), p(txt('t'))),
+      })
+      expect(images(editor.state.doc as Doc)).toHaveLength(0)
+      expect(JSON.stringify(editor.getJSON())).not.toContain(src.slice(0, 8))
+      expect(warn).toHaveBeenCalled()
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it.each(['https://x/a.png', 'blob:http://localhost/1', 'data:image/png;base64,iVBORw0KGgo=', '/a.png'])(
+    'loading an image with src %s keeps it',
+    (src) => {
+      const editor = createTestEditor({ plugins: [paragraph, image], doc: doc(el('image', { src, alt: '' })) })
+      expect(images(editor.state.doc as Doc)[0]!.data.src).toBe(src)
+    },
+  )
+
+  it('setNodeData with an unsafe src is rejected', () => {
+    const editor = createTestEditor({
+      plugins: [paragraph, image],
+      doc: doc(el('image', { src: 'https://x/a.png', alt: '' })),
+    })
+    expect(editor.commands.setNodeData([0], { src: 'data:text/html,<b>x</b>' })).toBe(false)
+    expect(editor.commands.setNodeData([0], { src: 'javascript:alert(1)' })).toBe(false)
+    expect(images(editor.state.doc as Doc)[0]!.data.src).toBe('https://x/a.png')
+    expect(editor.commands.setNodeData([0], { src: 'https://x/b.png' })).toBe(true)
+  })
+
+  it.each(['insertFromPaste', 'insertFromDrop'])('a JSON %s with an unsafe image src inserts no image', (inputType) => {
+    const { editor } = setup()
+    const json = JSON.stringify([{ type: 'image', id: 'evil', data: { src: 'javascript:alert(1)', alt: '' } }])
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      editor.handleIntent(intent(inputType, transfer([], { [FRAGMENT_MIME]: json })))
+    } finally {
+      warn.mockRestore()
+    }
+    expect(images(editor.state.doc as Doc)).toHaveLength(0)
+    expect(JSON.stringify(editor.getJSON())).not.toContain('javascript:')
   })
 })
