@@ -88,8 +88,11 @@ test('composing at the start of bold text after plain text follows the typing ru
   await page.keyboard.press('ControlOrMeta+b')
   await page.keyboard.type('bc')
   await page.keyboard.press('ArrowLeft')
+  // Wait for each arrow to land: the state after the first ({ path: [0, 1], offset: 1 }) shares its
+  // offset with the final one, so only exact path + offset polls are unambiguous.
+  await expect.poll(() => getSelection(page)).toMatchObject({ focus: { path: [0, 1], offset: 1 } })
   await page.keyboard.press('ArrowLeft')
-  await expect.poll(() => getSelection(page)).toMatchObject({ focus: { offset: 1 } })
+  await expect.poll(() => getSelection(page)).toMatchObject({ focus: { path: [0, 0], offset: 1 } })
   const typedMarks = await page.evaluate(() => window.editor.isActive('bold'))
   await compose(['ê', 'ế'], 'ế')
   const block = (await getDoc(page)).children[0] as ElementNode
