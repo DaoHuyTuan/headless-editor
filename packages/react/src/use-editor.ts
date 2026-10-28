@@ -6,7 +6,7 @@ export type UseEditorOptions<P extends readonly AnyPlugin[]> = Omit<EditorOption
   onUpdate?: (e: { editor: Editor<P> }) => void
   /** React components rendered as node views, keyed by (atom) node type. Read on the first render only. */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  nodeViews?: Record<string, ReactNodeView<any, any>>
+  nodeViews?: Record<string, ReactNodeView<any, any, any, any>>
   /**
    * Plugin options kept in sync with the editor, keyed by plugin name. On every render each entry is
    * shallow-compared with the last value applied, and `editor.setPluginOptions(name, value)` is called

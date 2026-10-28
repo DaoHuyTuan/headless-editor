@@ -41,7 +41,7 @@ export interface EditorOptions<P extends readonly AnyPlugin[] = readonly AnyPlug
    * `NodeViewFactory`). Atom types only in M2; a non-atom type throws.
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  nodeViews?: Record<string, NodeViewFactory<any, any>>
+  nodeViews?: Record<string, NodeViewFactory<any, any, any, any>>
 }
 
 export type EditorEventName = 'transaction' | 'update' | 'selectionUpdate'
@@ -100,11 +100,13 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
   private readonly dev: boolean
   private readonly platform: Platform
   private readonly pluginOptions = new Map<string, Record<string, unknown>>()
-  private readonly contexts = new Map<string, PluginContext<any, any, any>>()
+  private readonly contexts = new Map<string, PluginContext<any, any, any, any>>()
   private readonly commandFactories = new Map<string, AnyCommandFactory>()
   private readonly keymaps: { plugin: AnyPlugin; bindings: Map<string, () => boolean> }[] = []
   private readonly listeners = new Map<EditorEventName | 'options', Set<(e: any) => void>>()
-  private readonly nodeViews = new Map<string, NodeViewFactory<any, any>>()
+  private readonly nodeViews = new Map<string, NodeViewFactory<any, any, any, any>>()
+  /** `editor.storage`, filled as each plugin's storage factory returns (read by `ctx.storage`). */
+  private readonly storages: Record<string, unknown> = {}
   private destroyed = false
   /** Set while `destroy()` runs its hooks, so a re-entrant call returns at once. */
   private destroying = false
@@ -152,11 +154,10 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     this.commands = this.bindCommands(this.commandFactories, true) as EditorCommands<P>
 
     // Storage is created once all commands are bound, so factories may use ctx.commands.
-    const storage: Record<string, unknown> = {}
     for (const plugin of this.registry.plugins) {
-      if (plugin.spec.storage) storage[plugin.name] = plugin.spec.storage(this.getContext(plugin))
+      if (plugin.spec.storage) this.storages[plugin.name] = plugin.spec.storage(this.getContext(plugin))
     }
-    this.storage = storage as EditorStorage<P>
+    this.storage = this.storages as EditorStorage<P>
 
     throwFirst(this.runHooks((plugin, ctx) => plugin.spec.onCreate?.(ctx)))
   }
@@ -427,11 +428,15 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     if (!this.pluginOptions.has(name)) throw new Error(`Unknown plugin "${name}"`)
   }
 
-  /** Cached per plugin. `commands` starts empty and is filled once the plugin's commands are collected. */
-  private getContext(plugin: AnyPlugin): PluginContext<any, any, any> {
+  /**
+   * Cached per plugin. `commands` starts empty and is filled once the plugin's commands are collected;
+   * `storage` is undefined until the plugin's storage factory returned.
+   */
+  private getContext(plugin: AnyPlugin): PluginContext<any, any, any, any> {
     let ctx = this.contexts.get(plugin.name)
     if (!ctx) {
       const options = this.pluginOptions
+      const storages = this.storages
       const editor = this as unknown as Editor
       ctx = {
         editor,
@@ -440,6 +445,9 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
           return options.get(plugin.name)
         },
         getState: () => this._state.pluginStates.get(plugin.name),
+        get storage() {
+          return storages[plugin.name]
+        },
         commands: {},
       }
       this.contexts.set(plugin.name, ctx)
@@ -453,7 +461,7 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
    * Calls `fn` for each plugin by priority, collecting what it throws instead of stopping. Stops
    * (without error) once the editor is destroyed, e.g. by an earlier hook.
    */
-  private runHooks(fn: (plugin: AnyPlugin, ctx: PluginContext<any, any, any>) => void): unknown[] {
+  private runHooks(fn: (plugin: AnyPlugin, ctx: PluginContext<any, any, any, any>) => void): unknown[] {
     const errors: unknown[] = []
     for (const plugin of this.registry.plugins) {
       if (this.destroyed || this.destroying) break

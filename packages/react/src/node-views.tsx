@@ -1,14 +1,17 @@
 import type { ComponentType } from 'react'
 import type { AnyPlugin, Data, Editor, NodeViewFactory, NodeViewProps } from '@hte/core'
 
-/** A React component rendered as the node view of an atom node type. */
-export type ReactNodeView<D = Data, O = unknown> = ComponentType<NodeViewProps<D, O>>
+/**
+ * A React component rendered as the node view of an atom node type. Type it from the plugin with
+ * `ComponentType<NodeViewPropsOf<typeof plugin>>` to get typed `storage` and `state`.
+ */
+export type ReactNodeView<D = Data, O = unknown, T = unknown, S = unknown> = ComponentType<NodeViewProps<D, O, T, S>>
 
 export interface PortalEntry {
   id: string
   container: HTMLElement
-  Component: ReactNodeView<any, any>
-  props: NodeViewProps<any, any>
+  Component: ReactNodeView<any, any, any, any>
+  props: NodeViewProps<any, any, any, any>
 }
 
 /**
@@ -20,7 +23,7 @@ export interface PortalEntry {
 export interface PortalStore {
   add(entry: PortalEntry): void
   /** Replaces the props of the entry `id` (no-op when it was removed). */
-  update(id: string, props: NodeViewProps<any, any>): void
+  update(id: string, props: NodeViewProps<any, any, any, any>): void
   /** Removes the entry `id` (no-op when there is none). */
   remove(id: string): void
   subscribe(onChange: () => void): () => void
@@ -55,13 +58,13 @@ export function createPortalStore(): PortalStore {
 let nextId = 0
 
 /** A core node view factory that renders `Component` into its container through a portal of `store`. */
-export function toNodeViewFactory<D = Data, O = unknown>(
-  Component: ReactNodeView<D, O>,
+export function toNodeViewFactory<D = Data, O = unknown, T = unknown, S = unknown>(
+  Component: ReactNodeView<D, O, T, S>,
   store: PortalStore,
-): NodeViewFactory<D, O> {
+): NodeViewFactory<D, O, T, S> {
   return (container, props) => {
     const id = `hte-node-view-${++nextId}`
-    store.add({ id, container, Component: Component as ReactNodeView<any, any>, props })
+    store.add({ id, container, Component: Component as ReactNodeView<any, any, any, any>, props })
     return {
       update: (p) => store.update(id, p),
       destroy: () => store.remove(id),

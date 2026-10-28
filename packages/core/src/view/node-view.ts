@@ -14,7 +14,8 @@ interface HostedView {
 /**
  * The node views of one renderer, keyed by element id: creates each instance once, updates it when
  * its node's data, its selected state or its plugin's options change, and destroys it when the
- * element leaves the doc. Owned by the renderer, which creates the containers.
+ * element leaves the doc. Owned by the renderer, which creates the containers. A plugin state change
+ * alone does not update a view: `props.state` is a getter that reads the current state.
  */
 export class NodeViewHost {
   private readonly views = new Map<string, HostedView>()
@@ -69,12 +70,18 @@ export class NodeViewHost {
   private props(node: ElementNode, selected: boolean): NodeViewProps {
     const { editor } = this
     const id = node.id
+    const type = node.type
     const getPos = (): Path | null => findPathById(editor.state.doc, id)
     return {
       node,
       selected,
       editor,
-      options: editor.getPluginOptions(node.type),
+      options: editor.getPluginOptions(type),
+      storage: (editor.storage as Record<string, unknown>)[type],
+      // Read on access: always the plugin's current state, even between updates.
+      get state() {
+        return editor.getPluginState(type)
+      },
       getPos,
       updateData: (partial) => {
         const path = getPos()

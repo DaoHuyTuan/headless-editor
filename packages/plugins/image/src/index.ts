@@ -241,10 +241,6 @@ function uploadFiles(ctx: Ctx, files: readonly File[], at?: Selection | null): v
   }
 }
 
-function storageOf(ctx: Ctx): ImageStorage {
-  return (ctx.editor.storage as Record<string, unknown>)[ctx.name] as ImageStorage
-}
-
 export const image = definePlugin({
   name: 'image',
   node: { kind: 'block', atom: true },
@@ -331,7 +327,7 @@ export const image = definePlugin({
     if (!files.some(isImageFile) || typeof ctx.options.upload !== 'function') return false
     if (intent.inputType === 'insertFromDrop' && intent.range && !isNodeSelection(ctx.editor.state.selection))
       uploadFiles(ctx, files, intent.range)
-    else storageOf(ctx).upload(files)
+    else ctx.storage.upload(files)
     return true
   },
   destroy: (ctx) => {

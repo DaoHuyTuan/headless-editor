@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
-import type { NodeViewProps } from '@hte/core'
+import type { NodeViewPropsOf } from '@hte/core'
 import { useEditorState } from '@hte/react'
-import type { ImageData, ImageOptions, ImageStorage } from './index'
+import type { image } from './index'
 import { safeSrc } from './src-policy'
 
 const MIN_WIDTH = 32
@@ -15,11 +15,9 @@ interface Drag {
 }
 
 /** React node view of the image plugin: the picture, an alt-text input and a resize handle. */
-export function ImageView({ node, selected, editor, updateData }: NodeViewProps<ImageData, ImageOptions>) {
+export function ImageView({ node, selected, editor, storage, updateData }: NodeViewPropsOf<typeof image>) {
   const { src, alt, width } = node.data
-  const pending = useEditorState(editor, (_state, e) =>
-    ((e.storage as Record<string, unknown>).image as ImageStorage | undefined)?.isPending(node.id) ?? false,
-  )
+  const pending = useEditorState(editor, () => storage.isPending(node.id))
 
   // Alt draft: local while typing, committed on blur / Enter.
   const [draft, setDraft] = useState(alt)
