@@ -75,6 +75,6 @@ describe('fontSize HTMLAttributes', () => {
       ],
       content: '<p><span style="font-size:20px">a</span></p>',
     })
-    expect(ed.getHTML()).toBe('<p><span style="font-size: 1px; color: red;" class="fs">a</span></p>')
+    expect(ed.getHTML()).toBe('<p><span class="fs" style="color: red; font-size: 20px;">a</span></p>')
   })
 })

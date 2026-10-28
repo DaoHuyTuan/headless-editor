@@ -15,7 +15,7 @@ export const fontSize = definePlugin({
   mark: {
     render: (d, { options }) => ({
       tag: 'span',
-      attrs: mergeAttrs({ style: `font-size: ${d.size};` }, options.HTMLAttributes),
+      attrs: mergeAttrs(options.HTMLAttributes, { style: `font-size: ${d.size};` }),
     }),
   },
   parseHTML: [{ style: 'font-size', getData: (_, v) => (v && SIZE_RE.test(v) ? { size: v } : false) }],

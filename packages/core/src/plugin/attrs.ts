@@ -1,7 +1,7 @@
 /** HTML attributes as plugins emit them; `undefined` omits the attribute. */
 export type Attrs = Record<string, string | number | undefined>
 
-/** The `options.HTMLAttributes` of a rendering plugin: extra attributes merged into its element. */
+/** `options.HTMLAttributes`: trusted, app-author-supplied input; not sanitized; cannot override data-driven attributes. */
 export type HTMLAttributes = Attrs
 
 const NAME = /^[A-Za-z][A-Za-z0-9:_.-]*$/
@@ -55,15 +55,15 @@ function mergeStyle(a: string, b: string): string {
  * Merges `extra` into `base` (neither is changed). `class` values are joined with a space and
  * de-duplicated; `style` is merged as CSS declarations with `extra` winning per property (names
  * compared case-insensitively, output as `prop: value;` joined by a space); any other key is
- * overridden by `extra`. An `undefined` in `extra` removes the key. Attribute names are validated
+ * overridden by `extra`. Attribute names are lowercased, so `SRC` and `src` are one key. An `undefined` in `extra` removes the key. Attribute names are validated
  * like the serializer does: an invalid name throws `Invalid HTML attribute name "…"`.
  */
 export function mergeAttrs(base: Attrs, extra?: Attrs): Attrs {
   const out: Attrs = {}
-  for (const [name, value] of Object.entries(base)) out[checkAttrName(name)] = value
+  for (const [rawName, value] of Object.entries(base)) out[checkAttrName(rawName).toLowerCase()] = value
   if (!extra) return out
-  for (const [name, value] of Object.entries(extra)) {
-    checkAttrName(name)
+  for (const [rawName, value] of Object.entries(extra)) {
+    const name = checkAttrName(rawName).toLowerCase()
     const prev = out[name]
     if (value === undefined) delete out[name]
     else if (name === 'class' && prev !== undefined) {

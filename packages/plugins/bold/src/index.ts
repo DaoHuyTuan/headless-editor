@@ -8,7 +8,7 @@ export interface BoldOptions {
 export const bold = definePlugin({
   name: 'bold',
   options: { HTMLAttributes: {} } as BoldOptions,
-  mark: { render: (_, { options }) => ({ tag: 'strong', attrs: mergeAttrs({}, options.HTMLAttributes) }) },
+  mark: { render: (_, { options }) => ({ tag: 'strong', attrs: mergeAttrs(options.HTMLAttributes, {}) }) },
   parseHTML: [
     { tag: 'strong' },
     { tag: 'b', getData: (el) => (el.style.fontWeight === 'normal' ? false : {}) },

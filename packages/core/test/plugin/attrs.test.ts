@@ -16,6 +16,10 @@ describe('mergeAttrs', () => {
     expect(mergeAttrs(base, extra)).toEqual(expected)
   })
 
+  it('lowercases attribute names before merging', () => {
+    expect(mergeAttrs({ Class: 'a', SRC: 'x' }, { class: 'b', src: 'y' })).toEqual({ class: 'a b', src: 'y' })
+  })
+
   it('returns a copy of base without extra and does not mutate inputs', () => {
     const base = { class: 'a' }
     const extra = { class: 'b' }

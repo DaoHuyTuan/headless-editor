@@ -284,14 +284,12 @@ export const image = definePlugin({
     const { src, alt, width } = n.data
     return [
       'img',
-      mergeAttrs(
-        {
-          src: typeof src === 'string' ? (safeSrc(src) ?? undefined) : undefined,
-          alt: typeof alt === 'string' ? alt : '',
-          width: typeof width === 'number' ? width : undefined,
-        },
-        options.HTMLAttributes,
-      ),
+      // Data-driven attributes last: HTMLAttributes can never override (or bypass the policy of) src.
+      mergeAttrs(options.HTMLAttributes, {
+        src: typeof src === 'string' ? (safeSrc(src) ?? undefined) : undefined,
+        alt: typeof alt === 'string' ? alt : '',
+        width: typeof width === 'number' ? width : undefined,
+      }),
     ]
   },
   commands: (ctx) => ({

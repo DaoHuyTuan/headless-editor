@@ -10,5 +10,5 @@ export const paragraph = definePlugin({
   options: { HTMLAttributes: {} } as ParagraphOptions,
   node: { kind: 'block', default: true, content: 'inline' },
   parseHTML: [{ tag: 'p' }],
-  renderHTML: (_, { options }) => ['p', mergeAttrs({}, options.HTMLAttributes), 0],
+  renderHTML: (_, { options }) => ['p', mergeAttrs(options.HTMLAttributes, {}), 0],
 })
