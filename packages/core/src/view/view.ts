@@ -71,6 +71,27 @@ function samePath(a: Path, b: Path): boolean {
   return a.length === b.length && a.every((v, i) => v === b[i])
 }
 
+interface DomSelectionSnapshot {
+  anchorNode: globalThis.Node | null
+  anchorOffset: number
+  focusNode: globalThis.Node | null
+  focusOffset: number
+}
+
+function snapshot(domSel: globalThis.Selection): DomSelectionSnapshot {
+  const { anchorNode, anchorOffset, focusNode, focusOffset } = domSel
+  return { anchorNode, anchorOffset, focusNode, focusOffset }
+}
+
+function sameSnapshot(a: DomSelectionSnapshot, b: DomSelectionSnapshot): boolean {
+  return (
+    a.anchorNode === b.anchorNode &&
+    a.anchorOffset === b.anchorOffset &&
+    a.focusNode === b.focusNode &&
+    a.focusOffset === b.focusOffset
+  )
+}
+
 function sameSelection(a: Selection | null, b: Selection | null): boolean {
   if (a === null || b === null) return a === b
   if (pointEquals(a.anchor, b.anchor) && pointEquals(a.focus, b.focus)) {
@@ -103,6 +124,11 @@ export class EditorView {
   private mountCleanups: (() => void)[] = []
   /** Whether focus is inside the root (as tracked by focusin/focusout). */
   private focusInside = false
+  /**
+   * The DOM selection as it was when the model selection could not be written because its leaf is
+   * not placed yet (see `syncSelection`); null otherwise.
+   */
+  private staleDomSelection: DomSelectionSnapshot | null = null
 
   constructor(
     readonly editor: Editor,
@@ -254,9 +280,16 @@ export class EditorView {
     const anchor = domSel?.anchorNode
     if (!domSel || !anchor || !this.root.contains(anchor)) return
     // The model selection is in a leaf whose node view has not placed its contentDOM yet: the DOM
-    // selection cannot show it, and reading a stale one (e.g. a caret the browser collapsed into the
-    // root) would overwrite it. A DOM selection inside a leaf (the user put it there) is still read.
-    if (this.selectionDetached() && !(this.inLeaf(anchor) && this.inLeaf(domSel.focusNode))) return
+    // selection cannot show it, and reading a stale one (the caret left where it was when the write
+    // was skipped, or one the browser collapsed into the root) would overwrite it. A DOM selection
+    // the user moved since, into leaves, is still read.
+    if (this.selectionDetached()) {
+      const stale = this.staleDomSelection
+      if (stale && sameSnapshot(stale, snapshot(domSel))) return
+      if (!(this.inLeaf(anchor) && this.inLeaf(domSel.focusNode))) return
+    } else {
+      this.staleDomSelection = null
+    }
     const sel = readDomSelection(this.renderer, domSel)
     // Also covers the async selectionchange fired after our own writes: it maps back to the model.
     if (!sel || sameSelection(sel, this.editor.state.selection)) return
@@ -349,6 +382,8 @@ export class EditorView {
     } finally {
       this.writingSelection = false
     }
+    // Not shown (its leaf is not placed yet): the DOM selection left as it is is stale.
+    this.staleDomSelection = this.selectionDetached() ? snapshot(domSel) : null
   }
 
   private onSelectionChange(): void {

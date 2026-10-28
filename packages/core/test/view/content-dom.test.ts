@@ -353,6 +353,45 @@ describe('non-atom node views: selection', () => {
     expect(dispatched).toBe(0)
   })
 
+  it('the DOM caret left behind when the model moves into an unplaced box is stale; a user move is read', async () => {
+    const places: (() => void)[] = []
+    const deferred: NodeViewFactory = (c, props) => {
+      places.push(() => c.append(props.contentDOM!))
+      return { update: () => {}, destroy: () => {} }
+    }
+    const { editor, root, view } = mount(doc(p('abc')), { selection: sel([0, 0], 3), factory: deferred })
+    const domSel = document.getSelection()!
+    expect(view.renderer.leafAt([0, 0])!.contains(domSel.anchorNode)).toBe(true)
+    // A command inserts a box and puts the caret in it: the DOM caret stays in the paragraph.
+    const tr = editor.createTransaction()
+    tr.insertNode([1], b('hello'))
+    tr.setSelection(sel([1, 0], 5))
+    editor.dispatch(tr)
+    expect(view.renderer.leafAt([0, 0])!.contains(domSel.anchorNode)).toBe(true)
+    let dispatched = 0
+    editor.on('transaction', () => dispatched++)
+    view.syncSelection()
+    expect(dispatched).toBe(0)
+    expect(editor.state.selection).toEqual(sel([1, 0], 5))
+
+    // The user moves the caret (another offset in the paragraph): read.
+    setDomCaret(editor, [0, 0], 1)
+    view.syncSelection()
+    expect(dispatched).toBe(1)
+    expect(editor.state.selection).toEqual(sel([0, 0], 1))
+
+    // Back into the box, then the box is placed: the selection is written into it.
+    const back = editor.createTransaction()
+    back.setSelection(sel([1, 0], 2))
+    editor.dispatch(back)
+    view.syncSelection()
+    expect(editor.state.selection).toEqual(sel([1, 0], 2))
+    places.at(-1)!()
+    await flush()
+    expect(contentOf(root).contains(domSel.anchorNode)).toBe(true)
+    expect(readDomSelection(view.renderer, domSel)).toEqual(sel([1, 0], 2))
+  })
+
   it('a DOM caret the user put in a placed leaf is still read while another leaf is detached', () => {
     const deferred: NodeViewFactory = () => ({ update: () => {}, destroy: () => {} })
     const { editor, view } = mount(doc(p('abc'), b('hello')), { selection: sel([1, 0], 5), factory: deferred })
