@@ -173,15 +173,52 @@ function isHistoryRewrite(v: unknown): v is { id: string; data: Data } {
   return typeof r.id === 'string' && typeof r.data === 'object' && r.data !== null && !Array.isArray(r.data)
 }
 
+/**
+ * Joins an appended tr (ops `a`, taking the doc from D to D') to the entries around the current doc.
+ *
+ * Invariant: the top undo entry's ops end at the current doc, and the top redo entry's ops start
+ * from it. The append moves that boundary state from D to D', so:
+ * - top undo entry U: `U.ops := [...U.ops, ...a]` (it now ends at D'; undoing it inverts `a` first);
+ * - top redo entry R: `R.ops := [...inverse(a), ...R.ops]` (it now starts from D'; redoing it
+ *   first takes the doc back to D, then re-applies its own ops),
+ * with `inverse(a)` = the inverted ops of `a`, in reverse order. Both entries' selections at the
+ * boundary become the appended tr's selection.
+ *
+ * - `'record'` root: U is the entry just recorded (the redo stack is empty), so the append simply
+ *   becomes part of that step.
+ * - `'history'` root (undo): R is the entry just undone, U the one below it. A later redo of R first
+ *   reverts the append, then redoes; undoing U reverts the append too. (redo: U is the entry just
+ *   redone, R the next one.) Neither stack is cleared, so undo→redo cycles stay op-consistent
+ *   however many times the append fires, and each fold only grows the entries it touches.
+ *
+ * `kind` and `time` are left alone, so grouping of later input is unaffected.
+ */
+function joinAppended(prev: HistoryState, tr: Transaction): HistoryState {
+  const ops = tr.ops.filter((op) => op.type !== 'set_selection')
+  const u = prev.undo[prev.undo.length - 1]
+  const r = prev.redo[prev.redo.length - 1]
+  const inverse = ops.map(invertOp).reverse()
+  return {
+    undo: u ? [...prev.undo.slice(0, -1), { ...u, ops: [...u.ops, ...ops], selectionAfter: tr.selection }] : prev.undo,
+    redo: r ? [...prev.redo.slice(0, -1), { ...r, ops: [...inverse, ...r.ops], selectionBefore: tr.selection }] : prev.redo,
+  }
+}
+
 function applyHistory(prev: HistoryState, tr: Transaction, options: HistoryOptions): HistoryState {
+  const appended = tr.meta.addToHistory !== false && (tr.meta.appendedTo === 'record' || tr.meta.appendedTo === 'history')
   if (!tr.docChanged) {
     if (tr.meta.historyClear === true) return EMPTY
     const rewrite = tr.meta.historyRewrite
     // Only for elements outside the doc: patching the stacks of one in the doc would desync them.
     if (isHistoryRewrite(rewrite) && findPathById(tr.doc, rewrite.id) === null)
       return rewriteStacks(prev, tr.doc, [{ id: rewrite.id, patch: { set: rewrite.data, unset: [] } }])
+    // A selection-only append still moves the selection the joined step restores.
+    if (appended) return joinAppended(prev, tr)
     return prev
   }
+
+  // With nothing to join (no stacks), the change cannot desync anything: fall through to recording.
+  if (appended && (prev.undo.length > 0 || prev.redo.length > 0)) return joinAppended(prev, tr)
 
   if (tr.meta.origin === 'history') {
     const action = tr.meta.historyAction as HistoryAction | undefined
@@ -282,6 +319,7 @@ export function clearHistory(editor: Editor): void {
  * Records every doc-changing tr (as finally normalized); consecutive input of the same kind
  * within `groupDelay` ms is one step. Trs with `addToHistory: false` clear both stacks, except
  * data-only ones (all `set_node_data`), which rewrite the stored payloads of the changed elements.
+ * `appendTransaction` trs (meta `appendedTo`) join the triggering step (see `joinAppended`).
  */
 export const historyPlugin = definePlugin({
   name: 'history',

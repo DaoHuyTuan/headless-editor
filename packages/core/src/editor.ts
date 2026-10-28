@@ -202,6 +202,11 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
       const first = this.applyTransaction(tr)
       if (!first) return
       committed.push(first)
+      // How history treats the appended trs: an undo/redo root → 'history'; a recorded root → 'record'
+      // (both join the root's entry); a root kept out of history → appended trs stay out too.
+      const appendedTo =
+        tr.meta.origin === 'history' ? 'history' : tr.docChanged && tr.meta.addToHistory !== false ? 'record' : null
+      const outside = appendedTo === null && tr.meta.addToHistory === false
       let pending = [tr]
       let roundBefore = before
       for (let round = 0; round < MAX_APPEND_ROUNDS && pending.length > 0; round++) {
@@ -213,6 +218,8 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
           const next = append(pending, roundBefore, this._state)
           if (!next) continue
           if (next.meta.origin === undefined) next.meta.origin = 'plugin'
+          if (appendedTo) next.meta.appendedTo = appendedTo
+          else if (outside) next.meta.addToHistory = false
           const done = this.applyTransaction(next)
           if (done) {
             committed.push(done)

@@ -16,6 +16,11 @@ export interface TransactionMeta {
   origin?: 'input' | 'paste' | 'command' | 'history' | 'plugin' | 'selection' | 'load'
   addToHistory?: boolean
   inputType?: string
+  /**
+   * Set by the Editor on every `appendTransaction` tr whose root was an undo/redo (`'history'`) or
+   * was recorded in history (`'record'`): history joins it to that entry instead of recording it.
+   */
+  appendedTo?: 'history' | 'record'
   [k: string]: unknown
 }
 
