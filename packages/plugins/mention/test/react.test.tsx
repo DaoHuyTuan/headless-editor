@@ -210,6 +210,22 @@ describe('MentionSuggestion', () => {
     expect(errors).not.toHaveBeenCalled()
   })
 
+  it('a mousedown anywhere on the popup (not only on an item) keeps the focus in the editor', async () => {
+    const t = setup()
+    t.type('@')
+    await t.resolve([ann, bob])
+    const popup = t.popup()!
+    // The popup itself and its list, outside any item (padding, a scrollbar, a header part).
+    for (const target of [popup, popup.querySelector('[role="listbox"]')!]) {
+      let notPrevented!: boolean
+      act(() => {
+        notPrevented = fireEvent.mouseDown(target)
+      })
+      expect(notPrevented).toBe(false)
+    }
+    expect(t.state().open).toBe(true)
+  })
+
   it('renderItem, parts and classNames customize the popup', async () => {
     const t = setup({
       suggestion: {

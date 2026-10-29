@@ -201,7 +201,8 @@ export interface SuggestionItemProps extends SuggestionPartProps {
 
 /**
  * The parts of the suggestion popup. `Popup` renders (while open and positioned) a
- * `<div data-hte-mention-suggestion data-open>` with `position: fixed` below the trigger, through a
+ * `<div data-hte-mention-suggestion data-open>` with `position: fixed` below the trigger (its `mousedown`
+ * default is prevented, so pressing anywhere on it keeps the focus in the editor), through a
  * portal to `document.body`, and provides the `SuggestionApi` to `List` (`role="listbox"`) and
  * `Item` (`role="option"`, `aria-selected`, `data-selected`).
  * @experimental Level 3 customization API; may change after M3 without a deprecation cycle.
@@ -216,6 +217,9 @@ export const Suggestion = {
           {...dataAttrs({ open: value.open })}
           className={className}
           style={{ position: 'fixed', left: value.coords.left, top: value.coords.bottom }}
+          // A press anywhere on the popup (padding, scrollbar, not only an item) must not blur the
+          // editor: a blur closes the popup.
+          onMouseDown={(e) => e.preventDefault()}
         >
           {children}
         </div>
