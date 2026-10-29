@@ -178,6 +178,53 @@ describe('mention suggestion: keyboard', () => {
     expect(state().open).toBe(true)
   })
 
+  it('once the current query resolved with no results, ↑ ↓ Enter are released: Enter splits, the popup stays open', async () => {
+    const { state, type, key, last } = setup()
+    type('@zz')
+    expect(state().pending).toBe(true)
+    last().resolve([])
+    await flush()
+    expect(state()).toMatchObject({ open: true, items: [], pending: false })
+    expect(key('ArrowDown').defaultPrevented).toBe(false)
+    expect(key('ArrowUp').defaultPrevented).toBe(false)
+    expect(key('Enter').defaultPrevented).toBe(false)
+    expect(state().open).toBe(true)
+    // Esc still closes.
+    expect(key('Escape').defaultPrevented).toBe(true)
+    expect(state().open).toBe(false)
+  })
+
+  it('an insertParagraph intent with zero resolved results splits the block', async () => {
+    const { editor, root, type, last } = setup()
+    type('@zz')
+    last().resolve([])
+    await flush()
+    root.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, cancelable: true, inputType: 'insertParagraph' }))
+    expect(stripIds(editor.getJSON())).toEqual(stripIds(doc(p(txt('@zz')), p(txt('')))))
+  })
+
+  it('a new query after zero results captures the keys again until its own results arrive', async () => {
+    const { state, type, key, last } = setup()
+    type('@zz')
+    last().resolve([])
+    await flush()
+    type('z')
+    expect(state()).toMatchObject({ open: true, query: 'zzz', pending: true })
+    expect(key('Enter').defaultPrevented).toBe(true)
+    last().resolve([])
+    await flush()
+    expect(key('Enter').defaultPrevented).toBe(false)
+  })
+
+  it('a space after zero results still closes the popup', async () => {
+    const { state, type, last } = setup()
+    type('@zz')
+    last().resolve([])
+    await flush()
+    type(' ')
+    expect(state().open).toBe(false)
+  })
+
   it('ArrowDown while open and empty does not move the caret', () => {
     const { editor, type, key } = setup(doc(p(txt(''))))
     type('@jo')

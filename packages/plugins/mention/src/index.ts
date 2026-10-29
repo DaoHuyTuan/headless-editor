@@ -85,6 +85,8 @@ export interface MentionState {
   index: number
   /** Incremented on every query change; a response is applied only while it still matches. */
   requestId: number
+  /** Whether the response to the current query (`requestId`) is still awaited. False when closed. */
+  pending: boolean
   /**
    * The trigger the user closed (Esc, caret left, space typed). The same trigger never reopens; one
    * typed again (a new trigger, or this one deleted and retyped) does.
@@ -112,7 +114,14 @@ export const MENTION_QUERY_CLASS = 'hte-mention-query'
 
 type Ctx = PluginContext<MentionOptions, MentionState>
 
-const CLOSED: Omit<MentionState, 'requestId' | 'dismissedAt'> = { open: false, query: '', range: null, items: [], index: 0 }
+const CLOSED: Omit<MentionState, 'requestId' | 'dismissedAt'> = {
+  open: false,
+  query: '',
+  range: null,
+  items: [],
+  index: 0,
+  pending: false,
+}
 
 const initState = (): MentionState => ({ ...CLOSED, requestId: 0, dismissedAt: null })
 
@@ -203,12 +212,13 @@ function applyMeta(tr: Transaction, prev: MentionState, trigger: string): Mentio
         items: changed ? [] : state.items,
         index: changed ? 0 : state.index,
         requestId: changed ? state.requestId + 1 : state.requestId,
+        pending: changed ? true : state.pending,
         dismissedAt: null,
       }
     }
     case 'results':
       if (!state.open || meta.requestId !== state.requestId) return state
-      return { ...state, items: meta.items, index: 0 }
+      return { ...state, items: meta.items, index: 0, pending: false }
     case 'move': {
       const n = state.items.length
       if (!state.open || n === 0) return state
@@ -327,13 +337,14 @@ function closeQuietly(ctx: Ctx): void {
 /**
  * Mention: an inline atom `{ userId, label }` and an `@` suggestion popup (plugin state, see
  * `MentionState`). Typing the trigger at a line start or after whitespace opens the popup (not in a
- * text-only block such as a code block); while it is open, ArrowUp / ArrowDown / Enter always go to
- * the popup (no-ops while it has no items, e.g. results still pending), and Esc closes it. A space,
+ * text-only block such as a code block); while it is open, ArrowUp / ArrowDown / Enter go to the popup
+ * while it has items or the current query's results are pending (no-ops then); once the query resolved
+ * with no results they are left to the editor (Enter splits, the popup stays open). Esc closes it. A space,
  * the caret leaving the trigger, Esc, a blur or an unmount close it.
  *
  * The trigger is recomputed on every doc and selection change, not only on typing: putting the caret
  * after an existing plain-text `@foo` (at a line start or after whitespace) opens the popup too
- * (like Tiptap), and ↑ ↓ Enter are then captured until the caret leaves the trigger or Esc dismisses it.
+ * (like Tiptap), and ↑ ↓ Enter are then captured (as above) until the caret leaves the trigger or Esc dismisses it.
  *
  * Limitations of the trigger detection (`findTrigger`): inside a link only the link's text is
  * searched, and a trigger glued to an inline atom without a space does not open the popup.
@@ -396,9 +407,12 @@ export const mention = definePlugin({
       // Closed, composing (the IME owns Enter) or modified: the editor handles the key.
       if (!st.open || e.isComposing || e.keyCode === 229 || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey)
         return false
-      // While open, ↑ ↓ Enter always belong to the popup: without items (e.g. results still pending
-      // after a query change) they are no-ops, so Enter never splits the block under the popup.
+      // While open, ↑ ↓ Enter belong to the popup while it has items or the current query's results are
+      // still pending (then they are no-ops, so Enter never splits the block under a list about to
+      // appear). Once the query resolved with no results they are released: Enter splits as usual and
+      // the popup stays open (Esc, a space or the caret leaving still close it).
       const hasItems = st.items.length > 0
+      if (!hasItems && !st.pending && e.key !== 'Escape') return false
       if (e.key === 'ArrowDown') {
         if (hasItems) ctx.commands.moveSuggestion(1)
       } else if (e.key === 'ArrowUp') {
@@ -413,13 +427,17 @@ export const mention = definePlugin({
     },
   },
   // Keyboards that send no usable keydown (e.g. Android): Enter while open accepts the highlighted
-  // item, or is swallowed when there is none yet (the block is never split under the popup).
+  // item, or is swallowed while results are pending (the block is not split under a list about to
+  // appear); with zero results for the current query it splits as usual.
   onBeforeInput: (intent, ctx) => {
     if (intent.inputType !== 'insertParagraph') return false
     const st = ctx.getState()
     if (!st.open) return false
-    if (st.items.length > 0) ctx.commands.acceptSuggestion()
-    return true
+    if (st.items.length > 0) {
+      ctx.commands.acceptSuggestion()
+      return true
+    }
+    return st.pending
   },
   onUpdate: (ctx) => ctx.storage.refresh(),
   onSelectionUpdate: (ctx) => ctx.storage.refresh(),
