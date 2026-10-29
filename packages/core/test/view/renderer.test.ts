@@ -80,6 +80,45 @@ describe('Renderer: DOM contract', () => {
     expect(ctx.root.innerHTML).toBe('<p data-hte-id="p1"><span data-hte-leaf=""><br data-hte-break=""></span></p>')
   })
 
+  it('ends the last text of an element with a break when it ends with a newline', () => {
+    ctx.renderer.render(doc(p('p1', 'a\n')))
+    expect(ctx.root.innerHTML).toBe('<p data-hte-id="p1"><span data-hte-leaf="">a\n<br data-hte-break=""></span></p>')
+    // Inside its marks, like the text.
+    ctx.renderer.render(doc(p('p1', txt('b\n', 'bold'))))
+    expect(ctx.root.innerHTML).toBe(
+      '<p data-hte-id="p1"><span data-hte-leaf=""><strong>b\n<br data-hte-break=""></strong></span></p>',
+    )
+  })
+
+  it('adds no trailing break to a text ending with a newline that is not last, nor to one ending elsewhere', () => {
+    ctx.renderer.render(doc(p('p1', txt('a\n'), txt('b', 'bold')), p('p2', 'a\nb')))
+    expect(ctx.root.innerHTML).toBe(
+      '<p data-hte-id="p1"><span data-hte-leaf="">a\n</span><span data-hte-leaf=""><strong>b</strong></span></p>' +
+        '<p data-hte-id="p2"><span data-hte-leaf="">a\nb</span></p>',
+    )
+  })
+
+  it('adds or drops the trailing break of an unchanged text as the texts after it go and come', () => {
+    ctx.renderer.render(doc(p('p1', txt('a\n'), txt('b', 'bold'))))
+    const leaf = ctx.renderer.leafAt([0, 0])!
+    ctx.renderer.render(doc(p('p1', txt('a\n'))))
+    expect(ctx.renderer.leafAt([0, 0])).toBe(leaf)
+    expect(leaf.innerHTML).toBe('a\n<br data-hte-break="">')
+    ctx.renderer.render(doc(p('p1', txt('a\n'), txt('c', 'bold'))))
+    expect(leaf.innerHTML).toBe('a\n')
+  })
+
+  it('keeps a leaf with a trailing break intact across renders and restores a removed break', () => {
+    ctx.renderer.render(doc(p('p1', 'a\n')))
+    const leaf = ctx.renderer.leafAt([0, 0])!
+    const text = leaf.firstChild
+    ctx.renderer.render(doc(p('p1', 'a\n')))
+    expect(leaf.firstChild).toBe(text)
+    leaf.querySelector('br')!.remove()
+    ctx.renderer.render(doc(p('p1', 'a\n')))
+    expect(leaf.innerHTML).toBe('a\n<br data-hte-break="">')
+  })
+
   it('nests marks by rank (lowest outermost) regardless of model order, ignoring unknown marks', () => {
     ctx.renderer.render(
       doc(p('p1', txt('x', { type: 'color', data: { value: 'red' } }, 'italic', 'nope', 'bold'))),

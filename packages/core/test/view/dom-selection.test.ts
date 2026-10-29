@@ -179,6 +179,32 @@ describe('read/writeDomSelection', () => {
     expect(spy).not.toHaveBeenCalled()
   })
 
+  it('moves a DOM caret outside the leaves into them, even when it maps to the same point', () => {
+    // E.g. the browser collapsed the caret into the root after its leaf was replaced.
+    ctx.renderer.render(doc(p('p1', '')))
+    domSel().setBaseAndExtent(ctx.root, 0, ctx.root, 0)
+    const sel: Selection = { anchor: { path: [0, 0], offset: 0 }, focus: { path: [0, 0], offset: 0 } }
+    expect(readDomSelection(ctx.renderer, domSel())).toEqual(sel)
+    writeDomSelection(ctx.renderer, sel, domSel())
+    const leaf = ctx.renderer.leafAt([0, 0])!
+    expect(domSel().anchorNode).toBe(leaf)
+    expect(domSel().focusNode).toBe(leaf)
+    // Now in the leaf: a second write does nothing.
+    const spy = vi.spyOn(domSel(), 'setBaseAndExtent')
+    writeDomSelection(ctx.renderer, sel, domSel())
+    expect(spy).not.toHaveBeenCalled()
+  })
+
+  it('maps the caret after a trailing newline to the end of the text, before the trailing break', () => {
+    ctx.renderer.render(doc(p('p1', 'a\n')))
+    const leaf = ctx.renderer.leafAt([0, 0])!
+    const text = leaf.firstChild as Text
+    expect(modelToDom(ctx.renderer, { path: [0, 0], offset: 2 })).toEqual({ node: text, offset: 2 })
+    expect(domToModel(ctx.renderer, leaf, 1)).toEqual({ path: [0, 0], offset: 2 })
+    expect(domToModel(ctx.renderer, leaf, 2)).toEqual({ path: [0, 0], offset: 2 })
+    expect(domToModel(ctx.renderer, leaf.querySelector('br')!, 0)).toEqual({ path: [0, 0], offset: 2 })
+  })
+
   it('reads null with no ranges or outside the root', () => {
     ctx.renderer.render(doc(p('p1', 'ab')))
     domSel().removeAllRanges()

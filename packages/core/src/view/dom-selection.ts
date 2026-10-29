@@ -81,7 +81,7 @@ export function readDomSelection(r: Renderer, domSel: globalThis.Selection): Sel
 
 /**
  * Makes the DOM selection show `sel`, keeping its direction. Does nothing when the DOM selection
- * already maps to `sel`. A null `sel` clears the DOM selection only when it is inside the root.
+ * is already in text leaves and maps to `sel`. A null `sel` clears the DOM selection only when it is inside the root.
  * Does nothing when a point has no rendered leaf (e.g. a text inside an unknown element).
  */
 export function writeDomSelection(r: Renderer, sel: Selection | null, domSel: globalThis.Selection): void {
@@ -102,7 +102,17 @@ export function writeDomSelection(r: Renderer, sel: Selection | null, domSel: gl
   }
   // `leafAt` is null for a leaf not in the root (e.g. in a contentDOM its view has not placed yet).
   if (!r.leafAt(sel.anchor.path) || !r.leafAt(sel.focus.path)) return
-  if (current && !current.node && pointEquals(current.anchor, sel.anchor) && pointEquals(current.focus, sel.focus)) {
+  // Kept only when it is in leaves: a DOM selection outside them (e.g. collapsed into the root after
+  // its leaf was removed) can map to the same points while no caret shows there, and typing at it
+  // never reaches the model.
+  if (
+    current &&
+    !current.node &&
+    pointEquals(current.anchor, sel.anchor) &&
+    pointEquals(current.focus, sel.focus) &&
+    leafAround(r, domSel.anchorNode!) &&
+    leafAround(r, domSel.focusNode!)
+  ) {
     return
   }
   const anchor = modelToDom(r, sel.anchor)

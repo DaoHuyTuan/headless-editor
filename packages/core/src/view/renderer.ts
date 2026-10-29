@@ -95,7 +95,9 @@ type ResolvedPart = Exclude<LeafPart, { kind: 'widget' }> | { kind: 'widget'; ke
  * content hole. Each text is a `<span data-hte-leaf>` holding its marks nested by rank (lowest
  * outermost) around the DOM text, or `<br data-hte-break>` when empty. An empty text next to an element
  * sibling (e.g. beside an inline atom) shows a zero-width space instead, and its leaf carries
- * `data-hte-zw`: that character is not model text. Decorations split a leaf's text inside its mark
+ * `data-hte-zw`: that character is not model text. The last text of an element ending with `\n` gets a
+ * `<br data-hte-break>` after its text, so the empty line after that newline shows and takes the
+ * caret (the break is not model text). Decorations split a leaf's text inside its mark
  * wrappers: decorated segments are `<span data-hte-deco …attrs>`, widgets sit between segments
  * (`contenteditable="false"`, `data-hte-widget`, reused by key); a leaf is kept while its text, marks
  * and decoration signature are unchanged and its DOM is intact. Unknown elements render as an empty
@@ -389,7 +391,10 @@ export class Renderer {
         kids.push(skipLeaf)
       } else {
         const zw = child.text === '' && [children[i - 1], children[i + 1]].some((n) => n !== undefined && !isText(n))
-        kids.push(this.leaf(oldLeaves[leafIndex++], child, zw, childPath, pass))
+        // The last text of its parent ending with a newline: browsers show no line after that newline
+        // (and cannot put the caret there) unless something follows it, so the leaf ends with a break.
+        const trailingBreak = i === children.length - 1 && child.text.endsWith('\n')
+        kids.push(this.leaf(oldLeaves[leafIndex++], child, zw, trailingBreak, childPath, pass))
       }
     })
 
@@ -558,14 +563,22 @@ export class Renderer {
     return { dom: el, hole }
   }
 
-  private leaf(old: HTMLElement | undefined, text: TextNode, zw: boolean, path: Path, pass: RenderPass): HTMLElement {
+  private leaf(
+    old: HTMLElement | undefined,
+    text: TextNode,
+    zw: boolean,
+    trailingBreak: boolean,
+    path: Path,
+    pass: RenderPass,
+  ): HTMLElement {
     if (old && old === pass.skipLeaf) {
       // Composition owns this leaf's DOM; forget what it shows so a later render checks it again.
       this.leafText.delete(old)
       return old
     }
     const decos = pass.decorations.get(pathKey(path))
-    const signature = decorationSignature(decos)
+    // The trailing break is in the signature: the same text gains or loses it as later siblings come and go.
+    const signature = decorationSignature(decos) + (trailingBreak ? '|br' : '')
     const shown = old && this.leafText.get(old)
     const stale = this.invalidatedMarks.size > 0 && text.marks.some((m) => this.invalidatedMarks.has(m.type))
     if (
@@ -584,6 +597,7 @@ export class Renderer {
       }
     }
     const parts = this.resolveParts(text, zw, decos, pass)
+    if (trailingBreak) parts.push({ kind: 'break' })
     const leaf = old ?? this.doc.createElement('span')
     if (!old) leaf.setAttribute(LEAF_ATTR, '')
     if (zw) leaf.setAttribute(ZW_ATTR, '')
