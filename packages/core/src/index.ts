@@ -74,6 +74,8 @@ export type {
 } from './plugin/types'
 export { definePlugin } from './plugin/define'
 export { mergeAttrs } from './plugin/attrs'
+export { nodeText } from './content/text'
+export type { OptionsLookup } from './content/text'
 export type { Attrs, HTMLAttributes } from './plugin/attrs'
 export { DEFAULT_PRIORITY, Registry } from './plugin/registry'
 export type { RegisteredMark, RegisteredNode, ValidateResult } from './plugin/registry'

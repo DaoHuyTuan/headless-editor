@@ -273,7 +273,7 @@ Goal: every plugin can be customized at several depths without rewriting its beh
 - **Typed own access**: plugin hooks and node views reach their own storage and state with full types and no casts: `ctx.storage` (like `ctx.commands`), and `props.storage` / `props.state` on node views.
 
 #### Lifecycle hooks
-In addition to the existing data-flow hooks (`state`, `storage`, `parseHTML`/`renderHTML`, `handleDOMEvents`, `keymap`, `onBeforeInput`, `filterTransaction`, `appendTransaction`, `normalize`, `transformPasted`, `stopEvent`, `ignoreMutation`, `destroy`), a plugin may declare:
+In addition to the existing data-flow hooks (`state`, `storage`, `parseHTML`/`renderHTML`, `renderText` (plain text of a node, e.g. a mention's `@label`, for `text/plain` and text-only blocks), `handleDOMEvents`, `keymap`, `onBeforeInput`, `filterTransaction`, `appendTransaction`, `normalize`, `transformPasted`, `stopEvent`, `ignoreMutation`, `destroy`), a plugin may declare:
 
 | Hook | When | Cleanup |
 |---|---|---|

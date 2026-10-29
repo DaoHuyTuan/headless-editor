@@ -374,7 +374,7 @@ Checklist for a new plugin's view:
 
 ## Lifecycle hooks
 
-In addition to the data-flow hooks (`state`, `storage`, `parseHTML` / `renderHTML`, `handleDOMEvents`, `keymap`, `onBeforeInput`, `filterTransaction`, `appendTransaction`, `normalize`, `transformPasted`, `stopEvent`, `ignoreMutation`, `decorations`), a plugin may declare:
+In addition to the data-flow hooks (`state`, `storage`, `parseHTML` / `renderHTML`, `renderText`, `handleDOMEvents`, `keymap`, `onBeforeInput`, `filterTransaction`, `appendTransaction`, `normalize`, `transformPasted`, `stopEvent`, `ignoreMutation`, `decorations`), a plugin may declare:
 
 | Hook | When | Cleanup |
 |---|---|---|
@@ -384,6 +384,8 @@ In addition to the data-flow hooks (`state`, `storage`, `parseHTML` / `renderHTM
 | `onSelectionUpdate(ctx, { tr })` | after a committed transaction that changed the selection | none |
 | `onFocus(ctx, event)` / `onBlur(ctx, event)` | focus enters / leaves the editor root | none |
 | `destroy(ctx)` | editor destroyed | none |
+
+`renderText(node, { options })` (on a node plugin, usually an inline atom) returns the node's plain text wherever content becomes plain text: the `text/plain` clipboard flavor, an inline atom normalized into a `content: 'text'` block (it becomes that text; an atom without `renderText` is dropped there), and plugins that flatten content to text (the code block's paste and `setCodeBlock`). `options` are the editor's current plugin options. Without it an element's text is its children's text, so a childless atom has none. Core exports `nodeText(node, registry, options?)` to compute it in your own plugins.
 
 Plugins are called by priority. `onUpdate` / `onSelectionUpdate` / `onFocus` run after the editor's own event emission (transaction, update, selectionUpdate). `onMount` cleanups run in reverse order, and a StrictMode mount, unmount, mount leaves exactly one active mount. A throwing hook does not stop the others: the first error is rethrown after all ran.
 
@@ -448,6 +450,7 @@ function ShoutingMention(props: NodeViewPropsOf<typeof mention>) {
 - `data.label` is a snapshot taken at insertion time (used for HTML export). The view prefers the live name.
 - A **renamed user** shows up when a `fetchUsers` call returns the new label: views read a per-editor cache of users seen in suggestion results. Nothing else updates it.
 - A `renderUser` that reads an **external store is not subscribed**: the view re-renders on mention plugin state and option changes only. If the name comes from a store, re-render through your own subscription (or pass a new memoized `renderUser` when the store changes).
+- The mention's `renderText` is `${trigger}${label}` (`@Ann`): copying a mention gives `@Ann` in `text/plain`, and a mention that ends up in a code block (paste, `setCodeBlock`, Backspace joining a paragraph into one) becomes the text `@Ann` instead of disappearing.
 - Placing the caret right after an existing plain `@foo` in the text **opens the popup** (the trigger is recomputed after every selection change).
 - The suggestion popup is a separate root (`data-hte-mention-suggestion`), rendered with `<MentionSuggestion editor={editor} />` next to `EditorContent`; it is portalled to `document.body`. Closing is done by the mention plugin, not the component: its `onBlur` hook and its `onMount` cleanup (unmount fires no blur) close the popup. `MentionSuggestion` only renders the plugin state.
 
@@ -470,7 +473,7 @@ function CodeEditor() {
 - The node type (and `nodeViews` key) is `codeBlock`; the data attribute is `data-hte-code-block`.
 - `<code>` gets only `language-x`, **no `hljs` class**. highlight.js themes expect it, so add it with `classNames`: `classNames.content` classes the `<pre>`. To class the `<code>` itself, replace the `content` part.
 - **Tab and Shift-Tab are consumed** inside a code block (indent / dedent), so they cannot move focus out of the editor from there. Enter inserts a newline; three Enters at the end exit the block; `Mod-Enter` exits.
-- Marks and inline nodes (bold, mention, ...) are blocked inside a code block via `filterTransaction` / `normalize`; pasted content is flattened to text.
+- Marks and inline nodes (bold, mention, ...) are blocked inside a code block via `filterTransaction` / `normalize`; pasted content is flattened to text (a mention keeps its `@label` text through its `renderText`).
 
 ### The spec ordering rule, demonstrated
 

@@ -454,6 +454,9 @@ export const mention = definePlugin({
     }),
     `@${typeof node.data.label === 'string' ? node.data.label : ''}`,
   ],
+  // Where content becomes plain text (text/plain clipboard flavor, a code block): `@label`.
+  renderText: (node, { options }) =>
+    `${typeof options.trigger === 'string' ? options.trigger : '@'}${typeof node.data.label === 'string' ? node.data.label : ''}`,
   decorations: (state: EditorState, ctx): Decoration[] => {
     const st = state.pluginStates.get(ctx.name) as MentionState | undefined
     if (!st?.open || !st.range) return []

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { definePlugin, type Doc, type ElementNode, type Node, type Transaction } from '@hte/core'
+import { definePlugin, serializeForClipboard, type Doc, type ElementNode, type Node, type Transaction } from '@hte/core'
 import { createTestEditor, doc, el, sel, stripIds, txt } from '@hte/core/testing'
 import { paragraph } from '@hte/paragraph'
 import { mention, type MentionState, type User } from '../src/index'
@@ -430,6 +430,23 @@ describe('mention HTML', () => {
     expect(editor.getHTML()).toBe(
       '<p>hi <span class="chip" data-id="u1" title="t" data-mention="">@Ann</span> there</p>',
     )
+  })
+
+  it('renderText is the trigger plus the label snapshot', () => {
+    const node: ElementNode = { id: 'm', type: 'mention', data: { userId: 'u1', label: 'Ann' }, children: [] }
+    const defaults = mention.spec.options!
+    const options = { ...defaults, trigger: '+' }
+    expect(mention.spec.renderText!(node, { options: defaults })).toBe('@Ann')
+    expect(mention.spec.renderText!(node, { options })).toBe('+Ann')
+  })
+
+  it('the text/plain clipboard flavor keeps a mention as @label', () => {
+    const { editor } = setup()
+    editor.setContent('<p>hi <span data-mention="" data-id="u1">@Ann</span> yo</p>')
+    const kids = blockKids(editor.getJSON())
+    const end = { path: [0, kids.length - 1], offset: 3 }
+    const flavors = serializeForClipboard(editor, { start: { path: [0, 0], offset: 0 }, end })
+    expect(flavors.text).toBe('hi @Ann yo')
   })
 
   it('renderUser is not used for HTML export: the label snapshot is', () => {

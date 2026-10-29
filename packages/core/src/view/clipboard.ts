@@ -3,7 +3,7 @@ import { serializeHTML } from '../html/serialize'
 import { parseHTML } from '../html/parse'
 import { defaultBlock, isBlock, sanitizeFragment } from '../content/sanitize'
 import { isNodeSelection } from '../model/editable'
-import { isText } from '../model/node'
+import { nodeText } from '../content/text'
 import { isCollapsed, toRange } from '../model/path'
 import type { Doc, ElementNode, Node, Path, Range } from '../model/types'
 import type { Registry } from '../plugin/registry'
@@ -15,15 +15,11 @@ import type { EditorView, ViewModule } from './view'
 /** The MIME type of the lossless JSON flavor (a `JSON.stringify`-ed `Fragment`). */
 export const FRAGMENT_MIME = 'application/x-hte-fragment'
 
-function textOf(node: Node): string {
-  return isText(node) ? node.text : (node.children ?? []).map(textOf).join('')
-}
-
 /**
  * The three clipboard flavors of `range`: `json` is the fragment itself, `html` the fragment
  * serialized as a doc (inline content is wrapped into a default block first), `text` the text of
- * each block (inline elements included) joined by `\n`. With `node` (a node selection's
- * `selection.node`), the fragment is that node alone.
+ * each block (inline elements included, through their `renderText` when they have one) joined by
+ * `\n`. With `node` (a node selection's `selection.node`), the fragment is that node alone.
  */
 export function serializeForClipboard(
   editor: Editor,
@@ -32,6 +28,7 @@ export function serializeForClipboard(
 ): { html: string; text: string; json: string } {
   const { registry } = editor
   const fragment = getFragment(editor.state.doc, range, node)
+  const textOf = (n: Node) => nodeText(n, registry, (plugin) => editor.getPluginOptions(plugin.name))
   const blocks = fragment.length > 0 && isBlock(fragment[0]!, registry)
   const doc: Doc = {
     type: 'doc',
@@ -40,7 +37,7 @@ export function serializeForClipboard(
   return {
     json: JSON.stringify(fragment),
     html: serializeHTML(doc, registry, (name) => editor.getPluginOptions(name)),
-    text: blocks ? fragment.map(textOf).join('\n') : fragment.map(textOf).join(''),
+    text: fragment.map(textOf).join(blocks ? '\n' : ''),
   }
 }
 

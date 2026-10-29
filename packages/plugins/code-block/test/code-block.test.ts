@@ -10,6 +10,7 @@ import { codeBlock, defaultHighlighter } from '../src/index'
 const p = (...children: Node[]) => el('paragraph', ...children)
 const code = (text: string, language = 'plaintext') => el('codeBlock', { language }, txt(text))
 const caret = (path: number[], offset: number): Selection => sel(path, offset)
+const mentionNode = (): ElementNode => ({ id: 'm1', type: 'mention', data: { userId: 'u1', label: 'Ann' }, children: [] })
 
 afterEach(() => {
   document.getSelection()?.removeAllRanges()
@@ -193,6 +194,13 @@ describe('code block commands', () => {
     expect(ed.state.selection).toEqual(sel([0, 0], 0, [0, 0], 2))
   })
 
+  it('setCodeBlock keeps a mention as its text (@label), with the caret after it mapped', () => {
+    const ed = setup(doc(p(txt('hi '), mentionNode(), txt(' yo'))), caret([0, 2], 1))
+    expect(ed.commands.setCodeBlock()).toBe(true)
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(code('hi @Ann yo'))))
+    expect(ed.state.selection).toEqual(caret([0, 0], 8))
+  })
+
   it('setCodeBlock is false inside a code block or with an unsafe language', () => {
     expect(setup(doc(code('a')), caret([0, 0], 0)).commands.setCodeBlock()).toBe(false)
     const ed = setup(doc(p(txt('a'))), caret([0, 0], 0))
@@ -271,6 +279,19 @@ describe('code block paste', () => {
     paste(ed, { 'text/html': '<p>a<b>b</b></p><p>c</p>' })
     expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(code('ab\nc'))))
     expect(ed.state.selection).toEqual(caret([0, 0], 4))
+  })
+
+  it('a mention in pasted HTML keeps its text (@label) inside a code block', () => {
+    const ed = setup(doc(code('ab')), caret([0, 0], 1))
+    paste(ed, { 'text/html': '<p>hi <span data-mention data-id="u1">@Ann</span> x</p>' })
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(code('ahi @Ann xb'))))
+  })
+
+  it('Backspace joining a paragraph with a mention into a code block keeps the mention as text', () => {
+    const ed = setup(doc(code('x'), p(txt('hi '), mentionNode(), txt(' yo'))), caret([1, 0], 0))
+    ed.handleIntent({ inputType: 'deleteContentBackward', data: null, range: ed.state.selection })
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(code('xhi @Ann yo'))))
+    expect(ed.state.selection).toEqual(caret([0, 0], 1))
   })
 
   it('multi-line plain text pasted inside stays in the block', () => {

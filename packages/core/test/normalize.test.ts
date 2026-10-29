@@ -130,6 +130,23 @@ describe('normalize: core rules', () => {
     expect(normalized(d)).toEqual(stripIds(doc(el('code', txt('abc')))))
   })
 
+  it('rule 8: an inline atom in a content:"text" block becomes its renderText text (dropped without one)', () => {
+    const tag = definePlugin({
+      name: 'tag',
+      node: { kind: 'inline', atom: true },
+      options: { prefix: '#' },
+      renderText: (node, { options }) => `${options.prefix}${String(node.data.label)}`,
+    })
+    const bare = definePlugin({ name: 'bare', node: { kind: 'inline', atom: true } })
+    const atom = (type: string): ElementNode => ({ id: type, type, data: { label: 'x' }, children: [] })
+    const d = doc(el('code', txt('a'), atom('tag'), txt('b'), atom('bare'), txt('c')))
+    // The caret right after `b` stays right after it.
+    const tr = run(d, [...base, tag, bare], sel([0, 2], 1))
+    expect(stripIds(tr.doc)).toEqual(stripIds(doc(el('code', txt('a#xbc')))))
+    expect(tr.selection).toEqual(sel([0, 0], 4))
+    expect([...tr.ops].reverse().map(invertOp).reduce(applyOp, tr.doc)).toEqual(d)
+  })
+
   it('rule 9: blocks nested in an inline-content block are unwrapped, recursively; ops invert back', () => {
     const d = doc(
       el('paragraph', txt('a'), el('paragraph', txt('b', 'bold'), el('paragraph', txt('c'), el('paragraph', txt('d')))), txt('e')),

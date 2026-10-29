@@ -23,15 +23,18 @@ import {
   mergeAttrs,
   nextPath,
   nodeEntries,
+  nodeText,
   type Command,
   type Decoration,
   type DeepReadonly,
   type Doc,
+  type Editor,
   type ElementNode,
   type Fragment,
   type HTMLAttributes,
   type Node,
   type Operation,
+  type OptionsLookup,
   type Path,
   type PluginContext,
   type Point,
@@ -197,20 +200,31 @@ function unsetIfEmpty(tr: Transaction): boolean {
   return replaceBlock(tr, code.blockPath, emptyDefaultBlock(tr.registry), (p) => caret([...p, 0], 0))
 }
 
-/** The editable texts of `node` (not inside atoms or unknown elements), with paths relative to it, in order. */
-function textsOf(node: Node, registry: Registry, path: Path = []): { path: Path; text: string }[] {
+/**
+ * The texts of `node` with paths relative to it, in order: its editable texts, plus each atom with a
+ * `renderText` as that text (other atoms and unknown elements have none).
+ */
+function textsOf(node: Node, registry: Registry, options: OptionsLookup, path: Path = []): { path: Path; text: string }[] {
   if (isText(node)) return [{ path, text: node.text }]
   const spec = registry.node(node.type)
+  if (path.length > 0 && spec?.atom && spec.plugin.spec.renderText) return [{ path, text: nodeText(node, registry, options) }]
   if (path.length > 0 && (!spec || spec.atom)) return []
-  return (node.children ?? []).flatMap((c, i) => textsOf(c, registry, [...path, i]))
+  return (node.children ?? []).flatMap((c, i) => textsOf(c, registry, options, [...path, i]))
 }
+
+/** `renderText` options: the editor's current plugin options. */
+const editorOptions =
+  (editor: Editor): OptionsLookup =>
+  (plugin) =>
+    editor.getPluginOptions(plugin.name)
 
 /**
  * `setCodeBlock`: there is no op that changes a node's type, so the block is replaced: a code block
- * holding the block's plain text (marks and inline atoms dropped) is inserted after it, the selection
- * is moved into it at the same text offsets, and the block is removed. One undo step restores it.
+ * holding the block's plain text (marks dropped, inline atoms as their `renderText`) is inserted after
+ * it, the selection is moved into it at the same text offsets, and the block is removed. One undo step
+ * restores it.
  */
-function toCodeBlock(tr: Transaction, language: string | undefined): boolean {
+function toCodeBlock(tr: Transaction, editor: Editor, language: string | undefined): boolean {
   const sel = tr.selection
   if (!sel || isNodeSelection(sel)) return false
   const blockPath = blockPathOf(tr.doc, tr.registry, sel.anchor.path)
@@ -218,7 +232,7 @@ function toCodeBlock(tr: Transaction, language: string | undefined): boolean {
   if (!blockPath || !focusBlock || blockPath.join() !== focusBlock.join()) return false
   const block = getNode(tr.doc, blockPath) as ElementNode
   if (tr.registry.node(block.type)?.content !== 'inline') return false
-  const texts = textsOf(block, tr.registry)
+  const texts = textsOf(block, tr.registry, editorOptions(editor))
   const offsetOf = (p: Point): number => {
     const rel = p.path.slice(blockPath.length).join()
     let at = 0
@@ -288,10 +302,6 @@ function addsFormatting(tr: Transaction): boolean {
     if (op.type !== 'set_selection') doc = applyOp(doc, op)
   }
   return marks > 0 && marksInCode === marks
-}
-
-function plainText(node: Node): string {
-  return isText(node) ? node.text : (node.children ?? []).map(plainText).join('')
 }
 
 const isBlockFragment = (fragment: Fragment, registry: Registry): boolean => {
@@ -375,8 +385,8 @@ export const codeBlock = definePlugin({
     /** Turns the block holding the selection (a paragraph or other inline-content block) into a code block. */
     setCodeBlock:
       (language?: string): Command =>
-      ({ tr }) =>
-        toCodeBlock(tr, language),
+      ({ tr, editor }) =>
+        toCodeBlock(tr, editor, language),
     /** Sets the language of the code block holding the selection. False outside one or for an unsafe name. */
     setLanguage:
       (language: string): Command =>
@@ -412,7 +422,8 @@ export const codeBlock = definePlugin({
     const { state, registry } = ctx.editor
     const sel = state.selection
     if (sel && !isNodeSelection(sel) && inCodeBlock(state.doc, registry, sel.anchor.path)) {
-      const text = fragment.map(plainText).join(isBlockFragment(fragment, registry) ? '\n' : '')
+      const options = editorOptions(ctx.editor)
+      const text = fragment.map((n) => nodeText(n, registry, options)).join(isBlockFragment(fragment, registry) ? '\n' : '')
       return text ? [{ text, marks: [] }] : []
     }
     if (!isBlockFragment(fragment, registry) && fragment.some((n) => isText(n) && n.text.includes('\n')))

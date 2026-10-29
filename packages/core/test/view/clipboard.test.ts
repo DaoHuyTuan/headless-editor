@@ -84,6 +84,23 @@ describe('serializeForClipboard / parseFromClipboard', () => {
     )
   })
 
+  it("the text flavor uses an inline atom's renderText (with the editor's current options)", () => {
+    const tag = definePlugin({
+      name: 'tag',
+      node: { kind: 'inline', atom: true },
+      options: { prefix: '#' },
+      renderText: (node, { options }) => `${options.prefix}${String(node.data.label)}`,
+    })
+    const bare = definePlugin({ name: 'bare', node: { kind: 'inline', atom: true } })
+    const atom = (type: string): ElementNode => ({ id: type, type, data: { label: 'x' }, children: [] })
+    const content = doc({ id: 'p1', type: 'paragraph', data: {}, children: [txt('hi '), atom('tag'), txt(' '), atom('bare'), txt(' yo')] })
+    const editor = setup(content, caret([0, 0], 0), [testParagraph, testBold, tag, bare])
+    const all = { start: { path: [0, 0], offset: 0 }, end: { path: [0, 4], offset: 3 } }
+    expect(serializeForClipboard(editor, all).text).toBe('hi #x  yo')
+    editor.setPluginOptions('tag', { prefix: '+' })
+    expect(serializeForClipboard(editor, all).text).toBe('hi +x  yo')
+  })
+
   it('parses html when there is no json', () => {
     const editor = setup(doc(p('p1', txt(''))), caret([0, 0], 0))
     const frag = parseFromClipboard(editor, { html: '<p>a<b>b</b></p>', text: 'ab' })

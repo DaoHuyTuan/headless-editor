@@ -189,6 +189,14 @@ export interface PluginSpec<
   normalize?: (entry: [Node, Path], tr: Transaction, ctx: PluginContext<O, S, C, T>) => void
   parseHTML?: ParseRule[]
   renderHTML?: (node: ElementNode, ctx: { options: O }) => DOMOutputSpec
+  /**
+   * The plain text of an element of this plugin's node type, where content becomes plain text: the
+   * `text/plain` clipboard flavor, an inline atom normalized into a text-only (`content: 'text'`)
+   * block, plugins converting content to text (e.g. the code block's paste and `setCodeBlock`).
+   * Without it an element's text is its children's text, so a childless atom has none (and is dropped
+   * from a text-only block). Meant for inline atoms (e.g. a mention: `@label`).
+   */
+  renderText?: (node: DeepReadonly<ElementNode>, ctx: { options: O }) => string
   transformPasted?: (fragment: Fragment, ctx: PluginContext<O, S, C, T>) => Fragment
   /**
    * For an event inside a node view of this plugin's type (outside its `contentDOM`, whose events

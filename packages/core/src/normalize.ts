@@ -1,3 +1,4 @@
+import { nodeText, type OptionsLookup } from './content/text'
 import { isOpaque } from './model/editable'
 import { createId } from './model/id'
 import { getNode, isElement, isText, nodeEntries, sameMarkSet } from './model/node'
@@ -16,11 +17,12 @@ const MAX_CORE_FIXES_PER_PASS = 1_000_000
  * plugin's `normalize` hook on every node entry. Passes repeat until one adds no operations.
  */
 export function normalize(tr: Transaction, getContext: (plugin: AnyPlugin) => PluginContext<any, any>): void {
+  const options: OptionsLookup = (plugin) => getContext(plugin).options
   for (let pass = 0; ; pass++) {
     if (pass >= MAX_PASSES) throw new Error('Normalization did not converge')
     const before = tr.ops.length
     // Core rules always converge (each fix shrinks the work left); the cap is only a safety net.
-    for (let fixes = 0; fixOne(tr); fixes++) {
+    for (let fixes = 0; fixOne(tr, options); fixes++) {
       if (fixes >= MAX_CORE_FIXES_PER_PASS) throw new Error('Normalization did not converge')
     }
     runPluginHooks(tr, getContext)
@@ -50,7 +52,7 @@ function runPluginHooks(tr: Transaction, getContext: (plugin: AnyPlugin) => Plug
 }
 
 /** Applies the first core-rule fix found. Returns false when the doc is normal. */
-function fixOne(tr: Transaction): boolean {
+function fixOne(tr: Transaction, options: OptionsLookup): boolean {
   const { registry } = tr
   const root = tr.doc.children as Node[]
 
@@ -72,12 +74,12 @@ function fixOne(tr: Transaction): boolean {
 
   for (let i = 0; i < root.length; i++) {
     const n = root[i]!
-    if (isElement(n) && fixElement(tr, n, [i])) return true
+    if (isElement(n) && fixElement(tr, n, [i], options)) return true
   }
   return false
 }
 
-function fixElement(tr: Transaction, node: ElementNode, path: Path): boolean {
+function fixElement(tr: Transaction, node: ElementNode, path: Path, options: OptionsLookup): boolean {
   const { registry } = tr
   const spec = registry.node(node.type)
   // Rule 7: unknown types are left untouched, including their children.
@@ -107,7 +109,8 @@ function fixElement(tr: Transaction, node: ElementNode, path: Path): boolean {
     }
   }
 
-  // Rule 8: a `content: 'text'` block holds only unmarked text.
+  // Rule 8: a `content: 'text'` block holds only unmarked text. Inline elements are unwrapped, except
+  // an inline atom with `renderText`, which becomes that text (so a mention keeps its `@label`).
   if (spec.content === 'text') {
     for (let i = 0; i < children.length; i++) {
       const c = children[i]!
@@ -116,8 +119,12 @@ function fixElement(tr: Transaction, node: ElementNode, path: Path): boolean {
         for (const m of [...c.marks].reverse()) tr.apply({ type: 'remove_mark', path: [...path, i], mark: m })
         return true
       }
-      if (registry.node(c.type)?.kind !== 'inline') continue
-      unwrap(tr, c, [...path, i])
+      const childSpec = registry.node(c.type)
+      if (childSpec?.kind !== 'inline') continue
+      if (childSpec.atom && childSpec.plugin.spec.renderText) {
+        tr.insertNode([...path, i], { text: nodeText(c, registry, options), marks: [] })
+        tr.removeNode([...path, i + 1])
+      } else unwrap(tr, c, [...path, i])
       return true
     }
   }
@@ -167,7 +174,7 @@ function fixElement(tr: Transaction, node: ElementNode, path: Path): boolean {
 
   for (let i = 0; i < children.length; i++) {
     const c = children[i]!
-    if (isElement(c) && fixElement(tr, c, [...path, i])) return true
+    if (isElement(c) && fixElement(tr, c, [...path, i], options)) return true
   }
   return false
 }
