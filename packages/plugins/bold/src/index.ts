@@ -1,3 +1,7 @@
+/**
+ * Bold mark (`@hte/bold`). Renders `<strong>`; `options.HTMLAttributes` is merged into it.
+ * No React view, so no `data-*` attributes and no parts.
+ */
 import { definePlugin, mergeAttrs, type Command, type HTMLAttributes } from '@hte/core'
 
 export interface BoldOptions {

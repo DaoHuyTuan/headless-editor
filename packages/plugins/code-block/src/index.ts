@@ -1,3 +1,16 @@
+/**
+ * Code block (`@hte/code-block`); React view in `@hte/code-block/react`. The plugin (and node type)
+ * name is `codeBlock`; the view marker is kebab-case.
+ *
+ * Stable `data-*` attributes (view): `data-hte-code-block` on the root `<div>`, `data-selected` when
+ * node-selected. HTML output: `<pre><code class="language-x">` (`options.HTMLAttributes` is merged into
+ * the `<pre>`). Highlighting adds inline decorations whose classes come from the highlighter
+ * (highlight.js `hljs-*`); `<code>` itself gets no `hljs` class.
+ *
+ * Parts (`classNames` also has `root`): `toolbar`, `languageSelect` (inside the toolbar), `content`
+ * (`classNames.content` is on the `<pre>`). Parts and hooks are @experimental. See
+ * docs/plugin-authoring.md.
+ */
 import { z } from 'zod'
 import {
   applyOp,

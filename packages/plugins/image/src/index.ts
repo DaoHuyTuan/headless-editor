@@ -1,3 +1,13 @@
+/**
+ * Image block (`@hte/image`); React view in `@hte/image/react`. The plugin name is `image`.
+ *
+ * Stable `data-*` attributes (view): `data-hte-image` on the root `<figure>`, `data-selected` when
+ * node-selected, `data-uploading` while its upload is pending. HTML output is a plain `<img>` (no
+ * `data-*`); `options.HTMLAttributes` is merged first, so `src`, `alt` and `width` always win.
+ *
+ * Parts (`parts` / `classNames` keys, `classNames.root` too): `img`, `altInput`, `resizeHandle`.
+ * Parts and hooks are @experimental. See docs/plugin-authoring.md.
+ */
 import { z } from 'zod'
 import {
   createId,

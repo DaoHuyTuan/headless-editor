@@ -1,3 +1,7 @@
+/**
+ * Paragraph block (`@hte/paragraph`, the default block). Renders `<p>`; `options.HTMLAttributes` is
+ * merged into it. No React view, so no `data-*` attributes and no parts.
+ */
 import { definePlugin, mergeAttrs, type HTMLAttributes } from '@hte/core'
 
 export interface ParagraphOptions {

@@ -1,3 +1,18 @@
+/**
+ * Mention inline atom (`@hte/mention`); React views in `@hte/mention/react`. The plugin name is
+ * `mention`.
+ *
+ * Stable `data-*` attributes (view): `data-hte-mention` on the root `<span>`, `data-selected` when
+ * node-selected. Suggestion popup (a separate view root, portalled to `document.body`):
+ * `data-hte-mention-suggestion` and `data-open` on the popup, `data-selected` on the highlighted
+ * item. HTML output: `<span data-mention data-id="userId">@label</span>` (`options.HTMLAttributes` is
+ * merged first; `data-mention` and `data-id` win). The open trigger range is decorated with the
+ * class `hte-mention-query`.
+ *
+ * Parts: mention view `label`; suggestion `popup`, `list`, `item` (`classNames.root` and
+ * `classNames.popup` both class the popup). Parts and hooks are @experimental. See
+ * docs/plugin-authoring.md.
+ */
 import { z } from 'zod'
 import {
   createId,

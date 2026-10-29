@@ -1,3 +1,8 @@
+/**
+ * Font size mark (`@hte/font-size`). Renders `<span style="font-size: …">`; `options.HTMLAttributes` is
+ * merged into it (the data-driven `style` font-size wins). No React view, so no `data-*`
+ * attributes and no parts.
+ */
 import { z } from 'zod'
 import { definePlugin, mergeAttrs, type Command, type HTMLAttributes } from '@hte/core'
 
