@@ -146,6 +146,44 @@ test('a selection spanning a mention is replaced by typing; undo restores the me
   await expect.poll(() => inline(page)).toEqual(['Hi ', '@Anna', ' and ', '@Bob', ', welcome!'])
 })
 
+/** Viewport point at the left edge (+1px) of the character at `offset` of the leaf showing `leafText`, vertically centred. */
+function charPoint(page: Page, leafText: string, offset: number) {
+  return page.evaluate(
+    ([leafText, offset]) => {
+      const leaves = Array.from(window.editor.view!.root.querySelectorAll('[data-hte-leaf]'))
+      const text = leaves.find((l) => l.textContent === leafText)!.firstChild as Text
+      const range = document.createRange()
+      range.setStart(text, offset)
+      range.setEnd(text, offset + 1)
+      const r = range.getBoundingClientRect()
+      return { x: r.left + 1, y: r.top + r.height / 2 }
+    },
+    [leafText, offset] as const,
+  )
+}
+
+test('a mouse drag from text across a mention selects a range covering it', async ({ page }) => {
+  await openMentions(page)
+  const from = await charPoint(page, 'Hi ', 1) // "H|i "
+  const chip = (await editorMentions(page).first().boundingBox())!
+  const to = await charPoint(page, ' and ', 2) // " a|nd "
+  await page.mouse.move(from.x, from.y)
+  await page.mouse.down()
+  // Mid-drag over the chip: the DOM selection the browser made is kept (its anchor stays in "Hi ").
+  await page.mouse.move(chip.x + chip.width * 0.75, chip.y + chip.height / 2, { steps: 4 })
+  expect(await page.evaluate(() => window.getSelection()!.anchorNode?.textContent)).toBe('Hi ')
+  await page.mouse.move(to.x, to.y, { steps: 4 })
+  await page.mouse.up()
+  await expect
+    .poll(() => getSelection(page))
+    .toMatchObject({ anchor: { path: [0, 0], offset: 1 }, focus: { path: [0, 2], offset: 2 } })
+  expect(await page.evaluate(() => window.getSelection()!.containsNode(document.querySelector('[data-hte-mention]')!, false))).toBe(
+    true,
+  )
+  await page.keyboard.type('Z')
+  expect(await inline(page)).toEqual(['HZnd ', '@Bob', ', welcome!'])
+})
+
 test.describe('IME composition next to a mention', () => {
   test('right after a mention', async ({ page }) => {
     await openMentions(page)
@@ -199,16 +237,27 @@ test('?slowUsers=1: typing @a then @an quickly never shows a stale list', async 
     }).observe(document.body, { childList: true, subtree: true, characterData: true })
   })
   await focusEnd(page)
-  for (let round = 0; round < 5; round++) {
+  const requests = () => page.evaluate(() => window.usersRequests ?? [])
+  for (let round = 0; round < 3; round++) {
+    const sent = (await requests()).length
+    // Under ?slowUsers=1 "a" answers in 400 ms and "an" in 50 ms: the stale "a" response arrives last.
     await page.keyboard.type('@a')
     await page.keyboard.type('n')
     await expect(options(page)).toHaveText(['Anna', 'Andrew'])
-    // Longer than the slowest response: a late answer for "a" must not replace the list.
-    await page.waitForTimeout(450)
+    // Every request of this round answered, the late "a" one included: it must not have replaced the list.
+    await expect
+      .poll(async () => (await requests()).slice(sent).every((r) => r.resolvedAs !== undefined))
+      .toBe(true)
     await expect(options(page)).toHaveText(['Anna', 'Andrew'])
     await page.keyboard.press('Escape')
     await page.keyboard.type(' ')
   }
+  // The race happened: some "a" request resolved after an "an" request sent later.
+  const log = await requests()
+  const outOfOrder = log.some(
+    (a, i) => a.query === 'a' && log.slice(i + 1).some((an) => an.query === 'an' && an.resolvedAs! < a.resolvedAs!),
+  )
+  expect(outOfOrder).toBe(true)
   const seen = await page.evaluate(() => (window as unknown as { seen: { query: string; labels: string[] }[] }).seen)
   expect(seen.length).toBeGreaterThan(0)
   for (const { query, labels } of seen) {

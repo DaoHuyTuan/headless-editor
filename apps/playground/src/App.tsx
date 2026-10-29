@@ -7,7 +7,7 @@ import { plugins } from './editor'
 import { fakeUpload } from './fake-upload'
 import { fetchUsers } from './fake-users'
 import { ImageViewKindContext, PlaygroundImageView } from './image-views'
-import { scenarios, type Scenario, type ScenarioName } from './scenarios'
+import { scenarios, type ScenarioName } from './scenarios'
 import { Toolbar } from './Toolbar'
 
 type Tab = 'view' | 'code'
@@ -37,7 +37,7 @@ export function App() {
     editor.setContent(scenarios[name].content)
   }
 
-  const imageView = (scenarios[scenario] as Scenario).imageView ?? 'default'
+  const imageView = scenarios[scenario].imageView ?? 'default'
 
   return (
     <main className="app">

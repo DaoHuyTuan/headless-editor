@@ -60,7 +60,7 @@ const codeBlockDoc: Doc = {
   ],
 }
 
-export const scenarios = {
+const scenarioDefs = {
   empty: { label: 'Empty', content: { type: 'doc', children: [] } },
   paragraphs: {
     label: 'Paragraphs',
@@ -89,4 +89,7 @@ export const scenarios = {
   unknownBlock: { label: 'Unknown block', content: unknownBlockDoc },
 } satisfies Record<string, Scenario>
 
-export type ScenarioName = keyof typeof scenarios
+export type ScenarioName = keyof typeof scenarioDefs
+
+/** The scenarios by name, each typed as a `Scenario` (optional fields readable on every entry). */
+export const scenarios: Record<ScenarioName, Scenario> = scenarioDefs
