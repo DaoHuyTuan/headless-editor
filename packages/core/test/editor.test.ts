@@ -186,6 +186,15 @@ describe('Editor', () => {
     expect(update).not.toHaveBeenCalled()
   })
 
+  it('a bound command whose tr filterTransaction vetoes returns false (it did not apply)', () => {
+    const veto = definePlugin({ name: 'veto', filterTransaction: (tr) => !tr.ops.some((o) => o.type === 'insert_text') })
+    const ed = createTestEditor({ plugins: [testParagraph, testBold, veto], doc: doc(el('paragraph', txt('ab'))), selection: sel([0, 0], 2) })
+    expect(ed.commands.insertText('x')).toBe(false)
+    expect(ed.state.doc.children[0]!.children).toEqual([txt('ab')])
+    // A tr the filter lets through still reports true.
+    expect(ed.commands.toggleMark('bold')).toBe(true)
+  })
+
   it('normalizes dispatched transactions', () => {
     const ed = createTestEditor({ plugins: [testParagraph, testBold], doc: doc(el('paragraph', txt('ab'))) })
     const tr = ed.createTransaction()

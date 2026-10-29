@@ -574,7 +574,13 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
         const tr = this.createTransaction()
         tr.meta.origin = 'command'
         const ok = factory(...args)({ tr, state: this._state, editor: this as unknown as Editor })
-        if (ok && dispatch && (tr.ops.length > 0 || tr.storedMarks !== this._state.storedMarks)) this.dispatch(tr)
+        if (ok && dispatch && (tr.ops.length > 0 || tr.storedMarks !== this._state.storedMarks)) {
+          const before = this._state
+          this.dispatch(tr)
+          // Dropped by the pipeline (a `filterTransaction` veto, or a dispatch that is not allowed
+          // now): the command did not apply.
+          if (this._state === before) return false
+        }
         return ok
       }
     }

@@ -1,0 +1,19 @@
+{
+  "name": "@hte/code-block",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@hte/core": "workspace:*",
+    "highlight.js": "^11.10.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@hte/bold": "workspace:*",
+    "@hte/mention": "workspace:*",
+    "@hte/paragraph": "workspace:*"
+  }
+}

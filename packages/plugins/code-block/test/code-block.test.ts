@@ -1,0 +1,326 @@
+// @vitest-environment happy-dom
+import { afterEach, describe, expect, it } from 'vitest'
+import { serializeForClipboard, type Doc, type ElementNode, type Node, type Selection, type TextNode } from '@hte/core'
+import { createTestEditor, doc, el, sel, stripIds, txt } from '@hte/core/testing'
+import { bold } from '@hte/bold'
+import { mention } from '@hte/mention'
+import { paragraph } from '@hte/paragraph'
+import { codeBlock, defaultHighlighter } from '../src/index'
+
+const p = (...children: Node[]) => el('paragraph', ...children)
+const code = (text: string, language = 'plaintext') => el('codeBlock', { language }, txt(text))
+const caret = (path: number[], offset: number): Selection => sel(path, offset)
+
+afterEach(() => {
+  document.getSelection()?.removeAllRanges()
+  document.body.replaceChildren()
+})
+
+function setup(content: Doc, selection: Selection, plugin = codeBlock) {
+  return createTestEditor({
+    plugins: [paragraph, bold, mention.configure({ fetchUsers: async () => [] }), plugin],
+    doc: content,
+    selection,
+  })
+}
+
+type Ed = ReturnType<typeof setup>
+
+const blocks = (ed: Ed) =>
+  ed.state.doc.children.map((b) => ({
+    type: b.type,
+    text: (b.children ?? []).map((c) => ('text' in c ? c.text : `<${c.type}>`)).join(''),
+  }))
+
+/** Pastes clipboard flavors at the current selection through the paste intent. */
+function paste(ed: Ed, data: Record<string, string>) {
+  const dataTransfer = { getData: (type: string) => data[type] ?? '' } as unknown as DataTransfer
+  return ed.handleIntent({ inputType: 'insertFromPaste', data: null, range: ed.state.selection, dataTransfer })
+}
+
+describe('code block keymap', () => {
+  it('Tab inserts two spaces at the caret', () => {
+    const ed = setup(doc(code('ab')), caret([0, 0], 1))
+    expect(ed.runKeymap('Tab')).toBe(true)
+    expect(blocks(ed)).toEqual([{ type: 'codeBlock', text: 'a  b' }])
+    expect(ed.state.selection).toEqual(caret([0, 0], 3))
+  })
+
+  it('Tab with a selection spanning lines indents each line', () => {
+    const ed = setup(doc(code('a\nb\nc')), sel([0, 0], 0, [0, 0], 3))
+    expect(ed.runKeymap('Tab')).toBe(true)
+    expect(blocks(ed)).toEqual([{ type: 'codeBlock', text: '  a\n  b\nc' }])
+    expect(ed.state.selection).toEqual(sel([0, 0], 2, [0, 0], 7))
+  })
+
+  it('Shift-Tab removes up to two leading spaces from each selected line', () => {
+    const ed = setup(doc(code('   a\n b\nc\n  d')), sel([0, 0], 4, [0, 0], 9))
+    expect(ed.runKeymap('Shift-Tab')).toBe(true)
+    expect(blocks(ed)).toEqual([{ type: 'codeBlock', text: ' a\nb\nc\n  d' }])
+  })
+
+  it('Shift-Tab with a caret dedents its line', () => {
+    const ed = setup(doc(code('x\n    y')), caret([0, 0], 7))
+    expect(ed.runKeymap('Shift-Tab')).toBe(true)
+    expect(blocks(ed)).toEqual([{ type: 'codeBlock', text: 'x\n  y' }])
+    expect(ed.state.selection).toEqual(caret([0, 0], 5))
+  })
+
+  it('Enter inserts a newline', () => {
+    const ed = setup(doc(code('ab')), caret([0, 0], 1))
+    expect(ed.runKeymap('Enter')).toBe(true)
+    expect(blocks(ed)).toEqual([{ type: 'codeBlock', text: 'a\nb' }])
+    expect(ed.state.selection).toEqual(caret([0, 0], 2))
+  })
+
+  it('Enter three times at the end exits to a new paragraph, removing the two trailing newlines', () => {
+    const ed = setup(doc(code('a')), caret([0, 0], 1))
+    ed.runKeymap('Enter')
+    ed.runKeymap('Enter')
+    expect(blocks(ed)).toEqual([{ type: 'codeBlock', text: 'a\n\n' }])
+    expect(ed.runKeymap('Enter')).toBe(true)
+    expect(blocks(ed)).toEqual([
+      { type: 'codeBlock', text: 'a' },
+      { type: 'paragraph', text: '' },
+    ])
+    expect(ed.state.selection).toEqual(caret([1, 0], 0))
+  })
+
+  it('Enter with two trailing newlines but the caret not at the end inserts a newline', () => {
+    const ed = setup(doc(code('a\n\n')), caret([0, 0], 1))
+    ed.runKeymap('Enter')
+    expect(blocks(ed)).toEqual([{ type: 'codeBlock', text: 'a\n\n\n' }])
+  })
+
+  it('outside a code block the keys are left to the editor', () => {
+    const ed = setup(doc(p(txt('ab'))), caret([0, 0], 1))
+    for (const key of ['Tab', 'Shift-Tab', 'Enter', 'Mod-Enter', 'Backspace']) expect(ed.runKeymap(key)).toBe(false)
+    expect(blocks(ed)).toEqual([{ type: 'paragraph', text: 'ab' }])
+  })
+
+  it('Backspace at the start of an empty code block turns it into a paragraph', () => {
+    const ed = setup(doc(p(txt('x')), code('')), caret([1, 0], 0))
+    expect(ed.runKeymap('Backspace')).toBe(true)
+    expect(blocks(ed)).toEqual([
+      { type: 'paragraph', text: 'x' },
+      { type: 'paragraph', text: '' },
+    ])
+    expect(ed.state.selection).toEqual(caret([1, 0], 0))
+  })
+
+  it('Backspace in a non-empty code block is left to the editor', () => {
+    const ed = setup(doc(code('ab')), caret([0, 0], 0))
+    expect(ed.runKeymap('Backspace')).toBe(false)
+  })
+
+  it('Mod-Enter exits the code block to a new paragraph after it', () => {
+    const ed = setup(doc(code('a\nb'), p(txt('z'))), caret([0, 0], 1))
+    expect(ed.runKeymap('Mod-Enter')).toBe(true)
+    expect(blocks(ed)).toEqual([
+      { type: 'codeBlock', text: 'a\nb' },
+      { type: 'paragraph', text: '' },
+      { type: 'paragraph', text: 'z' },
+    ])
+    expect(ed.state.selection).toEqual(caret([1, 0], 0))
+  })
+})
+
+describe('code block commands', () => {
+  it('setCodeBlock replaces the paragraph with a code block, keeping the text and the caret', () => {
+    const ed = setup(doc(p(txt('x')), p(txt('hello'))), caret([1, 0], 2))
+    expect(ed.commands.setCodeBlock('javascript')).toBe(true)
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p(txt('x')), code('hello', 'javascript'))))
+    expect(ed.state.selection).toEqual(caret([1, 0], 2))
+    expect(ed.isActive('codeBlock')).toBe(true)
+    // One undo restores the paragraph.
+    ed.commands.undo()
+    expect(blocks(ed)).toEqual([
+      { type: 'paragraph', text: 'x' },
+      { type: 'paragraph', text: 'hello' },
+    ])
+  })
+
+  it('setCodeBlock keeps a selection and defaults the language to plaintext', () => {
+    const ed = setup(doc(p(txt('a', 'bold'), txt('bc'))), sel([0, 0], 0, [0, 1], 1))
+    expect(ed.commands.setCodeBlock()).toBe(true)
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(code('abc'))))
+    expect(ed.state.selection).toEqual(sel([0, 0], 0, [0, 0], 2))
+  })
+
+  it('setCodeBlock is false inside a code block or with an unsafe language', () => {
+    expect(setup(doc(code('a')), caret([0, 0], 0)).commands.setCodeBlock()).toBe(false)
+    const ed = setup(doc(p(txt('a'))), caret([0, 0], 0))
+    expect(ed.commands.setCodeBlock('js" onclick="x')).toBe(false)
+    expect(blocks(ed)).toEqual([{ type: 'paragraph', text: 'a' }])
+  })
+
+  it('setLanguage changes the language; an unsafe one is rejected by the schema', () => {
+    const ed = setup(doc(code('a')), caret([0, 0], 0))
+    expect(ed.commands.setLanguage('python')).toBe(true)
+    expect(ed.state.doc.children[0]!.data).toEqual({ language: 'python' })
+    expect(ed.commands.setLanguage('x"><script>')).toBe(false)
+    expect(ed.state.doc.children[0]!.data).toEqual({ language: 'python' })
+    expect(setup(doc(p(txt('a'))), caret([0, 0], 0)).commands.setLanguage('python')).toBe(false)
+  })
+
+  it('loading a code block with an unsafe language keeps the code as plaintext', () => {
+    const ed = setup(doc(code('a', 'a b"')), caret([0, 0], 0))
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(code('a'))))
+  })
+})
+
+describe('code block blocks marks and inline nodes', () => {
+  it('toggleBold inside returns false and no mark persists', () => {
+    const ed = setup(doc(code('abc')), sel([0, 0], 0, [0, 0], 2))
+    expect(ed.commands.toggleBold()).toBe(false)
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(code('abc'))))
+    expect(ed.isActive('bold')).toBe(false)
+    // A caret: no stored mark either.
+    const atCaret = setup(doc(code('abc')), caret([0, 0], 1))
+    expect(atCaret.commands.toggleBold()).toBe(false)
+    expect(atCaret.state.storedMarks).toBeNull()
+    expect(atCaret.isActive('bold')).toBe(false)
+    atCaret.commands.insertText('x')
+    expect(stripIds(atCaret.getJSON())).toEqual(stripIds(doc(code('axbc'))))
+  })
+
+  it('a raw add_mark on a code block text is filtered out', () => {
+    const ed = setup(doc(code('abc')), caret([0, 0], 1))
+    const tr = ed.createTransaction()
+    tr.apply({ type: 'add_mark', path: [0, 0], mark: { type: 'bold', data: {} } })
+    ed.dispatch(tr)
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(code('abc'))))
+  })
+
+  it('insertMention inside is rejected', () => {
+    const ed = setup(doc(code('abc')), caret([0, 0], 1))
+    expect(ed.commands.insertMention({ id: 'u1', label: 'Ann' })).toBe(false)
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(code('abc'))))
+  })
+
+  it('a raw insert of an inline element into a code block is filtered out', () => {
+    const ed = setup(doc(code('abc')), caret([0, 0], 1))
+    const tr = ed.createTransaction()
+    tr.insertNode([0, 1], { id: 'm1', type: 'mention', data: { userId: 'u1', label: 'Ann' }, children: [] })
+    ed.dispatch(tr)
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(code('abc'))))
+  })
+
+  it('bold still works outside the code block', () => {
+    const ed = setup(doc(p(txt('ab')), code('c')), sel([0, 0], 0, [0, 0], 2))
+    expect(ed.commands.toggleBold()).toBe(true)
+    expect(ed.isActive('bold')).toBe(true)
+  })
+})
+
+describe('code block paste', () => {
+  it('rich HTML pasted inside becomes plain text with its newlines', () => {
+    const ed = setup(doc(code('')), caret([0, 0], 0))
+    paste(ed, { 'text/html': '<p>a<b>b</b></p><p>c</p>' })
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(code('ab\nc'))))
+    expect(ed.state.selection).toEqual(caret([0, 0], 4))
+  })
+
+  it('multi-line plain text pasted inside stays in the block', () => {
+    const ed = setup(doc(code('[]')), caret([0, 0], 1))
+    paste(ed, { 'text/plain': 'x\ny' })
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(code('[x\ny]'))))
+  })
+
+  it('copying x\\ny from a code block and pasting it into a paragraph gives two paragraphs', () => {
+    const ed = setup(doc(code('x\ny'), p(txt(''))), caret([1, 0], 0))
+    const flavors = serializeForClipboard(ed, { start: { path: [0, 0], offset: 0 }, end: { path: [0, 0], offset: 3 } })
+    expect(flavors.text).toBe('x\ny')
+    paste(ed, { 'application/x-hte-fragment': flavors.json, 'text/html': flavors.html, 'text/plain': flavors.text })
+    expect(blocks(ed)).toEqual([
+      { type: 'codeBlock', text: 'x\ny' },
+      { type: 'paragraph', text: 'x' },
+      { type: 'paragraph', text: 'y' },
+    ])
+  })
+})
+
+describe('code block HTML', () => {
+  it('round-trips <pre><code class="language-x"> with its newlines', () => {
+    const ed = setup(doc(p(txt(''))), caret([0, 0], 0))
+    const html = '<pre><code class="language-python">x = 1\ny = 2</code></pre>'
+    ed.setContent(html)
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(code('x = 1\ny = 2', 'python'))))
+    expect(ed.getHTML()).toBe(html)
+  })
+
+  it('a <pre> without a language class parses as plaintext', () => {
+    const ed = setup(doc(p(txt(''))), caret([0, 0], 0))
+    ed.setContent('<pre>a</pre>')
+    expect(ed.state.doc.children[0]!.data).toEqual({ language: 'plaintext' })
+  })
+
+  it('merges HTMLAttributes into the <pre>; the language class stays on <code>', () => {
+    const ed = setup(doc(code('a', 'css')), caret([0, 0], 0), codeBlock.configure({ HTMLAttributes: { class: 'snippet' } }))
+    expect(ed.getHTML()).toBe('<pre class="snippet"><code class="language-css">a</code></pre>')
+  })
+})
+
+describe('code block decorations', () => {
+  const inline = (ed: Ed) => ed.getDecorations(ed.state).filter((d) => d.type === 'inline')
+
+  it('javascript `const a = 1` has a keyword token over `const`', () => {
+    const ed = setup(doc(p(txt('x')), code('const a = 1', 'javascript')), caret([0, 0], 0))
+    expect(inline(ed)).toContainEqual({
+      type: 'inline',
+      from: { path: [1, 0], offset: 0 },
+      to: { path: [1, 0], offset: 5 },
+      attrs: { class: 'hljs-keyword' },
+    })
+  })
+
+  it('plaintext has none', () => {
+    const ed = setup(doc(code('const a = 1')), caret([0, 0], 0))
+    expect(inline(ed)).toEqual([])
+  })
+
+  it('uses the highlighter option', () => {
+    const plugin = codeBlock.configure({ highlighter: (text, lang) => [{ from: 0, to: text.length, className: `hljs-${lang}` }] })
+    const ed = setup(doc(code('ab', 'x')), caret([0, 0], 0), plugin)
+    expect(inline(ed)).toEqual([
+      { type: 'inline', from: { path: [0, 0], offset: 0 }, to: { path: [0, 0], offset: 2 }, attrs: { class: 'hljs-x' } },
+    ])
+  })
+})
+
+describe('defaultHighlighter', () => {
+  it('gives UTF-16 offsets into the unescaped text', () => {
+    const tokens = defaultHighlighter('"<é>" + 1', 'javascript')
+    expect(tokens).toContainEqual({ from: 0, to: 5, className: 'hljs-string' })
+    expect(tokens).toContainEqual({ from: 8, to: 9, className: 'hljs-number' })
+  })
+
+  it('knows html (via xml) and no unknown language', () => {
+    expect(defaultHighlighter('<a></a>', 'html').length).toBeGreaterThan(0)
+    expect(defaultHighlighter('const a', 'plaintext')).toEqual([])
+    expect(defaultHighlighter('const a', 'nope')).toEqual([])
+  })
+})
+
+describe('IME inside a code block', () => {
+  it('composition commits like in any text block, keeping newlines and the caret', () => {
+    const ed = setup(doc(code('a\nb')), caret([0, 0], 3))
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    ed.mount(root)
+    ed.view!.focus()
+    const fire = (type: string) => root.dispatchEvent(new Event(type, { bubbles: true }))
+    fire('compositionstart')
+    const leaf = ed.view!.renderer.leafAt([0, 0])!
+    const walker = leaf.ownerDocument.createTreeWalker(leaf, 4)
+    const texts: Text[] = []
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) texts.push(n as Text)
+    // The IME appends to the last DOM text of the leaf.
+    texts[texts.length - 1]!.data += 'ế'
+    fire('compositionend')
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(code('a\nbế'))))
+    expect(ed.state.selection).toEqual(caret([0, 0], 4))
+    expect((ed.state.doc.children[0] as ElementNode).children as TextNode[]).toHaveLength(1)
+    ed.destroy()
+  })
+})
