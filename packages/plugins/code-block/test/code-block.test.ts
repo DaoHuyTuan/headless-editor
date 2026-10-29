@@ -130,6 +130,22 @@ describe('code block keymap', () => {
     expect(ed.state.selection).toEqual(caret([1, 0], 0))
   })
 
+  it('Backspace at the start of a code block after a paragraph joins it as one paragraph per line', () => {
+    const ed = setup(doc(p(txt('p')), code('a\nb')), caret([1, 0], 0))
+    ed.handleIntent({ inputType: 'deleteContentBackward', data: null, range: ed.state.selection })
+    expect(blocks(ed)).toEqual([
+      { type: 'paragraph', text: 'pa' },
+      { type: 'paragraph', text: 'b' },
+    ])
+    expect(ed.getHTML()).toBe('<p>pa</p><p>b</p>')
+  })
+
+  it('a range delete from a paragraph into a code block keeps the remaining lines as paragraphs', () => {
+    const ed = setup(doc(p(txt('pq')), code('a\nb')), sel([0, 0], 1, [1, 0], 1))
+    ed.handleIntent({ inputType: 'deleteContentBackward', data: null, range: ed.state.selection })
+    expect(ed.getHTML()).toBe('<p>p</p><p>b</p>')
+  })
+
   it('Backspace in a non-empty code block is left to the editor', () => {
     const ed = setup(doc(code('ab')), caret([0, 0], 0))
     expect(ed.runKeymap('Backspace')).toBe(false)

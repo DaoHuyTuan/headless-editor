@@ -267,22 +267,19 @@ test.describe('selections across a code block boundary', () => {
     expect(k).toBeGreaterThan(0)
     expect(k).toBeLessThan('A JS snippet:'.length)
     await page.keyboard.press('Backspace')
-    // The range is removed and the rest of the code block joins the paragraph, the caret at the join.
-    // (What becomes of the code's newlines there is the known gap of the test.fail below.)
-    expect(await types(page)).toEqual(['paragraph', 'paragraph'])
+    // The range is removed and the rest of the code block joins the paragraph, the caret at the join;
+    // the code's other lines become paragraphs of their own (see the next test).
+    await expect.poll(() => types(page)).toEqual(['paragraph', 'paragraph', 'paragraph', 'paragraph'])
     await expect.poll(() => getSelection(page)).toMatchObject({ focus: { path: [0, 0], offset: k } })
     await page.keyboard.type('W')
-    const [joined, after] = (await getDoc(page)).children.map((b) => textOf(b as ElementNode))
-    expect(joined!.startsWith(`${'A JS snippet:'.slice(0, k)}Wction greet(name) {`)).toBe(true)
-    expect(after).toBe('after')
+    const texts = (await getDoc(page)).children.map((b) => textOf(b as ElementNode))
+    expect(texts).toEqual([`${'A JS snippet:'.slice(0, k)}Wction greet(name) {`, '  return `Hello, ${name}!`', '}', 'after'])
     await expect.poll(() => getSelection(page)).toMatchObject({ focus: { path: [0, 0], offset: k + 1 } })
   })
 
-  // Known gap (M4 follow-up): joining a code block into a paragraph keeps the code's `\n` in the
-  // paragraph's text, while a non-code block must never hold `\n` (paste splits lines into blocks; the
-  // HTML parser collapses `\n` outside <pre>, so such a paragraph does not round-trip). This asserts
-  // the desired behaviour and is expected to fail until the join is fixed.
-  test.fail('joining a code block into a paragraph leaves no newline in a non-code block', async ({ page }) => {
+  // A non-code block never holds `\n` (the HTML parser collapses it outside <pre>, so it would not
+  // round-trip): normalization splits the joined paragraph at each newline.
+  test('joining a code block into a paragraph leaves no newline in a non-code block', async ({ page }) => {
     await openSnippet(page)
     await setCaret(page, [1, 0], 3)
     await page.keyboard.press('Shift+ArrowUp')
@@ -292,6 +289,7 @@ test.describe('selections across a code block boundary', () => {
     const blocks = (await getDoc(page)).children as ElementNode[]
     const withNewline = blocks.filter((b) => b.type !== 'codeBlock' && textOf(b).includes('\n')).map((b) => b.id)
     expect(withNewline).toEqual([])
+    expect(blocks.map((b) => b.type)).toEqual(['paragraph', 'paragraph', 'paragraph', 'paragraph'])
   })
 
   test('Ctrl+A in the code block selects the document; typing replaces everything', async ({ page }) => {
