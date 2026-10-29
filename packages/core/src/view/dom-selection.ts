@@ -81,7 +81,8 @@ export function readDomSelection(r: Renderer, domSel: globalThis.Selection): Sel
 
 /**
  * Makes the DOM selection show `sel`, keeping its direction. Does nothing when the DOM selection
- * is already in text leaves and maps to `sel`. A null `sel` clears the DOM selection only when it is inside the root.
+ * already maps to `sel` and none of its ends is stray (see `isStrayPosition`). A null `sel` clears
+ * the DOM selection only when it is inside the root.
  * Does nothing when a point has no rendered leaf (e.g. a text inside an unknown element).
  */
 export function writeDomSelection(r: Renderer, sel: Selection | null, domSel: globalThis.Selection): void {
@@ -102,16 +103,16 @@ export function writeDomSelection(r: Renderer, sel: Selection | null, domSel: gl
   }
   // `leafAt` is null for a leaf not in the root (e.g. in a contentDOM its view has not placed yet).
   if (!r.leafAt(sel.anchor.path) || !r.leafAt(sel.focus.path)) return
-  // Kept only when it is in leaves: a DOM selection outside them (e.g. collapsed into the root after
-  // its leaf was removed) can map to the same points while no caret shows there, and typing at it
-  // never reaches the model.
+  // Kept unless an end is stray (see `isStrayPosition`): e.g. a caret the browser collapsed into the
+  // root after its leaf was removed maps to the same point while no caret shows there, and typing at
+  // it never reaches the model.
   if (
     current &&
     !current.node &&
     pointEquals(current.anchor, sel.anchor) &&
     pointEquals(current.focus, sel.focus) &&
-    leafAround(r, domSel.anchorNode!) &&
-    leafAround(r, domSel.focusNode!)
+    !isStrayPosition(r, domSel.anchorNode!) &&
+    !isStrayPosition(r, domSel.focusNode!)
   ) {
     return
   }
@@ -121,6 +122,18 @@ export function writeDomSelection(r: Renderer, sel: Selection | null, domSel: gl
 }
 
 // --- helpers ---
+
+/**
+ * Whether a DOM selection end in `node` cannot show a caret: the root itself, or an editable element
+ * outside every leaf that contains no leaf (e.g. a block or contentDOM whose leaf was removed).
+ * Positions in leaves, in non-editable content (inline atoms, node-view controls) or in static text
+ * are not stray: they are the user's, and kept while they map to the model selection.
+ */
+function isStrayPosition(r: Renderer, node: globalThis.Node): boolean {
+  if (node === r.root) return true
+  if (node.nodeType !== 1 || leafAround(r, node) || outermostNonEditable(r, node)) return false
+  return !(node as Element).querySelector(`[${LEAF_ATTR}]`)
+}
 
 /** The path of the opaque block whose root is exactly what the DOM selection covers, or null. */
 function selectedElementPath(r: Renderer, domSel: globalThis.Selection): Path | null {

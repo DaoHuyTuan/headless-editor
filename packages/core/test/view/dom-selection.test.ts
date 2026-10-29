@@ -345,6 +345,27 @@ describe('inline atoms: DOM <-> model mapping', () => {
     expect(domToModel(renderer, parent, i + 1)).toEqual({ path: [0, 2], offset: 0 })
   })
 
+  it('writeDomSelection keeps a DOM selection on the chip that maps to the model selection', () => {
+    const { renderer } = setupChip(txt('x'), node('c1', 'chip'), txt('y'))
+    const chipDom = renderer.elementAt([0, 1])!
+    const chipText = textIn(chipDom)
+    const leafX = textIn(renderer.leafAt([0, 0])!)
+    // E.g. mid-drag: from inside "x" to past the middle of the chip (its text, then the chip element).
+    for (const [focusNode, focusOffset] of [
+      [chipText, 4],
+      [chipDom, 1],
+    ] as const) {
+      domSel().setBaseAndExtent(leafX, 0, focusNode, focusOffset)
+      const sel: Selection = { anchor: { path: [0, 0], offset: 0 }, focus: { path: [0, 2], offset: 0 } }
+      expect(readDomSelection(renderer, domSel())).toEqual(sel)
+      const spy = vi.spyOn(domSel(), 'setBaseAndExtent')
+      writeDomSelection(renderer, sel, domSel())
+      expect(spy).not.toHaveBeenCalled()
+      spy.mockRestore()
+      expect(domSel().focusNode).toBe(focusNode)
+    }
+  })
+
   it('writeDomSelection places the caret in the text leaves beside the chip', () => {
     const { renderer } = setupChip(txt(''), node('c1', 'viewChip'), txt(''))
     const sel: Selection = { anchor: { path: [0, 0], offset: 0 }, focus: { path: [0, 2], offset: 0 } }
