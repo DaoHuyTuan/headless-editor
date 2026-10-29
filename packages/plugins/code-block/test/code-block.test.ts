@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it } from 'vitest'
-import { serializeForClipboard, type Doc, type ElementNode, type Node, type Selection, type TextNode } from '@hte/core'
+import { definePlugin, serializeForClipboard, type Doc, type ElementNode, type Node, type Selection, type TextNode } from '@hte/core'
 import { createTestEditor, doc, el, sel, stripIds, txt } from '@hte/core/testing'
 import { bold } from '@hte/bold'
 import { mention } from '@hte/mention'
@@ -94,8 +94,23 @@ describe('code block keymap', () => {
 
   it('outside a code block the keys are left to the editor', () => {
     const ed = setup(doc(p(txt('ab'))), caret([0, 0], 1))
-    for (const key of ['Tab', 'Shift-Tab', 'Enter', 'Mod-Enter', 'Backspace']) expect(ed.runKeymap(key)).toBe(false)
+    for (const key of ['Tab', 'Shift-Tab', 'Enter', 'Shift-Enter', 'Mod-Enter', 'Backspace'])
+      expect(ed.runKeymap(key)).toBe(false)
     expect(blocks(ed)).toEqual([{ type: 'paragraph', text: 'ab' }])
+  })
+
+  it('Shift-Enter inserts a newline (never exits)', () => {
+    const ed = setup(doc(code('a\n\n')), caret([0, 0], 3))
+    expect(ed.runKeymap('Shift-Enter')).toBe(true)
+    expect(blocks(ed)).toEqual([{ type: 'codeBlock', text: 'a\n\n\n' }])
+    expect(ed.state.selection).toEqual(caret([0, 0], 4))
+  })
+
+  it('a key whose tr another plugin vetoes reports not handled', () => {
+    const veto = definePlugin({ name: 'veto', filterTransaction: (tr) => !tr.ops.some((o) => o.type === 'insert_text') })
+    const ed = createTestEditor({ plugins: [paragraph, codeBlock, veto], doc: doc(code('ab')), selection: caret([0, 0], 1) })
+    expect(ed.runKeymap('Tab')).toBe(false)
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(code('ab'))))
   })
 
   it('Backspace at the start of an empty code block turns it into a paragraph', () => {
@@ -122,6 +137,37 @@ describe('code block keymap', () => {
       { type: 'paragraph', text: 'z' },
     ])
     expect(ed.state.selection).toEqual(caret([1, 0], 0))
+  })
+})
+
+describe('code block line-break intents (beforeinput without keydown)', () => {
+  const intent = (ed: Ed, inputType: string) => ed.handleIntent({ inputType, data: null, range: ed.state.selection })
+
+  for (const inputType of ['insertParagraph', 'insertLineBreak']) {
+    it(`${inputType} inserts a newline instead of splitting the block`, () => {
+      const ed = setup(doc(code('ab')), caret([0, 0], 1))
+      expect(intent(ed, inputType)).toBe(true)
+      expect(blocks(ed)).toEqual([{ type: 'codeBlock', text: 'a\nb' }])
+      expect(ed.state.selection).toEqual(caret([0, 0], 2))
+    })
+
+    it(`${inputType} at the end after two newlines exits like Enter`, () => {
+      const ed = setup(doc(code('a\n\n')), caret([0, 0], 3))
+      expect(intent(ed, inputType)).toBe(true)
+      expect(blocks(ed)).toEqual([
+        { type: 'codeBlock', text: 'a' },
+        { type: 'paragraph', text: '' },
+      ])
+    })
+  }
+
+  it('outside a code block the intent is left to the core (splits the paragraph)', () => {
+    const ed = setup(doc(p(txt('ab'))), caret([0, 0], 1))
+    intent(ed, 'insertParagraph')
+    expect(blocks(ed)).toEqual([
+      { type: 'paragraph', text: 'a' },
+      { type: 'paragraph', text: 'b' },
+    ])
   })
 })
 
@@ -204,6 +250,12 @@ describe('code block blocks marks and inline nodes', () => {
     tr.insertNode([0, 1], { id: 'm1', type: 'mention', data: { userId: 'u1', label: 'Ann' }, children: [] })
     ed.dispatch(tr)
     expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(code('abc'))))
+  })
+
+  it('a selection over a paragraph and a code block bolds the paragraph part only', () => {
+    const ed = setup(doc(p(txt('ab')), code('cd')), sel([0, 0], 0, [1, 0], 2))
+    expect(ed.commands.toggleBold()).toBe(true)
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p(txt('ab', 'bold')), code('cd'))))
   })
 
   it('bold still works outside the code block', () => {

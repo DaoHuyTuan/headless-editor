@@ -18,6 +18,7 @@ import {
   type Fragment,
   type HTMLAttributes,
   type Node,
+  type Operation,
   type Path,
   type PluginContext,
   type Point,
@@ -160,6 +161,11 @@ function newline(tr: Transaction): boolean {
   return tr.insertText('\n') && true
 }
 
+/** Shift-Enter: a newline, never an exit. */
+function lineBreak(tr: Transaction): boolean {
+  return !!codeAt(tr) && tr.insertText('\n') && true
+}
+
 /** Swaps the block at `path` for `replacement`, putting the selection at `selection` (paths inside the new block). */
 function replaceBlock(tr: Transaction, path: Path, replacement: ElementNode, selection: (path: Path) => Selection): boolean {
   // Insert after, move the selection in, then remove the old block: the selection never sits in a removed node.
@@ -222,39 +228,53 @@ function toCodeBlock(tr: Transaction, language: string | undefined): boolean {
   }))
 }
 
-/** Runs `edit` on a fresh tr and dispatches it when it applied with changes (like a bound command). */
+/**
+ * Runs `edit` on a fresh tr and dispatches it when it applied with changes. Like a bound command,
+ * false when the pipeline dropped the tr (e.g. another plugin's `filterTransaction`).
+ */
 function run(ctx: Ctx, edit: (tr: Transaction) => boolean): boolean {
   const tr = ctx.editor.createTransaction()
   tr.meta.origin = 'command'
   if (!edit(tr) || tr.rejected !== null) return false
-  if (tr.ops.length > 0) ctx.editor.dispatch(tr)
-  return true
+  if (tr.ops.length === 0) return true
+  const before = ctx.editor.state
+  ctx.editor.dispatch(tr)
+  return ctx.editor.state !== before
 }
 
-/** Whether `tr` adds a mark to a code block's text or inserts an inline element into one. */
+const isInlineInsert = (op: Operation, registry: Registry): op is Extract<Operation, { type: 'insert_node' }> =>
+  op.type === 'insert_node' && isElement(op.node) && registry.node(op.node.type)?.kind === 'inline'
+
+/**
+ * Whether `tr` must be vetoed: it inserts an inline element into a code block, its marks all land in
+ * code blocks (a mark only partly inside one is let through: normalization strips that part), or it
+ * stores marks at a caret in a code block (e.g. toggling bold at the caret).
+ */
 function addsFormatting(tr: Transaction): boolean {
   const { registry } = tr
-  let doc: Doc = tr.before.doc as Doc
-  for (const op of tr.ops) {
-    if (op.type === 'add_mark' && inCodeBlock(doc, registry, op.path)) return true
-    if (
-      op.type === 'insert_node' &&
-      isElement(op.node) &&
-      registry.node(op.node.type)?.kind === 'inline' &&
-      inCodeBlock(doc, registry, op.path.slice(0, -1))
-    )
-      return true
-    if (op.type !== 'set_selection') doc = applyOp(doc, op)
-  }
-  // A caret in a code block never gets stored marks (e.g. toggling bold at the caret).
   const sel = tr.selection
-  return (
-    !!sel &&
-    !!tr.storedMarks &&
+  if (
+    sel &&
+    tr.storedMarks &&
     tr.storedMarks.length > 0 &&
     tr.storedMarks !== tr.before.storedMarks &&
     inCodeBlock(tr.doc, registry, sel.focus.path)
   )
+    return true
+  // Plain typing has neither: no replay.
+  if (!tr.ops.some((op) => op.type === 'add_mark' || isInlineInsert(op, registry))) return false
+  let doc: Doc = tr.before.doc as Doc
+  let marks = 0
+  let marksInCode = 0
+  for (const op of tr.ops) {
+    if (op.type === 'add_mark') {
+      marks++
+      if (inCodeBlock(doc, registry, op.path)) marksInCode++
+    }
+    if (isInlineInsert(op, registry) && inCodeBlock(doc, registry, op.path.slice(0, -1))) return true
+    if (op.type !== 'set_selection') doc = applyOp(doc, op)
+  }
+  return marks > 0 && marksInCode === marks
 }
 
 function plainText(node: Node): string {
@@ -312,12 +332,15 @@ function tokensFor(block: DeepReadonly<ElementNode>, text: string, highlighter: 
  * `\n` as its line breaks and `data: { language }`.
  *
  * - Keys, only with the selection in a code block: Tab inserts two spaces (indents each line of a
- *   multi-line selection), Shift-Tab removes up to two leading spaces per line, Enter inserts `\n`
- *   (at the end of a block ending with `\n\n` it removes them and exits to a new paragraph),
- *   Mod-Enter exits, Backspace at the start of an empty block turns it into a paragraph.
- * - Marks and inline nodes are blocked: a tr adding a mark to a code block's text, inserting an
- *   inline element into one or storing marks at a caret in one is filtered out (so `toggleBold` and
- *   `insertMention` return false there), and normalization strips any that arrive otherwise.
+ *   multi-line selection), Shift-Tab removes up to two leading spaces per line (both are always
+ *   consumed there, so focus never tabs out of the block), Enter inserts `\n` (at the end of a block
+ *   ending with `\n\n` it removes them and exits to a new paragraph), Shift-Enter inserts `\n`,
+ *   Mod-Enter exits the block to a new paragraph after it, Backspace at the start of an empty block
+ *   turns it into a paragraph. `insertParagraph` / `insertLineBreak` intents behave like Enter.
+ * - Marks and inline nodes are blocked: a tr whose added marks all fall in code blocks, that inserts
+ *   an inline element into one or that stores marks at a caret in one is filtered out (so
+ *   `toggleBold` and `insertMention` return false there); a mark over a paragraph and a code block
+ *   applies to the paragraph only, as normalization strips marks inside code blocks.
  * - Paste inside a code block inserts the clipboard's plain text, blocks joined by `\n`. Text copied
  *   from a code block and pasted outside one becomes one paragraph per line.
  * - HTML: `<pre><code class="language-x">…</code></pre>`, both ways.
@@ -360,9 +383,15 @@ export const codeBlock = definePlugin({
     Tab: () => run(ctx, indent),
     'Shift-Tab': () => run(ctx, dedent),
     Enter: () => run(ctx, newline),
+    'Shift-Enter': () => run(ctx, lineBreak),
     'Mod-Enter': () => ctx.commands.exitCodeBlock(),
     Backspace: () => run(ctx, unsetIfEmpty),
   }),
+  // An Enter that arrives only as `beforeinput` (Android keyboards; desktop Shift-Enter when no
+  // keydown binding ran) would otherwise split the block: inside a code block both line-break intents
+  // take Enter's newline / exit path.
+  onBeforeInput: (intent, ctx) =>
+    (intent.inputType === 'insertParagraph' || intent.inputType === 'insertLineBreak') && run(ctx, newline),
   // Loaded content with an invalid (e.g. unsafe) language keeps its code, as plaintext.
   onInvalidData: () => ({ language: 'plaintext' }),
   filterTransaction: (tr) => !addsFormatting(tr),
