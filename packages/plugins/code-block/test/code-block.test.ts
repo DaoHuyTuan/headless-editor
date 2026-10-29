@@ -39,6 +39,12 @@ function paste(ed: Ed, data: Record<string, string>) {
   return ed.handleIntent({ inputType: 'insertFromPaste', data: null, range: ed.state.selection, dataTransfer })
 }
 
+/** Drops HTML at `at` (the drop point) through the drop intent; the selection stays where it is. */
+function drop(ed: Ed, at: Selection, html: string) {
+  const dataTransfer = { getData: (type: string) => (type === 'text/html' ? html : '') } as unknown as DataTransfer
+  return ed.handleIntent({ inputType: 'insertFromDrop', data: null, range: at, dataTransfer })
+}
+
 describe('code block keymap', () => {
   it('Tab inserts two spaces at the caret', () => {
     const ed = setup(doc(code('ab')), caret([0, 0], 1))
@@ -292,6 +298,18 @@ describe('code block paste', () => {
     ed.handleIntent({ inputType: 'deleteContentBackward', data: null, range: ed.state.selection })
     expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(code('xhi @Ann yo'))))
     expect(ed.state.selection).toEqual(caret([0, 0], 1))
+  })
+
+  it('rich HTML dropped into a code block (caret in a paragraph) becomes plain text there', () => {
+    const ed = setup(doc(p(txt('pq')), code('ab')), caret([0, 0], 1))
+    drop(ed, caret([1, 0], 1), '<p>x<b>y</b></p><p>z</p>')
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p(txt('pq')), code('axy\nzb'))))
+  })
+
+  it('rich HTML dropped into a paragraph (caret in a code block) stays rich there', () => {
+    const ed = setup(doc(p(txt('pq')), code('ab')), caret([1, 0], 1))
+    drop(ed, caret([0, 0], 1), '<p>x<b>y</b></p><p>z</p>')
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p(txt('px'), txt('y', 'bold')), p(txt('zq')), code('ab'))))
   })
 
   it('multi-line plain text pasted inside stays in the block', () => {

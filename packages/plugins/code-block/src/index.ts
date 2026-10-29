@@ -418,10 +418,11 @@ export const codeBlock = definePlugin({
   // Loaded content with an invalid (e.g. unsafe) language keeps its code, as plaintext.
   onInvalidData: () => ({ language: 'plaintext' }),
   filterTransaction: (tr) => !addsFormatting(tr),
-  transformPasted: (fragment, ctx) => {
+  // Decided by where the fragment goes: the drop point of a drop, else the selection.
+  transformPasted: (fragment, ctx, { at }) => {
     const { state, registry } = ctx.editor
-    const sel = state.selection
-    if (sel && !isNodeSelection(sel) && inCodeBlock(state.doc, registry, sel.anchor.path)) {
+    const target = at ?? state.selection
+    if (target && !isNodeSelection(target) && inCodeBlock(state.doc, registry, target.anchor.path)) {
       const options = editorOptions(ctx.editor)
       const text = fragment.map((n) => nodeText(n, registry, options)).join(isBlockFragment(fragment, registry) ? '\n' : '')
       return text ? [{ text, marks: [] }] : []

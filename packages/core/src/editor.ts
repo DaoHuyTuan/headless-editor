@@ -341,11 +341,15 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     return out
   }
 
-  /** Runs each plugin's `transformPasted` on `fragment`, by priority. */
-  transformPasted(fragment: Fragment): Fragment {
+  /**
+   * Runs each plugin's `transformPasted` on `fragment`, by priority, with `at`: where the fragment
+   * will be inserted (a drop's drop point); omitted or null, at the selection.
+   */
+  transformPasted(fragment: Fragment, at: Selection | null = null): Fragment {
+    const info = { at }
     for (const plugin of this.registry.plugins) {
       const transform = plugin.spec.transformPasted
-      if (transform) fragment = transform(fragment, this.getContext(plugin))
+      if (transform) fragment = transform(fragment, this.getContext(plugin), info)
     }
     return fragment
   }

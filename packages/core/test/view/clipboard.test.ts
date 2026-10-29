@@ -155,6 +155,26 @@ describe('serializeForClipboard / parseFromClipboard', () => {
     expect(calls).toEqual(['upper', 'suffix'])
   })
 
+  it('transformPasted gets the insertion target: the drop point for a drop, the selection for a paste', () => {
+    const seen: unknown[] = []
+    const spy = definePlugin({
+      name: 'spy',
+      transformPasted: (frag: Fragment, _ctx, info) => {
+        seen.push(info.at)
+        return frag
+      },
+    })
+    const editor = setup(doc(p('p1', txt('abcd'))), caret([0, 0], 1), [testParagraph, testBold, spy])
+    const transfer = { getData: (t: string) => (t === 'text/plain' ? 'x' : '') } as unknown as DataTransfer
+    const dropAt = caret([0, 0], 3)
+    editor.handleIntent({ inputType: 'insertFromDrop', data: null, range: dropAt, dataTransfer: transfer })
+    expect(seen).toEqual([dropAt])
+    expect(parseFromClipboard(editor, { text: 'y' })).toEqual([txt('y')])
+    expect(seen[1]).toBeNull()
+    expect(parseFromClipboard(editor, { text: 'y' }, { at: caret([0, 0], 2) })).toEqual([txt('y')])
+    expect(seen[2]).toEqual(caret([0, 0], 2))
+  })
+
   it('validates pasted json data: invalid data is repaired by onInvalidData or the node is dropped', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     const schema = {

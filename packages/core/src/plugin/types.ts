@@ -30,6 +30,12 @@ export interface ParseRule {
   getData?: (el: HTMLElement, styleValue?: string) => Data | false
 }
 
+/** What `transformPasted` gets besides the fragment. */
+export interface PasteInfo {
+  /** Where the fragment will be inserted (a drop's drop point); null for the selection. */
+  at: Selection | null
+}
+
 export interface InputIntent {
   inputType: string
   data: string | null
@@ -197,7 +203,12 @@ export interface PluginSpec<
    * from a text-only block). Meant for inline atoms (e.g. a mention: `@label`).
    */
   renderText?: (node: DeepReadonly<ElementNode>, ctx: { options: O }) => string
-  transformPasted?: (fragment: Fragment, ctx: PluginContext<O, S, C, T>) => Fragment
+  /**
+   * Rewrites a pasted or dropped fragment before it is inserted. `info.at` is where it will be
+   * inserted (the drop point of a drop); null means at the selection, so a hook deciding by position
+   * reads `info.at ?? state.selection`.
+   */
+  transformPasted?: (fragment: Fragment, ctx: PluginContext<O, S, C, T>, info: PasteInfo) => Fragment
   /**
    * For an event inside a node view of this plugin's type (outside its `contentDOM`, whose events
    * are editor content): true makes the editor ignore it (no

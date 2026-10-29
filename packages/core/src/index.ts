@@ -64,6 +64,7 @@ export type {
   NoOptions,
   OptionsOf,
   ParseRule,
+  PasteInfo,
   Plugin,
   PluginContext,
   PluginOverrides,

@@ -5,7 +5,7 @@ import { defaultBlock, isBlock, sanitizeFragment } from '../content/sanitize'
 import { isNodeSelection } from '../model/editable'
 import { nodeText } from '../content/text'
 import { isCollapsed, toRange } from '../model/path'
-import type { Doc, ElementNode, Node, Path, Range } from '../model/types'
+import type { Doc, ElementNode, Node, Path, Range, Selection } from '../model/types'
 import type { Registry } from '../plugin/registry'
 import { getFragment, type Fragment } from '../transaction/fragment'
 import { replaceSelectedNode } from '../transaction/text'
@@ -62,15 +62,20 @@ function fromText(text: string, registry: Registry): Fragment {
  * `application/x-hte-fragment` flavor), then `html`, then `text`, moving on when a flavor is
  * missing, malformed or yields nothing. JSON and HTML are untrusted: data is validated and unknown
  * types are dropped. Text lines become default blocks; a single line is inline text without marks.
- * Finally every plugin's `transformPasted` runs, in priority order.
+ * Finally every plugin's `transformPasted` runs, in priority order, with `options.at`: where the
+ * fragment will be inserted (a drop's drop point); omitted or null, at the selection.
  */
-export function parseFromClipboard(editor: Editor, data: { json?: string; html?: string; text?: string }): Fragment {
+export function parseFromClipboard(
+  editor: Editor,
+  data: { json?: string; html?: string; text?: string },
+  options: { at?: Selection | null } = {},
+): Fragment {
   const { registry } = editor
   let fragment: Fragment = []
   if (data.json) fragment = fromJson(data.json, registry)
   if (fragment.length === 0 && data.html) fragment = sanitizeFragment(parseHTML(data.html, registry), registry)
   if (fragment.length === 0 && data.text) fragment = fromText(data.text, registry)
-  return editor.transformPasted(fragment)
+  return editor.transformPasted(fragment, options.at ?? null)
 }
 
 /** The model range to copy, or null when the browser should handle the event (collapsed, or outside the root). */

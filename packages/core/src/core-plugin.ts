@@ -39,17 +39,23 @@ const PASTE_INPUT: Record<string, 'paste' | 'input'> = { insertFromPaste: 'paste
 function insertTransfer(intent: InputIntent, editor: Editor): boolean {
   const transfer = intent.dataTransfer
   if (!transfer) return false
-  const fragment = parseFromClipboard(editor, {
-    json: transfer.getData(FRAGMENT_MIME),
-    html: transfer.getData('text/html'),
-    text: transfer.getData('text/plain'),
-  })
+  // With a node selection the fragment replaces the node (at the selection); else it goes to
+  // `intent.range` (a drop point), which `transformPasted` hooks get too.
+  const at = isNodeSelection(editor.state.selection) ? null : intent.range
+  const fragment = parseFromClipboard(
+    editor,
+    {
+      json: transfer.getData(FRAGMENT_MIME),
+      html: transfer.getData('text/html'),
+      text: transfer.getData('text/plain'),
+    },
+    { at },
+  )
   if (fragment.length === 0) return true
   const tr = editor.createTransaction()
   tr.meta.origin = PASTE_INPUT[intent.inputType]!
   tr.meta.inputType = intent.inputType
-  const at = isNodeSelection(tr.selection) ? undefined : (intent.range ?? undefined)
-  if (insertFragment(tr, fragment, at) && tr.ops.length > 0) editor.dispatch(tr)
+  if (insertFragment(tr, fragment, at ?? undefined) && tr.ops.length > 0) editor.dispatch(tr)
   return true
 }
 
