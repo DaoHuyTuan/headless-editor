@@ -1,0 +1,127 @@
+# M3 follow-ups (input for the M4+ plans)
+
+Collected from the per-task and final reviews of milestone M3 (branch `feat/m3`), from the SDD ledger. The open items of `m2-followups.md` (including its M4 section) and `m1-followups.md` still apply as well.
+
+## Start of M4: do these first
+- **Joining a code block into a paragraph leaves `\n` in a non-code block.** Backspace from a code block into the paragraph above breaks the model invariant. Pinned by a `test.fail` in `code-block.spec`. Fix: normalize or split non-code blocks that contain newlines. (medium)
+- **`can()` doesn't run `filterTransaction`.** `can().toggleBold()` is true inside a code block, so the toolbar and the real command disagree.
+- **Re-run the e2e suite on port 5174.** Port 5174 was held by an unrelated `wslrelay.exe` (another project), so `pnpm --filter playground e2e` could not run. M3 e2e passed (75 tests) on a temporary copy of the config on port 5175.
+- **The three items moved from m2** (see the M4 section of `m2-followups.md`):
+  - map the history stacks through outside-history structural changes instead of clearing them;
+  - move clipboard parse/serialize into `content/`;
+  - make text pasted over a node selection behave like typing over it.
+
+## Decisions and scope for M4+
+- Firefox and WebKit (M4).
+- Decide whether the levels 3-4 (`parts`, hooks) APIs graduate from `@experimental` (spec §5.11).
+- Zero-results mention popup: a query with no results keeps the popup open and swallows Enter until Esc or space. Decide whether to auto-close.
+- Not planned: a generic mechanism for one plugin to intercept another plugin's hooks (spec §5.11); internal drag-move of content.
+- Spec §5.11 wording: "other attributes overridden by extra" should say data-driven attributes win over `HTMLAttributes` (ruling from Task 3).
+
+## Core / view
+- Lifecycle (Task 1):
+  - focus asymmetries are undocumented (unmount fires no `onBlur`; mount on a focused root fires no `onFocus`);
+  - `editor.view` is null during `onMount` (use the `view` argument);
+  - `onCreate` under StrictMode double-invoke must be side-effect-free;
+  - a throwing `editor.on` listener cuts hook isolation;
+  - nested dispatch leaves state ahead of the tr;
+  - a throwing `onCreate` leaks earlier resources.
+- Types (Task 2): `PluginOverrides` types `state.apply` / `mark.render` as `any` in `extend`; `props.state` is stale without `usePluginState`.
+- Attributes (Task 3):
+  - `mergeStyle` only normalizes when base has a style;
+  - `parseStyle` ignores comments and unbalanced quotes;
+  - attribute output order changed (matters for string compares);
+  - the `mergeAttrs` JSDoc is spliced awkwardly.
+- History (Task 4):
+  - entries grow across undo/redo cycles with appends (no compaction);
+  - appended trs cannot be separate undo steps (JSDoc);
+  - a structural append under `addToHistory: false` clears the stacks;
+  - the meaning of `R.selectionBefore` after a fold;
+  - untested: 3+ levels of appends, a selection-only append, a data-only append after an undo root.
+- Inline atoms (Task 5):
+  - a literal U+200B in source, and a duplicated ZW constant/attribute (use an escape and one shared helper);
+  - rule 10 changes the link-end caret (typing no longer extends a trailing link), untested;
+  - `pastMiddle` asymmetry for text-less atoms;
+  - `insertInlineNode` returns false with ops on the tr;
+  - `leafDomText` strips a real U+200B;
+  - word-Backspace removes an atom (comment needed);
+  - unknown inline elements get no rule-10 siblings;
+  - coverage gaps: typing into a ZW leaf, IME before ZW, ZW to `<br>` after the last chip is removed.
+- Input rules (Task 6):
+  - `toBlockOffset` at `input-rules.ts:207` is outside the try (uncaught throw after the typed tr is dispatched);
+  - `findTrigger` false positive when the trigger text is the first child of a link;
+  - `runAt` vs `findTrigger` mismatch;
+  - a multi-char trigger is loosely supported (docs say single-char);
+  - a rule without `$` matches only the leftmost match;
+  - missing tests: next char after a rule creates a new entry, Vietnamese/NFD query, composition triggers no rule.
+- Decorations (Task 7):
+  - a throwing `decorations` hook propagates out of update/mount (document or catch and log);
+  - invalid decoration attribute names are caught mid-render (validate in `groupDecorations`);
+  - widget at offset 0: caret side;
+  - a same-key widget keeps its old element (JSDoc);
+  - duplicate keys rebuild the leaf on each render;
+  - decoration attrs are not checked by `leafIntact`;
+  - no explicit caret-at-widget test;
+  - `WIDGET_ATTR` / `DECO_ATTR` are not exported;
+  - the 50 ms perf guard has no warm-up and flaked once during verification (`decorations.test.ts`, 50.9 ms; passed on re-run).
+- `coordsAt` (Task 8): the leaf-rect fallback bottom is the whole leaf's bottom; a zero-height rect is accepted.
+- Node views (Task 9):
+  - `isDev()` treats a missing `process` as dev;
+  - a missing `contentDOM` is never detected (dev warning);
+  - `NodeContent` is silent outside a non-atom view;
+  - `coordsAt` / `modelToDom` before `NodeContent` mounts give zero rects;
+  - the placement warning is not dev-gated;
+  - `placedContentDOMs` runs `querySelectorAll` per added element;
+  - a stale-caret record can be invalidated if the same leaf is re-rendered while detached (re-snapshot after render);
+  - composition across an `invalidateNodeView` rebuild is untested.
+- Selection (Task 17): a caret parked at (block element, n) is no longer rewritten by the leaf rewrite.
+
+## Mention
+- Caret after a plain `@foo` opens the popup (document in JSDoc).
+- Hopping between triggers with the same query clears `dismissedAt`.
+- The cache is written during render (`remember()` in two hooks).
+- Popup coords don't follow scroll or resize.
+- Only the items `preventDefault` on mousedown; the popup root should too.
+- No `aria-activedescendant` or option ids.
+- Not all tests assert no `console.error`; the `Label` type in a test is awkward; the `commands` cast assumes the plugin name.
+- "Renamed user" is fetch-driven through the suggestion cache; `renderUser` reading an external store is not subscribed (document in `useMention` JSDoc).
+- Secondary view roots carry `data-hte-<plugin>-<view>` (popup: `data-hte-mention-suggestion`) so `[data-hte-<plugin>]` matches only node views (documented in the guide).
+- Review Focus items not covered in e2e: mention copy/paste with a fresh id, a mention inside a code block, a space closing the popup. Confirm unit coverage.
+
+## Code block
+- Nested blocks (lists) lose newlines when pasted into a code block (`plainText` joins children with `""`).
+- Text with newlines pasted outside a code block splits paragraphs (untested for a non-code source).
+- A vetoed line-break tr in a code block falls through to core `splitBlock`.
+- The intent range is ignored (the state selection is used).
+- Hard-coded `aria-label` "Language" (i18n).
+- Tests 4 and 7 have spies that are not asserted.
+- `useCodeBlock` is not memoized.
+- No `hljs` class on `<code>` (documented in the guide).
+- The `setLanguage` rejected path is untested.
+- The `test.fail` for the Backspace-into-paragraph bug can pass on an earlier failure (add a non-failing precondition).
+- Multi-line code paste into a paragraph is not in e2e.
+
+## Image
+- Hooks read plugin state by the hard-coded plugin name (`image`); extending under a new name breaks them (documented).
+- `useImageResize` measures the first `<img>` inside `closest([data-hte-node-view])` (documented contract).
+- The `afterEach` in the resize tests asserts before cleanup/restore (cascade failures).
+- Clamp max is the container's `clientWidth` (pre-existing).
+- The portal handle fallback is a heuristic.
+- The image resize e2e locates via `img`, not `[data-hte-image]`.
+- The older image items in `m2-followups.md` still apply.
+
+## React adapter
+- Type tests lack positive "fewer props" and negative "extra required prop" cases for `parts`.
+- `PartsOverride` has no excess-key check for spread variables.
+- A `{ Img: undefined }` fallback is untested.
+- `resolveParts` always returns `| null`.
+- `usePluginState` is not tied to the editor's plugins; its tests lack ZW/atom/decorated cases and a stateless plugin.
+- Doc sentences on nested dispatch, hook-vs-event order, and StrictMode mount counts are not verified against code (Task 16).
+- Part keys are camelCase (`img`, `altInput`, `resizeHandle`, `popup`, `list`, `item`, `toolbar`, `languageSelect`, `content`), matching `classNames` (ruling from Task 10).
+- The docs-examples type test lives in `packages/plugins/image/test` because core cannot resolve react, `@hte/react` or zod (ruling from Task 16).
+
+## Tests / tooling
+- `pnpm vitest` at the root may fail with "Command not found" when `node_modules` is incomplete; `pnpm install --offline` fixes it. Use `pnpm exec vitest`.
+- The `decorations.test.ts` 50 ms perf guard is flaky under load (see Core / view).
+- Core `bindCommands` returns false when the pipeline drops a tr (filter veto); kept (ruling from Task 13).
+- Consider a clearer failure, or a configurable port, when the e2e port is taken.
