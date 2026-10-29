@@ -44,7 +44,7 @@ return <EditorContent editor={editor} />
 
 ### Level 1: CSS on `data-*`
 
-Every view root carries `data-hte-<plugin>`, and state is exposed as attributes that are **present when true and absent otherwise**: `data-selected`, `data-uploading`, `data-active`, `data-open`.
+Every view root carries `data-hte-<plugin>`, and state is exposed as attributes that are **present when true and absent otherwise**. The names in use are `data-selected`, `data-uploading` and `data-open`; `data-active` is reserved by the spec but no built-in plugin emits it today. The [per-plugin table](#stable-data-attributes-of-the-built-in-plugins) is the authority on what each plugin emits.
 
 ```css
 [data-hte-image] { margin: 1rem 0; }
@@ -139,7 +139,7 @@ Image specifics for hooks-only views:
 - `useImageResize` measures the **first `<img>` inside the node-view container** (`[data-hte-node-view]`) at `pointerdown`. Keep the picture as the first `<img>` of the view.
 - `dataAttrs({ selected, uploading })` (from `@hte/react`) gives `data-selected` / `data-uploading` present-when-true.
 
-Other hooks: `useMention(props)`, `useSuggestion(editor)` (mention); `useCodeBlock(props)` (code block). Your own view keeps the same attribute contract (`data-hte-<plugin>` plus the state attributes) so users' level 1 CSS keeps working.
+Other hooks: `useMention(props)`, `useSuggestion(editor)` (mention); `useCodeBlock(props)` (code block); all three are `@experimental`. Your own view keeps the same attribute contract (`data-hte-<plugin>` plus the state attributes) so users' level 1 CSS keeps working.
 
 ### Level 5: `extend(parent => ...)`
 
@@ -374,7 +374,7 @@ Checklist for a new plugin's view:
 
 ## Lifecycle hooks
 
-In addition to the data-flow hooks (`state`, `storage`, `parseHTML` / `renderHTML`, `handleDOMEvents`, `keymap`, `onBeforeInput`, `filterTransaction`, `appendTransaction`, `normalize`, `transformPasted`, `stopEvent`, `ignoreMutation`, `decorations`, `destroy`), a plugin may declare:
+In addition to the data-flow hooks (`state`, `storage`, `parseHTML` / `renderHTML`, `handleDOMEvents`, `keymap`, `onBeforeInput`, `filterTransaction`, `appendTransaction`, `normalize`, `transformPasted`, `stopEvent`, `ignoreMutation`, `decorations`), a plugin may declare:
 
 | Hook | When | Cleanup |
 |---|---|---|
@@ -449,7 +449,7 @@ function ShoutingMention(props: NodeViewPropsOf<typeof mention>) {
 - A **renamed user** shows up when a `fetchUsers` call returns the new label: views read a per-editor cache of users seen in suggestion results. Nothing else updates it.
 - A `renderUser` that reads an **external store is not subscribed**: the view re-renders on mention plugin state and option changes only. If the name comes from a store, re-render through your own subscription (or pass a new memoized `renderUser` when the store changes).
 - Placing the caret right after an existing plain `@foo` in the text **opens the popup** (the trigger is recomputed after every selection change).
-- The suggestion popup is a separate root (`data-hte-mention-suggestion`), rendered with `<MentionSuggestion editor={editor} />` next to `EditorContent`; it is portalled to `document.body` and closes on blur and on unmount.
+- The suggestion popup is a separate root (`data-hte-mention-suggestion`), rendered with `<MentionSuggestion editor={editor} />` next to `EditorContent`; it is portalled to `document.body`. Closing is done by the mention plugin, not the component: its `onBlur` hook and its `onMount` cleanup (unmount fires no blur) close the popup. `MentionSuggestion` only renders the plugin state.
 
 ### Code block
 
