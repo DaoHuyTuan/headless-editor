@@ -1,18 +1,22 @@
 import { useEffect, useState } from 'react'
-import { ImageView, type ImageViewProps } from '@hte/image/react'
+import { CodeBlockView } from '@hte/code-block/react'
+import { MentionSuggestion, MentionView } from '@hte/mention/react'
 import { EditorContent, useEditor } from '@hte/react'
 import { CodePanel } from './CodePanel'
 import { plugins } from './editor'
 import { fakeUpload } from './fake-upload'
-import { scenarios, type ScenarioName } from './scenarios'
+import { fetchUsers } from './fake-users'
+import { ImageViewKindContext, PlaygroundImageView } from './image-views'
+import { scenarios, type Scenario, type ScenarioName } from './scenarios'
 import { Toolbar } from './Toolbar'
 
 type Tab = 'view' | 'code'
 
-/** The default image view, its resize handle classed for styles.css (and the e2e tests). */
-function PlaygroundImageView(props: ImageViewProps) {
-  return <ImageView {...props} classNames={{ resizeHandle: 'image-resize' }} />
-}
+// Module-level: the same identities on every render, so `useEditor` never re-applies the options
+// (an inline object would re-render every node view of the type).
+const nodeViews = { image: PlaygroundImageView, mention: MentionView, codeBlock: CodeBlockView }
+const pluginOptions = { image: { upload: fakeUpload }, mention: { fetchUsers } }
+const suggestionClassNames = { popup: 'mention-popup', item: 'mention-item' }
 
 export function App() {
   const [scenario, setScenario] = useState<ScenarioName>('empty')
@@ -20,8 +24,8 @@ export function App() {
   const editor = useEditor({
     plugins,
     content: scenarios[scenario].content,
-    nodeViews: { image: PlaygroundImageView },
-    pluginOptions: { image: { upload: fakeUpload } },
+    nodeViews,
+    pluginOptions,
   })
 
   useEffect(() => {
@@ -32,6 +36,8 @@ export function App() {
     setScenario(name)
     editor.setContent(scenarios[name].content)
   }
+
+  const imageView = (scenarios[scenario] as Scenario).imageView ?? 'default'
 
   return (
     <main className="app">
@@ -57,7 +63,11 @@ export function App() {
       <Toolbar editor={editor} />
       {/* The editor stays mounted while the Code tab is open, so its view and listeners persist. */}
       <div hidden={tab !== 'view'}>
-        <EditorContent editor={editor} className="editor" data-testid="editor" spellCheck={false} />
+        {/* Node views render through portals inside EditorContent, so they see this context. */}
+        <ImageViewKindContext.Provider value={imageView}>
+          <EditorContent editor={editor} className="editor" data-testid="editor" spellCheck={false} />
+        </ImageViewKindContext.Provider>
+        <MentionSuggestion editor={editor} classNames={suggestionClassNames} />
       </div>
       {tab === 'code' && <CodePanel editor={editor} />}
     </main>

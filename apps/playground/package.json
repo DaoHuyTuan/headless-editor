@@ -10,9 +10,11 @@
   },
   "dependencies": {
     "@hte/bold": "workspace:*",
+    "@hte/code-block": "workspace:*",
     "@hte/core": "workspace:*",
     "@hte/font-size": "workspace:*",
     "@hte/image": "workspace:*",
+    "@hte/mention": "workspace:*",
     "@hte/paragraph": "workspace:*",
     "@hte/react": "workspace:*",
     "react": "^19.1.0",

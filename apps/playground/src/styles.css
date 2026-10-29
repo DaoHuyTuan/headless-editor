@@ -110,3 +110,97 @@ button {
   overflow: auto;
   font-size: 13px;
 }
+/* Custom hooks-only image view (customImage scenario). */
+.editor [data-custom-image] {
+  padding: 6px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: #f6f8ff;
+}
+.editor [data-custom-image] figcaption {
+  font: 12px system-ui, sans-serif;
+  color: #555;
+}
+.editor [data-custom-image] .badge {
+  margin-right: 6px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: #ffd76a;
+}
+.editor [data-custom-image] .image-resize {
+  bottom: 50px;
+}
+/* Mention (@hte/mention/react): the node view, the open trigger and the suggestion popup. */
+.editor [data-hte-mention] {
+  padding: 0 2px;
+  border-radius: 3px;
+  background: #e5edff;
+  color: #2a55c9;
+}
+.editor .hte-mention-query {
+  background: #f1f1f1;
+  border-radius: 2px;
+}
+.mention-popup {
+  z-index: 10;
+  min-width: 140px;
+  margin-top: 2px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fff;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 12%);
+}
+.mention-popup ul {
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+}
+.mention-item {
+  padding: 2px 10px;
+  cursor: pointer;
+}
+.mention-item[data-selected] {
+  background: #4a7dff;
+  color: #fff;
+}
+/* Code block (@hte/code-block/react): language select above a <pre>. */
+.editor [data-hte-code-block] {
+  margin: 0 0 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: #f6f8fa;
+}
+.editor [data-hte-code-block] > div[contenteditable='false'] {
+  padding: 2px 6px;
+  border-bottom: 1px solid #ddd;
+  text-align: right;
+}
+.editor [data-hte-code-block] pre {
+  margin: 0;
+  padding: 8px;
+  font: 13px/1.5 ui-monospace, Consolas, monospace;
+  white-space: pre-wrap;
+}
+/* A few highlight.js token colours (the plugin adds `hljs-*` classes, no theme). */
+.editor .hljs-keyword {
+  color: #a626a4;
+}
+.editor .hljs-string {
+  color: #50a14f;
+}
+.editor .hljs-title,
+.editor .hljs-function {
+  color: #4078f2;
+}
+.editor .hljs-params,
+.editor .hljs-subst {
+  color: #986801;
+}
+.editor .hljs-comment {
+  color: #a0a1a7;
+  font-style: italic;
+}
+.editor .hljs-number,
+.editor .hljs-literal {
+  color: #986801;
+}

@@ -187,6 +187,9 @@ importers:
       '@hte/bold':
         specifier: workspace:*
         version: link:../../packages/plugins/bold
+      '@hte/code-block':
+        specifier: workspace:*
+        version: link:../../packages/plugins/code-block
       '@hte/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -196,6 +199,9 @@ importers:
       '@hte/image':
         specifier: workspace:*
         version: link:../../packages/plugins/image
+      '@hte/mention':
+        specifier: workspace:*
+        version: link:../../packages/plugins/mention
       '@hte/paragraph':
         specifier: workspace:*
         version: link:../../packages/plugins/paragraph
