@@ -263,7 +263,7 @@ test.describe('the image scenario', () => {
 
   test('dragging the resize handle by +40px increases the width', async ({ page }) => {
     const start = (await editorImg(page).boundingBox())!.width
-    const handle = page.locator('[data-testid=editor] .hte-image-resize')
+    const handle = page.locator('[data-testid=editor] .image-resize')
     const box = (await handle.boundingBox())!
     const x = box.x + box.width / 2
     const y = box.y + box.height / 2

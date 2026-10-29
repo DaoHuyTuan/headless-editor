@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ImageView } from '@hte/image/react'
+import { ImageView, type ImageViewProps } from '@hte/image/react'
 import { EditorContent, useEditor } from '@hte/react'
 import { CodePanel } from './CodePanel'
 import { plugins } from './editor'
@@ -9,13 +9,18 @@ import { Toolbar } from './Toolbar'
 
 type Tab = 'view' | 'code'
 
+/** The default image view, its resize handle classed for styles.css (and the e2e tests). */
+function PlaygroundImageView(props: ImageViewProps) {
+  return <ImageView {...props} classNames={{ resizeHandle: 'image-resize' }} />
+}
+
 export function App() {
   const [scenario, setScenario] = useState<ScenarioName>('empty')
   const [tab, setTab] = useState<Tab>('view')
   const editor = useEditor({
     plugins,
     content: scenarios[scenario].content,
-    nodeViews: { image: ImageView },
+    nodeViews: { image: PlaygroundImageView },
     pluginOptions: { image: { upload: fakeUpload } },
   })
 

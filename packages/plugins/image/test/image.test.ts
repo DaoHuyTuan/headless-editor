@@ -581,3 +581,22 @@ describe('image HTMLAttributes', () => {
     expect(serializeHTML(raw, ed.registry, (n) => ed.getPluginOptions(n))).toBe('<img alt="x">')
   })
 })
+
+describe('image extend(parent)', () => {
+  const rounded = image.extend((parent) => ({
+    renderHTML: (n, c) => {
+      const out = parent.renderHTML!(n, c) as [string, Record<string, unknown>]
+      return [out[0], { ...out[1], class: 'rounded' }]
+    },
+  }))
+
+  it('wraps renderHTML and keeps the src policy', () => {
+    const ed = createTestEditor({ plugins: [paragraph, rounded], content: '<img src="https://x/a.png" alt="">' })
+    expect(ed.getHTML()).toBe('<img src="https://x/a.png" alt="" class="rounded">')
+    const raw = doc(el('image', { src: 'javascript:alert(1)', alt: 'x' }))
+    expect(serializeHTML(raw, ed.registry, (n) => ed.getPluginOptions(n))).toBe('<img alt="x" class="rounded">')
+    // The schema still rejects an unsafe src.
+    expect(ed.commands.insertImage('javascript:alert(1)')).toBe(false)
+    expect(JSON.stringify(ed.getJSON())).not.toContain('javascript:')
+  })
+})

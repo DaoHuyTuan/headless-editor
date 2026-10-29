@@ -59,8 +59,9 @@ button {
   outline: 2px solid #4a7dff;
   outline-offset: 1px;
 }
-/* Image node view (@hte/image/react): picture, alt input and a resize handle at the bottom right. */
-.editor .hte-image {
+/* Image node view (@hte/image/react): picture, alt input and a resize handle (classed `image-resize` by
+   App.tsx through `classNames`) at the bottom right. */
+.editor [data-hte-image] {
   position: relative;
   display: inline-flex;
   flex-direction: column;
@@ -69,7 +70,7 @@ button {
   margin: 0 0 8px;
   white-space: normal;
 }
-.editor .hte-image img {
+.editor [data-hte-image] img {
   display: block;
   max-width: 100%;
   min-width: 16px;
@@ -77,16 +78,16 @@ button {
   image-rendering: pixelated;
   background: repeating-conic-gradient(#eee 0 25%, #fff 0 50%) 0 0 / 12px 12px;
 }
-.editor .hte-image[data-uploading] img {
+.editor [data-hte-image][data-uploading] img {
   opacity: 0.5;
 }
-.editor .hte-image input {
+.editor [data-hte-image] input {
   font: 13px system-ui, sans-serif;
   padding: 2px 4px;
   border: 1px solid #ccc;
   border-radius: 3px;
 }
-.editor .hte-image-resize {
+.editor .image-resize {
   position: absolute;
   right: -5px;
   bottom: 26px;
