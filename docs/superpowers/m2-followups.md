@@ -36,7 +36,7 @@ Kept open from "Start of M3" (no M3 plugin needed them, and each is a separate c
 - `Transaction.setSelection` accepts a `node` path that isn't opaque (programmatic or remote only).
 - `data-editor-ignore` is honoured anywhere under the root; scope it to node-view containers.
 - ✅ done in M3: ~~`pluginOptions` given an inline function re-renders every node view of that type on each parent render. Document "memoize options".~~ (documented in `docs/plugin-authoring.md`)
-- Re-entrant destroy: if `unmount()` throws, the editor is left `destroying` and `destroy()` can't be retried.
+- ✅ done in M3: ~~Re-entrant destroy: if `unmount()` throws, the editor is left `destroying` and `destroy()` can't be retried.~~ (`editor.ts` `destroy()` catches the `unmount()` error, still runs every destroy hook and marks the editor destroyed, then rethrows; covered by `lifecycle-view.test.ts` "editor.destroy() still runs the destroy hooks when a cleanup throws")
 - `ctx.commands` is empty during the initial normalize, and `editor.storage` is undefined while storage factories run. Document both.
 - ✅ done in M3: ~~Storage and commands type inference depends on the order of keys in the spec. Try `NoInfer`, or document the required order.~~ (order documented in `docs/plugin-authoring.md`, pinned by a type test)
 - Only the first destroy-hook error is rethrown (use `AggregateError`).

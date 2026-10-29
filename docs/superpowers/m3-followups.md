@@ -3,7 +3,6 @@
 Collected from the per-task and final reviews of milestone M3 (branch `feat/m3`), from the SDD ledger. The open items of `m2-followups.md` (including its M4 section) and `m1-followups.md` still apply as well.
 
 ## Start of M4: do these first
-- **Joining a code block into a paragraph leaves `\n` in a non-code block.** Backspace from a code block into the paragraph above breaks the model invariant. Pinned by a `test.fail` in `code-block.spec`. Fix: normalize or split non-code blocks that contain newlines. (medium)
 - **`can()` doesn't run `filterTransaction`.** `can().toggleBold()` is true inside a code block, so the toolbar and the real command disagree.
 - **Re-run the e2e suite on port 5174.** Port 5174 was held by an unrelated `wslrelay.exe` (another project), so `pnpm --filter playground e2e` could not run. M3 e2e passed (75 tests) on a temporary copy of the config on port 5175.
 - **The three items moved from m2** (see the M4 section of `m2-followups.md`):
@@ -14,9 +13,7 @@ Collected from the per-task and final reviews of milestone M3 (branch `feat/m3`)
 ## Decisions and scope for M4+
 - Firefox and WebKit (M4).
 - Decide whether the levels 3-4 (`parts`, hooks) APIs graduate from `@experimental` (spec §5.11).
-- Zero-results mention popup: a query with no results keeps the popup open and swallows Enter until Esc or space. Decide whether to auto-close.
 - Not planned: a generic mechanism for one plugin to intercept another plugin's hooks (spec §5.11); internal drag-move of content.
-- Spec §5.11 wording: "other attributes overridden by extra" should say data-driven attributes win over `HTMLAttributes` (ruling from Task 3).
 
 ## Core / view
 - Lifecycle (Task 1):
@@ -48,7 +45,7 @@ Collected from the per-task and final reviews of milestone M3 (branch `feat/m3`)
   - unknown inline elements get no rule-10 siblings;
   - coverage gaps: typing into a ZW leaf, IME before ZW, ZW to `<br>` after the last chip is removed.
 - Input rules (Task 6):
-  - `toBlockOffset` at `input-rules.ts:207` is outside the try (uncaught throw after the typed tr is dispatched);
+  - `toBlockOffset` at `input-rules.ts:32` is outside the try, but the throw is unreachable: `runAt` just succeeded for the same caret (move it inside the try for robustness only);
   - `findTrigger` false positive when the trigger text is the first child of a link;
   - `runAt` vs `findTrigger` mismatch;
   - a multi-char trigger is loosely supported (docs say single-char);
@@ -62,8 +59,7 @@ Collected from the per-task and final reviews of milestone M3 (branch `feat/m3`)
   - duplicate keys rebuild the leaf on each render;
   - decoration attrs are not checked by `leafIntact`;
   - no explicit caret-at-widget test;
-  - `WIDGET_ATTR` / `DECO_ATTR` are not exported;
-  - the 50 ms perf guard has no warm-up and flaked once during verification (`decorations.test.ts`, 50.9 ms; passed on re-run).
+  - `WIDGET_ATTR` / `DECO_ATTR` are not exported.
 - `coordsAt` (Task 8): the leaf-rect fallback bottom is the whole leaf's bottom; a zero-height rect is accepted.
 - Node views (Task 9):
   - `isDev()` treats a missing `process` as dev;
@@ -75,30 +71,30 @@ Collected from the per-task and final reviews of milestone M3 (branch `feat/m3`)
   - a stale-caret record can be invalidated if the same leaf is re-rendered while detached (re-snapshot after render);
   - composition across an `invalidateNodeView` rebuild is untested.
 - Selection (Task 17): a caret parked at (block element, n) is no longer rewritten by the leaf rewrite.
+- Normalize rule 10 changes the `getJSON()` output: inline elements now get (possibly empty) text siblings on each side, so stored JSON loaded and read back gains `{ text: '' }` nodes around mentions and other inline elements. Needs a changelog / docs note for integrators who diff or store JSON.
 
 ## Mention
 - Caret after a plain `@foo` opens the popup (document in JSDoc).
 - Hopping between triggers with the same query clears `dismissedAt`.
 - The cache is written during render (`remember()` in two hooks).
 - Popup coords don't follow scroll or resize.
-- Only the items `preventDefault` on mousedown; the popup root should too.
 - No `aria-activedescendant` or option ids.
 - Not all tests assert no `console.error`; the `Label` type in a test is awkward; the `commands` cast assumes the plugin name.
 - "Renamed user" is fetch-driven through the suggestion cache; `renderUser` reading an external store is not subscribed (document in `useMention` JSDoc).
 - Secondary view roots carry `data-hte-<plugin>-<view>` (popup: `data-hte-mention-suggestion`) so `[data-hte-<plugin>]` matches only node views (documented in the guide).
-- Review Focus items not covered in e2e: mention copy/paste with a fresh id, a mention inside a code block, a space closing the popup. Confirm unit coverage.
+- ✅ ~~Review Focus items not covered in e2e: mention copy/paste with a fresh id, a mention inside a code block, a space closing the popup. Confirm unit coverage.~~ Unit coverage confirmed (line numbers as of `51be87e`): `inline-atom.test.ts:112`, `mention.test.ts:84/384/241`, `code-block.test.ts:282`.
+- `useMention` re-renders every mention chip while the popup is open (each view subscribes to the mention plugin state, which changes on every query and result).
 
 ## Code block
 - Nested blocks (lists) lose newlines when pasted into a code block (`plainText` joins children with `""`).
 - Text with newlines pasted outside a code block splits paragraphs (untested for a non-code source).
 - A vetoed line-break tr in a code block falls through to core `splitBlock`.
-- The intent range is ignored (the state selection is used).
 - Hard-coded `aria-label` "Language" (i18n).
 - Tests 4 and 7 have spies that are not asserted.
 - `useCodeBlock` is not memoized.
 - No `hljs` class on `<code>` (documented in the guide).
+- The `decorations` hook walks the whole doc (`nodeEntries`) on every view update to find code blocks; tokens are cached per node, but the walk is O(doc). Track code block paths or skip unchanged subtrees.
 - The `setLanguage` rejected path is untested.
-- The `test.fail` for the Backspace-into-paragraph bug can pass on an earlier failure (add a non-failing precondition).
 - Multi-line code paste into a paragraph is not in e2e.
 
 ## Image
@@ -122,6 +118,5 @@ Collected from the per-task and final reviews of milestone M3 (branch `feat/m3`)
 
 ## Tests / tooling
 - `pnpm vitest` at the root may fail with "Command not found" when `node_modules` is incomplete; `pnpm install --offline` fixes it. Use `pnpm exec vitest`.
-- The `decorations.test.ts` 50 ms perf guard is flaky under load (see Core / view).
 - Core `bindCommands` returns false when the pipeline drops a tr (filter veto); kept (ruling from Task 13).
 - Consider a clearer failure, or a configurable port, when the e2e port is taken.
