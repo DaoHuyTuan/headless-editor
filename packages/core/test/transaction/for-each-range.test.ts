@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createSelection } from '../../src/model/selection'
+import { toRange } from '../../src/model/path'
+import { setIdGenerator } from '../../src/model/id'
 import { Registry } from '../../src/plugin/registry'
 import type { EditorState } from '../../src/state'
 import type { Mark, Path, Selection, SelectionRange } from '../../src/model/types'
@@ -146,6 +148,8 @@ describe('forEachRange', () => {
 
   it('a single range gives exactly the ops of the callback (existing helper with an explicit range)', () => {
     const run = (wrap: boolean) => {
+      let n = 0
+      setIdGenerator(() => `id${n++}`) // ids the edit creates match across both runs
       const tr = trOf(doc(el('paragraph', txt('abcd'), txt('ef', 'bold'))), createSelection([span([0, 0], 1, 3)]))
       if (wrap)
         tr.forEachRange((range, t) => {
@@ -153,9 +157,39 @@ describe('forEachRange', () => {
           return t.selection!.ranges[0]!
         })
       else tr.insertText('Q')
+      setIdGenerator(null)
       return { ops: stripIds(tr.ops as never), sel: tr.selection, marks: tr.storedMarks, doc: stripIds(tr.doc) }
     }
     expect(run(true)).toEqual(run(false))
+  })
+
+  /** The tr after `edit` alone vs. after `edit` inside a one-range forEachRange (stored marks set). */
+  function parity(selection: SelectionRange, edit: (t: Transaction, range: SelectionRange) => void) {
+    // One doc for both runs, so element ids in the ops match.
+    const d = doc(el('paragraph', txt('abcd'), txt('ef', 'bold')), el('paragraph', txt('gh')))
+    const run = (wrap: boolean) => {
+      let n = 0
+      setIdGenerator(() => `id${n++}`) // ids the edit creates match across both runs
+      const tr = trOf(d, createSelection([selection]), [bold])
+      if (wrap)
+        tr.forEachRange((range, t) => {
+          edit(t, range)
+          return t.selection!.ranges[0]!
+        })
+      else edit(tr, selection)
+      setIdGenerator(null)
+      return { ops: stripIds(tr.ops as never), sel: tr.selection, marks: tr.storedMarks, doc: stripIds(tr.doc) }
+    }
+    expect(run(true)).toEqual(run(false))
+  }
+
+  it('a single range gives exactly the ops of deleteRange with an explicit range', () => {
+    parity({ anchor: at([0, 0], 1), focus: at([1, 0], 1) }, (t, range) => t.deleteRange(toRange(range)))
+  })
+
+  it('a single range gives exactly the ops of splitBlock', () => {
+    // splitBlock has no explicit-range form yet (Task 5); with one range the selection is that range.
+    parity(span([0, 0], 1, 3), (t) => t.splitBlock())
   })
 
   it('inForEachRange is true only during a callback', () => {
@@ -233,6 +267,42 @@ describe('forEachRange', () => {
       tr.forEachRange((range) => caret(range.focus.path, range.focus.offset + 1))
       expect(tr.selection).toEqual(createSelection([caret([0, 0], 2), caret([0, 0], 4)]))
       expect(tr.storedMarks).toBeNull()
+    })
+
+    it('do not depend on which caret consumed them: typing at only the first or only the last caret', () => {
+      const typeAt = (which: number) => {
+        const tr = trOf(doc(el('paragraph', txt('abcd'))), createSelection([caret([0, 0], 1), caret([0, 0], 3)]), [bold])
+        let k = 0
+        tr.forEachRange((range, t) => {
+          if (k++ !== which) return range
+          t.insertText('X', range)
+          return t.selection!.ranges[0]!
+        })
+        return tr.storedMarks
+      }
+      expect(typeAt(0)).toBeNull()
+      expect(typeAt(1)).toBeNull()
+    })
+
+    it('a step that sets other marks wins over steps that left them alone', () => {
+      const italic: Mark = { type: 'italic', data: {} }
+      const setAt = (which: number) => {
+        const tr = trOf(doc(el('paragraph', txt('abcd'))), createSelection([caret([0, 0], 1), caret([0, 0], 3)]), [bold])
+        let k = 0
+        tr.forEachRange((range, t) => {
+          if (k++ === which) t.setStoredMarks([italic])
+          return range
+        })
+        return tr.storedMarks
+      }
+      expect(setAt(0)).toEqual([italic])
+      expect(setAt(1)).toEqual([italic])
+    })
+
+    it('are kept when no step changed them', () => {
+      const tr = trOf(doc(el('paragraph', txt('abcd'))), createSelection([caret([0, 0], 1), caret([0, 0], 3)]), [bold])
+      tr.forEachRange(insertBeforeCaret('X'))
+      expect(tr.storedMarks).toEqual([bold])
     })
   })
 })

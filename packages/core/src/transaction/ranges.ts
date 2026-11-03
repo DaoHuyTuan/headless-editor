@@ -61,9 +61,15 @@ export function mapRun(tr: Transaction, op: Operation): void {
  * result before it, else the first). Every result null: the selection becomes null.
  *
  * Stored marks: every callback starts with the stored marks the run started with, so a caret move
- * (or an insert that consumes them) in one step does not take them from the next; after the run they
- * are what the last callback left. The final selection change clears them only when the run changed
- * nothing in the doc (a pure selection move), as a plain `setSelection` would.
+ * (or an insert that consumes them) in one step does not take them from the next. After the run they
+ * do not depend on the order of the steps:
+ * - if any step cleared or consumed them (left them null), they are null;
+ * - else if a step set other marks, they are those (the last such step's);
+ * - else they are the marks the run started with.
+ *
+ * "The selection moved for another reason than this edit" (spec §5.2) reads as: the run changed
+ * nothing in the doc. A run with any doc change keeps the marks above through its final selection
+ * change; a pure selection move clears them, as a plain `setSelection` would.
  *
  * With one range this adds exactly the callback's ops, plus a `set_selection` only when its result
  * differs from `tr.selection`. Calls do not nest.
@@ -75,6 +81,8 @@ export function forEachRange(tr: Transaction, fn: RangeStep): void {
   const run: RangeRun = { slots: [...sel.ranges], current: -1 }
   const opsBefore = tr.ops.length
   const stored: Mark[] | null = tr.storedMarks
+  let consumed = false
+  let changed: Mark[] | undefined
   runs.set(tr, run)
   try {
     for (let i = 0; i < run.slots.length; i++) {
@@ -83,10 +91,15 @@ export function forEachRange(tr: Transaction, fn: RangeStep): void {
       run.current = i
       tr.setStoredMarks(stored)
       run.slots[i] = fn(range, tr)
+      const after = tr.storedMarks
+      if (after === stored) continue
+      if (after === null) consumed = true
+      else changed = after
     }
   } finally {
     runs.delete(tr)
   }
+  tr.setStoredMarks(consumed ? null : (changed ?? stored))
 
   const out: SelectionRange[] = []
   let main = 0
