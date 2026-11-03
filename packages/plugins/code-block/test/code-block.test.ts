@@ -295,6 +295,42 @@ describe('code block blocks marks and inline nodes', () => {
   })
 })
 
+describe('undo after normalizing into a code block', () => {
+  const join = (inline: Node) => {
+    const ed = setup(doc(code('x'), p(txt('a'), inline)), caret([1, 0], 0))
+    const before = stripIds(ed.getJSON())
+    // Backspace at the paragraph start: the keymap passes (not in a code block), the intent joins.
+    expect(ed.runKeymap('Backspace')).toBe(false)
+    expect(ed.handleIntent({ inputType: 'deleteContentBackward', data: null, range: ed.state.selection })).toBe(true)
+    expect(ed.state.doc.children).toHaveLength(1)
+    return { ed, before }
+  }
+
+  it('undoes a Backspace-join of a paragraph with bold text', () => {
+    const { ed, before } = join(txt('b', 'bold'))
+    expect(ed.commands.undo()).toBe(true)
+    expect(stripIds(ed.getJSON())).toEqual(before)
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(code('x'), p(txt('a'), txt('b', 'bold')))))
+  })
+
+  it('undoes a Backspace-join of a paragraph with a mention', () => {
+    const { ed, before } = join(mentionNode())
+    expect(ed.commands.undo()).toBe(true)
+    expect(stripIds(ed.getJSON())).toEqual(before)
+    const restored = ed.state.doc.children[1]!.children!.find((c) => 'type' in c && c.type === 'mention') as ElementNode
+    expect(restored.data).toEqual({ userId: 'u1', label: 'Ann' })
+  })
+
+  it('redo re-applies the join', () => {
+    const { ed } = join(txt('b', 'bold'))
+    const joined = stripIds(ed.getJSON())
+    expect(ed.commands.undo()).toBe(true)
+    expect(ed.commands.redo()).toBe(true)
+    expect(stripIds(ed.getJSON())).toEqual(joined)
+    expect(blocks(ed)).toEqual([{ type: 'codeBlock', text: 'xab' }])
+  })
+})
+
 describe('code block paste', () => {
   it('rich HTML pasted inside becomes plain text with its newlines', () => {
     const ed = setup(doc(code('')), caret([0, 0], 0))
