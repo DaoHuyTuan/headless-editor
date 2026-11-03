@@ -773,6 +773,46 @@ describe('a rebased undo/redo that lands on a non-normalized doc', () => {
     expect(ed.commands.redo()).toBe(false)
   })
 
+  it('folds the normalization of a redo (k undone steps, an outside tr, redo all, then full cycles)', () => {
+    const { ed, text, step, stacks } = stepper(doc(p('a', bold('x'))))
+    step((tr) => tr.insertNode([1], p('q')))
+    step((tr) => tr.removeNode([0, 1]))
+    expect(text()).toEqual(stripIds(doc(p('a'), p('q'))))
+    expect(ed.commands.undo()).toBe(true)
+    expect(ed.commands.undo()).toBe(true)
+    expect(text()).toEqual(stripIds(doc(p('a', bold('x')))))
+    step((tr) => tr.insertNode([0, 2], txt('c')), true)
+    const states = [
+      doc(p('a', bold('x'), 'c')),
+      doc(p('a', bold('x'), 'c'), p('q')),
+      // The rebased remove of *x* leaves "a" and "c" adjacent: normalization merges them.
+      doc(p('ac'), p('q')),
+    ].map(stripIds)
+    expect(text()).toEqual(states[0])
+    const redoAll = () => {
+      for (let i = 1; i < states.length; i++) {
+        expect(ed.commands.redo()).toBe(true)
+        expect(text()).toEqual(states[i])
+      }
+      expect(ed.commands.redo()).toBe(false)
+    }
+    const undoAll = () => {
+      for (let i = states.length - 2; i >= 0; i--) {
+        expect(ed.commands.undo()).toBe(true)
+        expect(text()).toEqual(states[i])
+      }
+      expect(ed.commands.undo()).toBe(false)
+    }
+    redoAll()
+    // The merge was folded into the redone entry: it is longer than its two recorded ops.
+    const top = stacks().undo[stacks().undo.length - 1] as { ops: unknown[] }
+    expect(top.ops.length).toBeGreaterThan(1)
+    for (let c = 0; c < 2; c++) {
+      undoAll()
+      redoAll()
+    }
+  })
+
   it('typing right after an outside structural tr starts a new step', () => {
     const { ed, type, text } = setup()
     type('a')
