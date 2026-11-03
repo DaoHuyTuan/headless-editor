@@ -1,6 +1,7 @@
 import { eventToKeyName } from '../keymap'
 import type { Selection } from '../model/types'
 import type { InputIntent } from '../plugin/types'
+import type { EditorState } from '../state'
 import { domToModel } from './dom-selection'
 import { isIgnoredEvent } from './ignore'
 import type { EditorView, ViewModule } from './view'
@@ -22,24 +23,66 @@ function targetRange(view: EditorView, e: InputEvent): Selection | null {
 const DELETE_KEYS: Record<string, string> = { Backspace: 'deleteContentBackward', Delete: 'deleteContentForward' }
 
 /**
+ * How long after `compositionend` a deletion keydown is not given the fallback (ms). Safari sends the
+ * keydown that ends a composition after `compositionend`, with `isComposing` false (as ProseMirror's
+ * `compositionEndedAt` handles); the key belongs to the IME. Kept small so a real Backspace typed right
+ * after a composition still gets the fallback.
+ */
+const COMPOSITION_END_WINDOW = 50
+
+/**
  * A deletion keydown waiting for its `beforeinput`. WebKit fires none (nor `input`) when the only thing
  * to delete is an empty non-editable block, e.g. an unknown block: for the caret right after it, or for a
  * node selection covering it. Browsers fire `beforeinput` in the same task as its keydown, so a task
  * queued from the keydown runs after it: if none came, the keydown's input type runs as an intent then.
+ * It runs only when nothing else answered the key: no `beforeinput` (even on an ignored target), `cut`,
+ * `paste` or `compositionstart` since, the editor state is the one seen at keydown, the keydown was not
+ * prevented by a later listener, and the editor still has focus.
  */
 interface PendingDelete {
   inputType: string
+  event: KeyboardEvent
+  state: EditorState
   timer: ReturnType<typeof setTimeout>
 }
 
-type PendingRef = { current: PendingDelete | null }
-
-function clearPending(pending: PendingRef): void {
-  if (pending.current) clearTimeout(pending.current.timer)
-  pending.current = null
+interface InputModuleState {
+  pending: PendingDelete | null
+  /** `Date.now()` of the last `compositionend` on the root (-Infinity before any). */
+  compositionEndedAt: number
 }
 
-function onKeyDown(view: EditorView, e: KeyboardEvent, pending: PendingRef): void {
+function clearPending(m: InputModuleState): void {
+  if (m.pending) clearTimeout(m.pending.timer)
+  m.pending = null
+}
+
+function runPendingDelete(view: EditorView, m: InputModuleState, entry: PendingDelete): void {
+  if (m.pending !== entry) return
+  m.pending = null
+  const { editor } = view
+  if (editor.state !== entry.state || entry.event.defaultPrevented || view.composing || !view.hasFocus()) return
+  view.syncSelection()
+  editor.handleIntent({ inputType: entry.inputType, data: null, dataTransfer: null, range: editor.state.selection })
+}
+
+/** Arms the deletion-key fallback for an unhandled, unprevented plain Backspace/Delete keydown. */
+function armPendingDelete(view: EditorView, e: KeyboardEvent, m: InputModuleState): void {
+  const inputType = DELETE_KEYS[e.key]
+  if (!inputType || e.altKey || e.ctrlKey || e.metaKey || e.defaultPrevented) return
+  // keyCode 229: the IME owns the key; a keydown just after compositionend ends the composition (Safari).
+  if (e.keyCode === 229 || Date.now() - m.compositionEndedAt < COMPOSITION_END_WINDOW) return
+  clearPending(m)
+  const entry: PendingDelete = {
+    inputType,
+    event: e,
+    state: view.editor.state,
+    timer: setTimeout(() => runPendingDelete(view, m, entry), 0),
+  }
+  m.pending = entry
+}
+
+function onKeyDown(view: EditorView, e: KeyboardEvent, m: InputModuleState): void {
   if (isIgnoredEvent(view, e)) return
   const { editor } = view
   if (editor.handleDOMEvent('keydown', e)) {
@@ -53,27 +96,14 @@ function onKeyDown(view: EditorView, e: KeyboardEvent, pending: PendingRef): voi
     e.preventDefault()
     return
   }
-  const inputType = DELETE_KEYS[e.key]
-  if (!inputType || e.altKey || e.ctrlKey || e.metaKey || e.defaultPrevented) return
-  clearPending(pending)
-  const entry: PendingDelete = {
-    inputType,
-    timer: setTimeout(() => {
-      if (pending.current !== entry) return
-      pending.current = null
-      if (view.composing) return
-      view.syncSelection()
-      editor.handleIntent({ inputType, data: null, dataTransfer: null, range: editor.state.selection })
-    }, 0),
-  }
-  pending.current = entry
+  armPendingDelete(view, e, m)
 }
 
-function onBeforeInput(view: EditorView, e: InputEvent, pending: PendingRef): void {
+function onBeforeInput(view: EditorView, e: InputEvent, m: InputModuleState): void {
+  // The keydown got its beforeinput (whatever its type or target): the browser handles the key.
+  clearPending(m)
   if (isIgnoredEvent(view, e)) return
   const { editor } = view
-  // The keydown got its beforeinput (whatever its type): the browser handles the key.
-  clearPending(pending)
   view.recordInput({ inputType: e.inputType, data: e.data, time: Date.now() })
   if (editor.handleDOMEvent('beforeinput', e)) return
   // Composition is handled by the composition module.
@@ -98,13 +128,19 @@ function onBeforeInput(view: EditorView, e: InputEvent, pending: PendingRef): vo
 
 /** Keyboard, `beforeinput` and `input` handling: plugin DOM handlers, then the keymap or the intent pipeline. */
 export const attachInput: ViewModule = (view) => {
-  const pending: PendingRef = { current: null }
-  view.listen(view.root, 'keydown', (e) => onKeyDown(view, e as KeyboardEvent, pending))
-  view.listen(view.root, 'beforeinput', (e) => onBeforeInput(view, e as InputEvent, pending))
+  const m: InputModuleState = { pending: null, compositionEndedAt: -Infinity }
+  view.listen(view.root, 'keydown', (e) => onKeyDown(view, e as KeyboardEvent, m))
+  view.listen(view.root, 'beforeinput', (e) => onBeforeInput(view, e as InputEvent, m))
+  // A cut (Shift+Delete), paste (Shift+Insert) or composition answered the deletion key instead.
+  for (const type of ['cut', 'paste', 'compositionstart']) view.listen(view.root, type, () => clearPending(m))
+  view.listen(view.root, 'compositionend', () => {
+    clearPending(m)
+    m.compositionEndedAt = Date.now()
+  })
   // `input` has no default action here: plugins may observe it; the mutation module reverts stray DOM changes.
   view.listen(view.root, 'input', (e) => {
     if (!isIgnoredEvent(view, e)) view.editor.handleDOMEvent('input', e)
   })
   // The listeners are removed by the view's own disposers; a pending deletion is dropped.
-  return () => clearPending(pending)
+  return () => clearPending(m)
 }

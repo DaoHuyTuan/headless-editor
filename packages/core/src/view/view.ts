@@ -359,7 +359,8 @@ export class EditorView {
     return this.root.ownerDocument.getSelection()
   }
 
-  private hasFocus(): boolean {
+  /** Whether the focus, or failing that the DOM selection, is inside the root. */
+  hasFocus(): boolean {
     const active = this.root.ownerDocument.activeElement
     if (active && this.root.contains(active)) return true
     const anchor = this.domSelection()?.anchorNode

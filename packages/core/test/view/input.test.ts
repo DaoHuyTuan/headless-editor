@@ -234,3 +234,86 @@ describe('input module: deletion keys without a beforeinput (WebKit)', () => {
     expect(editor.state.selection?.node).toBeUndefined()
   })
 })
+
+/** Guards of the deletion-key fallback: it runs only when nothing else answered the keydown. */
+describe('input module: deletion-key fallback guards', () => {
+  const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0))
+  const textOf = (editor: Editor): unknown => editor.getJSON().children[0]
+
+  it('Shift+Delete with a selection is a cut: only the selection is removed', async () => {
+    const { editor, root } = setup('abcd', { anchor: { path: [0, 0], offset: 1 }, focus: { path: [0, 0], offset: 2 } })
+    keydown(root, { key: 'Delete', code: 'Delete', shiftKey: true })
+    root.dispatchEvent(new ClipboardEvent('cut', { bubbles: true, cancelable: true, clipboardData: new DataTransfer() }))
+    await tick()
+    expect(textOf(editor)).toMatchObject({ children: [{ text: 'acd' }] })
+  })
+
+  it('no fallback when the state changed after the keydown (another handler acted)', async () => {
+    const { editor, root } = setup('abc', caret([0, 0], 3))
+    keydown(root, { key: 'Backspace', code: 'Backspace' })
+    editor.commands.insertText('x')
+    await tick()
+    expect(textOf(editor)).toMatchObject({ children: [{ text: 'abcx' }] })
+  })
+
+  it('no fallback for a paste after the keydown (even one that changes nothing)', async () => {
+    const { editor, root } = setup('abc', caret([0, 0], 3))
+    keydown(root, { key: 'Backspace', code: 'Backspace' })
+    root.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: new DataTransfer() }))
+    await tick()
+    expect(textOf(editor)).toMatchObject({ children: [{ text: 'abc' }] })
+  })
+
+  it('no fallback for a composition started after the keydown', async () => {
+    const { editor, root } = setup('abc', caret([0, 0], 3))
+    keydown(root, { key: 'Backspace', code: 'Backspace' })
+    root.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }))
+    await tick()
+    expect(textOf(editor)).toMatchObject({ children: [{ text: 'abc' }] })
+  })
+
+  it('no fallback for a keydown prevented after the core listener (by a page listener)', async () => {
+    const { editor, root } = setup('abc', caret([0, 0], 3))
+    document.body.addEventListener('keydown', (e) => e.preventDefault(), { once: true })
+    keydown(root, { key: 'Backspace', code: 'Backspace' })
+    await tick()
+    expect(textOf(editor)).toMatchObject({ children: [{ text: 'abc' }] })
+  })
+
+  it('no fallback for a keydown with keyCode 229 or isComposing set', async () => {
+    const { editor, root } = setup('abc', caret([0, 0], 3))
+    keydown(root, { key: 'Backspace', code: 'Backspace', keyCode: 229 } as KeyboardEventInit)
+    keydown(root, { key: 'Backspace', code: 'Backspace', isComposing: true })
+    await tick()
+    expect(textOf(editor)).toMatchObject({ children: [{ text: 'abc' }] })
+  })
+
+  it('no fallback for a keydown right after compositionend (Safari ends a composition with a keydown)', async () => {
+    const { editor, root } = setup('abc', caret([0, 0], 3))
+    root.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }))
+    root.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }))
+    keydown(root, { key: 'Backspace', code: 'Backspace' })
+    await tick()
+    expect(textOf(editor)).toMatchObject({ children: [{ text: 'abc' }] })
+  })
+
+  it('a beforeinput on an ignored target still cancels the fallback', async () => {
+    const { editor, root } = setup('abc', caret([0, 0], 3))
+    const ignored = document.createElement('span')
+    ignored.setAttribute('data-editor-ignore', '')
+    root.appendChild(ignored)
+    keydown(root, { key: 'Backspace', code: 'Backspace' })
+    ignored.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, cancelable: true, inputType: 'deleteContentBackward' }))
+    await tick()
+    expect(textOf(editor)).toMatchObject({ children: [{ text: 'abc' }] })
+  })
+
+  it('no fallback when the editor lost focus before it runs', async () => {
+    const { editor, root } = setup('abc', caret([0, 0], 3))
+    keydown(root, { key: 'Backspace', code: 'Backspace' })
+    ;(document.activeElement as HTMLElement | null)?.blur()
+    document.getSelection()?.removeAllRanges()
+    await tick()
+    expect(textOf(editor)).toMatchObject({ children: [{ text: 'abc' }] })
+  })
+})
