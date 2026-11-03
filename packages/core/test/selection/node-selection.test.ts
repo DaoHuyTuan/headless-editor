@@ -152,6 +152,48 @@ describe('editing with a node selection', () => {
     expect(ed.state.selection).toEqual(caret([1, 0], 2))
   })
 
+  describe('insertContent of blocks with an opaque edge keeps no placeholder', () => {
+    const atomWith = (k: number): ElementNode => ({ ...atom(), data: { k } })
+    const blocks = (ed: ReturnType<typeof selected>) =>
+      ed.getJSON().children.map((b) => (b.type === 'atom' ? `atom${(b.data as { k?: number }).k ?? ''}` : texts(b)))
+    const texts = (b: ElementNode) => (b.children ?? []).map((c) => ('text' in c ? c.text : '')).join('')
+
+    function check(fragment: Node[], expected: string[], caretAt: Selection) {
+      const ed = selected()
+      const before = ed.getJSON()
+      const selectedBefore = ed.state.selection
+      expect(ed.commands.insertContent(fragment)).toBe(true)
+      expect(blocks(ed)).toEqual(expected)
+      expect(ed.state.selection).toEqual(caretAt)
+      expect(ed.commands.undo()).toBe(true)
+      expect(ed.getJSON()).toEqual(before)
+      expect(ed.state.selection).toEqual(selectedBefore)
+    }
+
+    it('[atom, p] goes in place; the caret ends after the paragraph text', () => {
+      check([atomWith(1), p('y')], ['a', 'atom1', 'y', 'b'], caret([2, 0], 1))
+    })
+
+    it('[atom, atom] goes in place; the caret is at the start of the following block', () => {
+      check([atomWith(1), atomWith(2)], ['a', 'atom1', 'atom2', 'b'], caret([3, 0], 0))
+    })
+
+    it('[p, atom] goes in place; the caret is at the start of the following block', () => {
+      check([p('x'), atomWith(1)], ['a', 'x', 'atom1', 'b'], caret([3, 0], 0))
+    })
+
+    it('a lone copied atom replaces the node; the caret is at the start of the following block', () => {
+      check([atomWith(1)], ['a', 'atom1', 'b'], caret([2, 0], 0))
+    })
+
+    it('a trailing atom at the end of the doc gets an empty paragraph after it for the caret', () => {
+      const ed = setup(doc(p('a'), atom()), nodeSel([1], [0, 0], 1))
+      expect(ed.commands.insertContent([atomWith(1), atomWith(2)])).toBe(true)
+      expect(blocks(ed)).toEqual(['a', 'atom1', 'atom2', ''])
+      expect(ed.state.selection).toEqual(caret([3, 0], 0))
+    })
+  })
+
   it('insertContent with an empty fragment removes the node', () => {
     const ed = selected()
     expect(ed.commands.insertContent([])).toBe(true)
