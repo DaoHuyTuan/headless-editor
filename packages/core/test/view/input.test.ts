@@ -153,3 +153,84 @@ describe('input module', () => {
     expect(editor.getJSON().children[0]).toMatchObject({ children: [{ text: 'ab' }] })
   })
 })
+
+/**
+ * WebKit fires no `beforeinput` (and no `input`) for Backspace/Delete when the only thing to delete is an
+ * empty non-editable block (an unknown block renders as an empty `contenteditable=false` div): neither for
+ * the caret right after it nor for a node selection covering it. The keydown is then the only event.
+ */
+describe('input module: deletion keys without a beforeinput (WebKit)', () => {
+  const unknown: ElementNode = { id: 'u', type: 'mystery', data: {}, children: [txt('Title')] }
+  const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0))
+
+  function setupUnknown(selection: Selection = caret([1, 0], 0)) {
+    const editor = createTestEditor({ plugins: [testParagraph], doc: doc(unknown, p('p1', txt('Body'))), selection })
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    editor.mount(root)
+    editor.view!.focus()
+    return { editor, root, block: () => root.querySelector('[data-hte-unknown=mystery]') }
+  }
+
+  it('Backspace at the start of the block after an unknown block node-selects it; a second one removes it', async () => {
+    const { editor, root, block } = setupUnknown()
+    keydown(root, { key: 'Backspace', code: 'Backspace' })
+    await tick()
+    expect(editor.state.selection?.node).toEqual([0])
+    expect(block()!.hasAttribute('data-hte-selected')).toBe(true)
+    expect(editor.getJSON().children[0]).toMatchObject({ type: 'mystery', children: [{ text: 'Title' }] })
+
+    keydown(root, { key: 'Backspace', code: 'Backspace' })
+    await tick()
+    expect(block()).toBeNull()
+    expect(editor.getJSON().children).toMatchObject([{ type: 'paragraph', children: [{ text: 'Body' }] }])
+  })
+
+  it('Delete at the end of the block before an unknown block node-selects it', async () => {
+    const editor = createTestEditor({
+      plugins: [testParagraph],
+      doc: doc(p('p1', txt('Body')), unknown),
+      selection: caret([0, 0], 4),
+    })
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    editor.mount(root)
+    editor.view!.focus()
+    keydown(root, { key: 'Delete', code: 'Delete' })
+    await tick()
+    expect(editor.state.selection?.node).toEqual([1])
+  })
+
+  it('the deletion runs once when the browser does fire beforeinput after the keydown (Chromium)', async () => {
+    const { editor, root } = setup('abc', caret([0, 0], 3))
+    keydown(root, { key: 'Backspace', code: 'Backspace' })
+    beforeInput(root, { inputType: 'deleteContentBackward' })
+    await tick()
+    expect(editor.getJSON().children[0]).toMatchObject({ children: [{ text: 'ab' }] })
+  })
+
+  it('no fallback for a keydown a plugin handled, with modifiers, or while composing', async () => {
+    const handled = definePlugin({
+      name: 'eatsBackspace',
+      priority: 500,
+      handleDOMEvents: { keydown: (e) => (e as KeyboardEvent).key === 'Backspace' && (e as KeyboardEvent).shiftKey },
+    })
+    const { editor, root } = setup('abc', caret([0, 0], 3), [testParagraph, handled])
+    keydown(root, { key: 'Backspace', code: 'Backspace', shiftKey: true })
+    keydown(root, { key: 'Backspace', code: 'Backspace', altKey: true })
+    keydown(root, { key: 'Backspace', code: 'Backspace', ctrlKey: true })
+    keydown(root, { key: 'Backspace', code: 'Backspace', metaKey: true })
+    editor.view!.composing = true
+    keydown(root, { key: 'Backspace', code: 'Backspace' })
+    await tick()
+    expect(editor.getJSON().children[0]).toMatchObject({ children: [{ text: 'abc' }] })
+  })
+
+  it('no fallback after unmount', async () => {
+    const { editor, root } = setupUnknown()
+    keydown(root, { key: 'Backspace', code: 'Backspace' })
+    editor.unmount()
+    await tick()
+    expect(editor.state.selection?.node).toBeUndefined()
+  })
+})
