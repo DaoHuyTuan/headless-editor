@@ -1,7 +1,16 @@
 import { deflateSync } from 'node:zlib'
 import { expect, test, type Page } from '@playwright/test'
 import type { Doc, ElementNode } from '@hte/core'
-import { focusEnd, getDoc, getSelection, getText, openPlayground } from './helpers'
+import {
+  focusEnd,
+  getDoc,
+  getSelection,
+  getText,
+  openPlayground,
+  syntheticCopy,
+  syntheticPaste,
+  WEBKIT_KEYBOARD_CLIPBOARD,
+} from './helpers'
 
 function crc32(bytes: Uint8Array): number {
   let crc = 0xffffffff
@@ -278,7 +287,11 @@ test.describe('the image scenario', () => {
     await expect(editorImg(page)).toHaveAttribute('width', String(width))
   })
 
-  test('copying a selected image and pasting it elsewhere adds a second image with a fresh id', async ({ page }) => {
+  test('copying a selected image and pasting it elsewhere adds a second image with a fresh id', async ({
+    page,
+    browserName,
+  }) => {
+    test.skip(browserName === 'webkit', WEBKIT_KEYBOARD_CLIPBOARD)
     await editorImg(page).click()
     await page.keyboard.press('ControlOrMeta+c')
     await caret(page, [2, 0], 'after'.length)
@@ -291,13 +304,45 @@ test.describe('the image scenario', () => {
     expect(second!.data).toEqual(first!.data)
   })
 
-  test('cutting a selected image removes it; pasting puts it back', async ({ page }) => {
+  test('cutting a selected image removes it; pasting puts it back', async ({ page, browserName }) => {
+    test.skip(browserName === 'webkit', WEBKIT_KEYBOARD_CLIPBOARD)
     await editorImg(page).click()
     await page.keyboard.press('ControlOrMeta+x')
     await expect(editorImg(page)).toHaveCount(0)
     expect(await types(page)).toEqual(['paragraph', 'paragraph'])
     await caret(page, [1, 0], 'after'.length)
     await page.keyboard.press('ControlOrMeta+v')
+    await expect(editorImg(page)).toHaveCount(1)
+    expect(await types(page)).toEqual(['paragraph', 'paragraph', 'image', 'paragraph'])
+  })
+
+  // The same flows through synthetic events sharing one clipboard: WebKit keeps coverage of the handlers.
+  for (const without of [[], ['application/x-hte-fragment']]) {
+    test(`synthetic copy of a selected image, pasted elsewhere, adds an equal image with a fresh id (${without.length ? 'html fallback' : 'json'})`, async ({
+      page,
+    }) => {
+      await editorImg(page).click()
+      await expect.poll(async () => (await getSelection(page))?.node).toEqual([1])
+      expect((await syntheticCopy(page, 'copy')).prevented).toBe(true)
+      await caret(page, [2, 0], 'after'.length)
+      expect(await syntheticPaste(page, without)).toBe(true)
+      await expect(editorImg(page)).toHaveCount(2)
+      const doc = await getDoc(page)
+      expect(doc.children.map((b) => b.type)).toEqual(['paragraph', 'image', 'paragraph', 'image', 'paragraph'])
+      const [first, second] = images(doc)
+      expect(second!.id).not.toBe(first!.id)
+      expect(second!.data).toEqual(first!.data)
+    })
+  }
+
+  test('synthetic cut of a selected image removes it; paste puts it back', async ({ page }) => {
+    await editorImg(page).click()
+    await expect.poll(async () => (await getSelection(page))?.node).toEqual([1])
+    expect((await syntheticCopy(page, 'cut')).prevented).toBe(true)
+    await expect(editorImg(page)).toHaveCount(0)
+    expect(await types(page)).toEqual(['paragraph', 'paragraph'])
+    await caret(page, [1, 0], 'after'.length)
+    expect(await syntheticPaste(page)).toBe(true)
     await expect(editorImg(page)).toHaveCount(1)
     expect(await types(page)).toEqual(['paragraph', 'paragraph', 'image', 'paragraph'])
   })

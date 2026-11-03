@@ -140,6 +140,27 @@ describe('clipboard view module', () => {
     expect(new Set(all).size).toBe(all.length)
   })
 
+  // Safari may drop the custom JSON flavor: the HTML (and text) flavors alone must round-trip with fresh ids.
+  it('pasting only the html flavor of a same-doc copy keeps the blocks and gives fresh, unique ids', () => {
+    const editor = setup(doc(p('p1', txt('one')), p('p2', txt('two'))), range([0, 0], 0, [1, 0], 3))
+    const root = mount(editor)
+    const copy = clipboardEvent('copy')
+    root.dispatchEvent(copy.e)
+    copy.store.delete(HTE_MIME)
+    const tr = editor.createTransaction()
+    tr.setSelection(caret([1, 0], 3))
+    editor.dispatch(tr)
+    root.dispatchEvent(clipboardEvent('paste', Object.fromEntries(copy.store)).e)
+    expect(editor.getJSON().children.map((b) => (b.children![0] as { text: string }).text)).toEqual([
+      'one',
+      'twoone',
+      'two',
+    ])
+    const all = ids(editor.getJSON())
+    expect(all).toHaveLength(3)
+    expect(new Set(all).size).toBe(all.length)
+  })
+
   it('pasted json cannot nest blocks inside a paragraph', () => {
     const editor = setup(doc(p('p1', txt('ab'))), caret([0, 0], 1))
     const root = mount(editor)

@@ -493,6 +493,30 @@ function copyPasteImage(editor: ReturnType<typeof setup>['editor'], path: number
   editor.handleIntent(intent('insertFromPaste', transfer([], { [FRAGMENT_MIME]: json, 'text/html': html, 'text/plain': text })))
 }
 
+describe('copy / paste without the JSON flavour', () => {
+  // Safari may strip the custom JSON MIME: the HTML flavour alone must bring the image back with a fresh id.
+  it('pasting only the html flavour of a copied image inserts an equal image with a fresh id', () => {
+    const editor = createTestEditor({
+      plugins: [paragraph, image],
+      doc: doc(p(txt('ab')), el('image', { src: 'https://x/a.png', alt: 'A', width: 40 }), p(txt('cd'))),
+      selection: sel([0, 0], 0),
+    })
+    const select = editor.createTransaction()
+    select.setSelection(nodeSelection(editor.state.doc, editor.registry, [1]))
+    editor.dispatch(select)
+    const { html, text } = serializeForClipboard(editor, toRange(editor.state.selection!), [1])
+    const end = editor.createTransaction()
+    end.setSelection(sel([2, 0], 2))
+    editor.dispatch(end)
+    editor.handleIntent(intent('insertFromPaste', transfer([], { 'text/html': html, 'text/plain': text })))
+    const d = editor.state.doc as Doc
+    expect(d.children.map((b) => b.type)).toEqual(['paragraph', 'image', 'paragraph', 'image', 'paragraph'])
+    const [first, second] = images(d)
+    expect(second!.data).toEqual(first!.data)
+    expect(second!.id).not.toBe(first!.id)
+  })
+})
+
 describe('I1: copies of a pending image', () => {
   it('a pasted copy of a pending image gets the uploaded URL too', async () => {
     const { editor, uploads } = setup()

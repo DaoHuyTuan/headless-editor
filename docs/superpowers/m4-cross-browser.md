@@ -40,6 +40,40 @@ two` where the pasted copy is missing.
 
 The synthetic-event paste tests (HTML paste, plain text with diacritics, multi-line, png/pdf file paste, code-block rich paste) now pass on WebKit, so the paste handler itself works there.
 
+**Part 2 result: headless harness limitation, proven; the 5 tests are skipped on WebKit only.**
+
+Evidence (scratch e2e, Playwright WebKit on Windows, 2026-11-03; `setData` wrapped on `DataTransfer.prototype`, capture and bubble listeners on `document`):
+
+1. In the editor, select `bc` of `abc`, then `ControlOrMeta+c`, `End`, `ControlOrMeta+v`:
+   - `copy`: the editor's handler called `setData` three times: `text/plain` = `bc`, `text/html` = `<p>bc</p>`, `application/x-hte-fragment` = `[{"text":"bc","marks":[]}]`. After each call, `clipboardData.types` held the new flavor, and at the end of bubbling it was `[text/plain, text/html, application/x-hte-fragment]` with `defaultPrevented: true`. So the copy populated the data, custom MIME included (not cause (a)).
+   - The next `paste`: `clipboardData.types` = `[text/plain, text/uri-list, text/html]`, and `getData` returned `""` for every one. The editor's paste handler ran (`defaultPrevented: true`) and got nothing to insert. Result: `abc`.
+   - `navigator.clipboard.readText()` rejects with `NotAllowedError` (WebKit has no clipboard permission in Playwright).
+   - Chromium, same steps: the paste sees all 3 flavors with their values, and the result is `abcbc`.
+2. Control page with no editor (`page.setContent`, a textarea copied with `ControlOrMeta+a`/`c` and pasted into a second textarea):
+   - native copy (no handler): the paste gets `text/plain` = `hello world`, and it round-trips;
+   - a copy handler that sets only `text/plain` = `FROMHANDLER` and calls `preventDefault`: the paste gets `text/plain`, `text/uri-list`, `text/html`, all `""`, and the textarea stays empty;
+   - the same with an added custom MIME: the same, all empty.
+   - Chromium: both handler variants round-trip, the custom MIME included.
+
+So headless WebKit does not carry data written by a `copy`/`cut` handler (`setData` + `preventDefault`) to the next keyboard paste, even for plain text on a bare page. That is cause (b). The paste handler does not drop WebKit's flavors (not (c)), because there are no values to read. Custom-MIME stripping is not the cause either: plain text is lost too. In this build, the drop happens in the port's pasteboard, not in the editor. Safari's own `setData` in copy handlers is the standard path that every web editor relies on.
+
+Safari may still strip the custom JSON MIME in real use (it restricts custom types). That does not lose content: the HTML flavor alone round-trips with fresh ids. This is pinned by:
+- unit tests: `packages/core/test/view/clipboard.test.ts` ("pasting only the html flavor of a same-doc copy …") and `packages/plugins/image/test/image.test.ts` ("pasting only the html flavour of a copied image …");
+- e2e tests: the "html fallback" variants below.
+
+What changed:
+- The 5 keyboard tests have `test.skip(browserName === 'webkit', WEBKIT_KEYBOARD_CLIPBOARD)`, with the reason in `e2e/helpers.ts`. Their assertions are unchanged.
+- The same flows run on every browser through synthetic `ClipboardEvent`s that share one `DataTransfer` (`syntheticCopy` / `syntheticPaste` in `e2e/helpers.ts`). In `clipboard.spec.ts`, under `synthetic copy / cut → paste`:
+  - copy → paste;
+  - two blocks with unique ids, both JSON and HTML-only;
+  - cut → paste.
+
+  In `image.spec.ts`:
+  - image copy with a fresh id, both JSON and HTML-only;
+  - image cut → paste.
+
+  All of these pass on WebKit and Chromium.
+
 ### C. Selection API differences around an unknown (non-editable) block (2)
 
 - `unknown-block.spec.ts:31` `focus, type, Ctrl+A and Backspace work; the unknown block survives`. First error: selection `anchor.offset` expected 0, received 10. Suspected cause: selection API (WebKit select-all range direction or boundary normalisation differs).

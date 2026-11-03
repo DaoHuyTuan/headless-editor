@@ -85,3 +85,44 @@ export async function compose(page: Page, steps: string[], commit: string): Prom
   await cdp.send('Input.insertText', { text: commit })
   await cdp.detach()
 }
+
+/**
+ * Skip reason for keyboard copy/cut → paste tests on WebKit. Headless WebKit (Playwright's Windows
+ * build) does not carry data written by a `copy`/`cut` handler (`clipboardData.setData` +
+ * `preventDefault`) to the next keyboard paste, even on a bare page with no editor: the paste sees
+ * `text/plain`, `text/uri-list`, `text/html`, every value empty. A native copy does round-trip.
+ * Evidence: docs/superpowers/m4-cross-browser.md (B). The editor's handlers stay covered on WebKit by
+ * `syntheticCopy` / `syntheticPaste` tests.
+ */
+export const WEBKIT_KEYBOARD_CLIPBOARD =
+  'headless WebKit drops data set by a copy/cut handler before the next keyboard paste (see m4-cross-browser.md B)'
+
+/**
+ * Dispatches a synthetic `copy` or `cut` on the editor root with a fresh `DataTransfer`, kept on the
+ * page for `syntheticPaste`. Returns whether the editor handled it (prevented the default) and the
+ * flavors it set.
+ */
+export function syntheticCopy(page: Page, type: 'copy' | 'cut'): Promise<{ prevented: boolean; types: string[] }> {
+  return page.evaluate((type) => {
+    const dt = new DataTransfer()
+    ;(window as unknown as { __hteClipboard: DataTransfer }).__hteClipboard = dt
+    const e = new ClipboardEvent(type, { clipboardData: dt, bubbles: true, cancelable: true })
+    window.editor.view!.root.dispatchEvent(e)
+    return { prevented: e.defaultPrevented, types: [...dt.types] }
+  }, type)
+}
+
+/**
+ * Dispatches a synthetic `paste` on the editor root carrying the data the last `syntheticCopy` set.
+ * `without` drops flavors first (e.g. the JSON flavor, to exercise the HTML fallback).
+ */
+export function syntheticPaste(page: Page, without: string[] = []): Promise<boolean> {
+  return page.evaluate((without) => {
+    const src = (window as unknown as { __hteClipboard: DataTransfer }).__hteClipboard
+    const dt = new DataTransfer()
+    for (const t of src.types) if (!without.includes(t)) dt.setData(t, src.getData(t))
+    const e = new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true })
+    window.editor.view!.root.dispatchEvent(e)
+    return e.defaultPrevented
+  }, without)
+}
