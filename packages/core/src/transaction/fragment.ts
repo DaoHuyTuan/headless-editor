@@ -225,13 +225,18 @@ function insertBlocks(tr: Transaction, point: Point, blocks: Node[], rightId: st
  * an empty fragment only deletes (true when something was deleted).
  */
 export function insertFragment(tr: Transaction, fragment: Fragment, at?: Range | Selection): boolean {
-  // A selected node is removed first; the content goes in at the (mapped) caret.
-  const removedNode = !at && replaceSelectedNode(tr, 'delete')
+  // A selected node is replaced in place, as typing does: by an empty default block, into whose
+  // start the content goes, with the same split / merge rules as at any caret. An empty fragment
+  // only removes the node.
+  if (!at && isNodeSelection(tr.selection)) {
+    if (fragment.length === 0) return replaceSelectedNode(tr, 'delete')
+    if (!replaceSelectedNode(tr, { text: '' })) return false
+  }
   const target = at ?? tr.selection
   if (!target) return false
   const range = ordered(target)
   const deleted = deleteRange(tr, range)
-  if (fragment.length === 0) return deleted || removedNode
+  if (fragment.length === 0) return deleted
   const point = range.start
 
   const used = new Set<string>()

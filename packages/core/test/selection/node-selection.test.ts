@@ -145,11 +145,18 @@ describe('editing with a node selection', () => {
     expect(ed.state.selection).toEqual(caret([0, 0], 0))
   })
 
-  it('insertContent removes the node, then inserts at the caret', () => {
+  it('insertContent replaces the node in place, like insertText', () => {
     const ed = selected()
     expect(ed.commands.insertContent([txt('XY')])).toBe(true)
-    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p('aXY'), p('b'))))
-    expect(ed.state.selection).toEqual(caret([0, 0], 3))
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p('a'), p('XY'), p('b'))))
+    expect(ed.state.selection).toEqual(caret([1, 0], 2))
+  })
+
+  it('insertContent with an empty fragment removes the node', () => {
+    const ed = selected()
+    expect(ed.commands.insertContent([])).toBe(true)
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p('a'), p('b'))))
+    expect(ed.state.selection).toEqual(caret([0, 0], 1))
   })
 
   it('selectAll clears the node selection', () => {

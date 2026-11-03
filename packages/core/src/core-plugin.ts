@@ -39,7 +39,7 @@ const PASTE_INPUT: Record<string, 'paste' | 'input'> = { insertFromPaste: 'paste
 function insertTransfer(intent: InputIntent, editor: Editor): boolean {
   const transfer = intent.dataTransfer
   if (!transfer) return false
-  // With a node selection the fragment replaces the node (at the selection); else it goes to
+  // With a node selection the fragment replaces the node in place, as typing does; else it goes to
   // `intent.range` (a drop point), which `transformPasted` hooks get too.
   const at = isNodeSelection(editor.state.selection) ? null : intent.range
   const fragment = parseFromClipboard(

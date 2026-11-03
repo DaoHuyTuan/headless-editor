@@ -457,10 +457,70 @@ describe('clipboard with a node selection', () => {
     expect(new Set(all).size).toBe(all.length)
   })
 
-  it('paste with a node selection replaces the node', () => {
+  it('paste with a node selection replaces the node in place', () => {
     const { editor, root } = setupNode()
     root.dispatchEvent(clipboardEvent('paste', { 'text/plain': 'zz' }).e)
-    expect(stripIds(editor.getJSON())).toEqual(stripIds(doc(p('p1', txt('abzz')), p('p2', txt('cd')))))
-    expect(editor.state.selection).toEqual(caret([0, 0], 4))
+    expect(stripIds(editor.getJSON())).toEqual(stripIds(doc(p('p1', txt('ab')), p('x', txt('zz')), p('p2', txt('cd')))))
+    expect(editor.state.selection).toEqual(caret([1, 0], 2))
+  })
+})
+
+describe('paste over a node-selected image', () => {
+  const image = definePlugin({ name: 'image', node: { kind: 'block', atom: true } })
+  const content = () => doc(p('p1', txt('a')), { id: 'img', type: 'image', data: { src: 's' } }, p('p2', txt('b')))
+  const texts = (d: Doc) => d.children.map((b) => (b.children ?? []).map((c) => (isText(c) ? c.text : `<${c.type}>`)).join(''))
+
+  function setupImage() {
+    const plugins = [testParagraph, testBold, image]
+    const editor = setup(content(), caret([0, 0], 0), plugins)
+    const tr = editor.createTransaction()
+    tr.setSelection(nodeSelection(editor.state.doc, editor.registry, [1]))
+    editor.dispatch(tr)
+    const root = mount(editor)
+    return { editor, root }
+  }
+
+  it('pasting text over a selected image puts the text where the image was', () => {
+    const { editor, root } = setupImage()
+    root.dispatchEvent(clipboardEvent('paste', { 'text/plain': 'x' }).e)
+    expect(editor.getJSON().children.map((b) => b.type)).toEqual(['paragraph', 'paragraph', 'paragraph'])
+    expect(texts(editor.getJSON())).toEqual(['a', 'x', 'b'])
+    expect(editor.state.selection).toEqual(caret([1, 0], 1))
+  })
+
+  it('pasting HTML blocks over a selected image keeps their order in place', () => {
+    const { editor, root } = setupImage()
+    root.dispatchEvent(clipboardEvent('paste', { 'text/html': '<p>x</p><p>y</p>', 'text/plain': 'x\ny' }).e)
+    expect(editor.getJSON().children.map((b) => b.type)).toEqual(['paragraph', 'paragraph', 'paragraph', 'paragraph'])
+    expect(texts(editor.getJSON())).toEqual(['a', 'x', 'y', 'b'])
+    expect(editor.state.selection).toEqual(caret([2, 0], 1))
+  })
+
+  it('pasting a copied atom block over a selected image puts it in place', () => {
+    const { editor, root } = setupImage()
+    const block = [{ id: 'other', type: 'image', data: { src: 't' } }]
+    root.dispatchEvent(clipboardEvent('paste', { [HTE_MIME]: JSON.stringify(block) }).e)
+    expect(editor.getJSON().children.map((b) => b.type)).toEqual(['paragraph', 'image', 'paragraph'])
+    expect(editor.getJSON().children[1]!.data).toEqual({ src: 't' })
+  })
+
+  it('one undo restores the image', () => {
+    const { editor, root } = setupImage()
+    const before = editor.getJSON()
+    const selected = editor.state.selection
+    root.dispatchEvent(clipboardEvent('paste', { 'text/html': '<p>x</p><p>y</p>', 'text/plain': 'x\ny' }).e)
+    expect(editor.commands.undo()).toBe(true)
+    expect(editor.getJSON()).toEqual(before)
+    expect(editor.state.selection).toEqual(selected)
+  })
+
+  it('paste over a node selection matches typing over it', () => {
+    const pasted = setupImage()
+    pasted.root.dispatchEvent(clipboardEvent('paste', { 'text/plain': 'x' }).e)
+    document.body.replaceChildren()
+    const typed = setupImage()
+    typed.editor.commands.insertText('x')
+    expect(stripIds(pasted.editor.getJSON())).toEqual(stripIds(typed.editor.getJSON()))
+    expect(pasted.editor.state.selection).toEqual(typed.editor.state.selection)
   })
 })
