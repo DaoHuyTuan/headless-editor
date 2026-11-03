@@ -145,8 +145,8 @@ describe('history plugin', () => {
     expect(stacks().redo).toHaveLength(1)
   })
 
-  it('a tr with addToHistory false and doc ops empties both stacks', () => {
-    const { ed, clock, type, stacks } = setup()
+  it('a tr with addToHistory false and doc ops maps both stacks, dropping what it cannot rebase', () => {
+    const { ed, clock, type, text, stacks } = setup()
     type('a')
     clock.t += 600
     type('b')
@@ -157,8 +157,11 @@ describe('history plugin', () => {
     tr.meta.addToHistory = false
     tr.insertText('z')
     ed.dispatch(tr)
-    expect(stacks().undo).toHaveLength(0)
+    // Undo removes "a" before the "z"; redo inserted "b" exactly where "z" went: an ambiguous tie, dropped.
+    expect(stacks().undo).toHaveLength(1)
     expect(stacks().redo).toHaveLength(0)
+    expect(ed.commands.undo()).toBe(true)
+    expect(text()).toEqual(stripIds(doc(p('z'))))
   })
 
   it('setContent empties the stacks', () => {
@@ -333,10 +336,10 @@ describe('history rewrites data-only changes made outside history', () => {
     expect(dataOf(b)).toEqual({ src: 'blob:b2' })
   })
 
-  it('a structural addToHistory:false tr still clears both stacks', () => {
-    const { ed, stacks, insertImage } = imageSetup()
+  it('a structural addToHistory:false tr drops the entries touching the removed node and maps the rest', () => {
+    const { ed, stacks, insertImage, dataOf } = imageSetup()
     const id = insertImage({ src: 'blob:1' })
-    insertImage({ src: 'blob:2' })
+    const id2 = insertImage({ src: 'blob:2' })
     ed.commands.undo()
     expect(stacks().undo).toHaveLength(1)
     expect(stacks().redo).toHaveLength(1)
@@ -345,8 +348,12 @@ describe('history rewrites data-only changes made outside history', () => {
     tr.setNodeData(findPathById(ed.state.doc, id)!, { src: 'https://x/1.png' })
     tr.removeNode(findPathById(tr.doc, id)!)
     ed.dispatch(tr)
+    // The undo entry removes image 1 (changed, then removed outside): dropped. Redo of image 2 is unrelated.
     expect(stacks().undo).toHaveLength(0)
-    expect(stacks().redo).toHaveLength(0)
+    expect(stacks().redo).toHaveLength(1)
+    expect(ed.commands.redo()).toBe(true)
+    expect(dataOf(id2)).toEqual({ src: 'blob:2' })
+    expect(dataOf(id)).toBeNull()
   })
 })
 
@@ -520,11 +527,13 @@ describe('appendTransaction trs join the triggering history entry', () => {
         return t
       },
     })
-    const { type, text, stacks } = appendSetup([outside])
+    const { ed, type, text, stacks } = appendSetup([outside])
     type('a')
     expect(text()).toBe('>a')
-    // Structural change made outside history: today's behaviour clears the stacks.
-    expect(stacks().undo).toHaveLength(0)
+    // Structural change made outside history: the typing entry is rebased past it.
+    expect(stacks().undo).toHaveLength(1)
+    expect(ed.commands.undo()).toBe(true)
+    expect(text()).toBe('>')
   })
 
   it('appended trs inherit addToHistory:false from their root', () => {
@@ -549,5 +558,127 @@ describe('appendTransaction trs join the triggering history entry', () => {
     expect(metas[1]).toMatchObject({ addToHistory: false })
     expect(metas[1]!.appendedTo).toBeUndefined()
     expect(stacks().undo).toHaveLength(0)
+  })
+})
+
+describe('history maps its stacks through structural changes made outside history', () => {
+  const outside = (ed: ReturnType<typeof setup>['ed'], fn: (tr: Transaction) => void) => {
+    const tr = ed.createTransaction()
+    tr.meta.origin = 'plugin'
+    tr.meta.addToHistory = false
+    fn(tr)
+    ed.dispatch(tr)
+  }
+  const moveCaret = (ed: ReturnType<typeof setup>['ed'], s: Selection) => {
+    const tr = ed.createTransaction()
+    tr.setSelection(s)
+    ed.dispatch(tr)
+  }
+
+  it('keeps undo after an outside-history insert of an unrelated block', () => {
+    const { ed, type, text, stacks } = setup()
+    type('a')
+    outside(ed, (tr) => tr.insertNode([0], p('x')))
+    expect(text()).toEqual(stripIds(doc(p('x'), p('a'))))
+    expect(stacks().undo).toHaveLength(1)
+    expect(ed.commands.undo()).toBe(true)
+    expect(text()).toEqual(stripIds(doc(p('x'), p(''))))
+    expect(ed.state.selection).toEqual(sel([1, 0], 0))
+  })
+
+  it('keeps undo after an outside edit of a different block before the typed block', () => {
+    const { ed, type, text } = setup(doc(p('one'), p('')), sel([1, 0], 0))
+    type('a')
+    outside(ed, (tr) => {
+      tr.insertText('!', sel([0, 0], 3))
+      tr.insertNode([1], p('mid'))
+    })
+    expect(text()).toEqual(stripIds(doc(p('one!'), p('mid'), p('a'))))
+    expect(ed.commands.undo()).toBe(true)
+    expect(text()).toEqual(stripIds(doc(p('one!'), p('mid'), p(''))))
+    expect(ed.commands.redo()).toBe(true)
+    expect(text()).toEqual(stripIds(doc(p('one!'), p('mid'), p('a'))))
+    expect(ed.state.selection).toEqual(sel([2, 0], 1))
+  })
+
+  it('an outside remove of the very block the entry touched drops that entry', () => {
+    const { ed, type, text, stacks } = setup(doc(p(''), p('z')))
+    type('a')
+    outside(ed, (tr) => tr.removeNode([0]))
+    expect(stacks().undo).toHaveLength(0)
+    expect(ed.commands.undo()).toBe(false)
+    expect(text()).toEqual(stripIds(doc(p('z'))))
+  })
+
+  it('drops only entries that touch a node removed outside history', () => {
+    const { ed, clock, type, text, stacks } = setup(doc(p(''), p('')))
+    type('a') // entry 1: paragraph 0
+    clock.t += 600
+    moveCaret(ed, sel([1, 0], 0))
+    type('b') // entry 2: paragraph 1
+    outside(ed, (tr) => tr.removeNode([0]))
+    expect(text()).toEqual(stripIds(doc(p('b'))))
+    expect(stacks().undo).toHaveLength(1)
+    expect(ed.commands.undo()).toBe(true)
+    expect(text()).toEqual(stripIds(doc(p(''))))
+    expect(ed.commands.undo()).toBe(false)
+  })
+
+  it('drops every entry below one that cannot be rebased, keeping the ones above', () => {
+    const { ed, clock, type, text, stacks } = setup(doc(p(''), p('')))
+    moveCaret(ed, sel([1, 0], 0))
+    type('b') // entry 1: paragraph 1 (rebasable on its own)
+    clock.t += 600
+    moveCaret(ed, sel([0, 0], 0))
+    type('a') // entry 2: paragraph 0 (removed below)
+    clock.t += 600
+    moveCaret(ed, sel([1, 0], 1))
+    type('c') // entry 3: paragraph 1
+    outside(ed, (tr) => tr.removeNode([0]))
+    expect(stacks().undo).toHaveLength(1)
+    expect(ed.commands.undo()).toBe(true)
+    expect(text()).toEqual(stripIds(doc(p('b'))))
+    expect(ed.commands.undo()).toBe(false)
+  })
+
+  it('maps the redo stack too: redo re-applies at the shifted position', () => {
+    const { ed, clock, type, text, stacks } = setup()
+    type('a')
+    clock.t += 600
+    type('b')
+    ed.commands.undo()
+    outside(ed, (tr) => tr.insertNode([0], p('x')))
+    expect(stacks().redo).toHaveLength(1)
+    expect(ed.commands.redo()).toBe(true)
+    expect(text()).toEqual(stripIds(doc(p('x'), p('ab'))))
+    expect(ed.state.selection).toEqual(sel([1, 0], 2))
+    expect(ed.commands.undo()).toBe(true)
+    expect(ed.commands.undo()).toBe(true)
+    expect(text()).toEqual(stripIds(doc(p('x'), p(''))))
+    expect(ed.commands.redo()).toBe(true)
+    expect(ed.commands.redo()).toBe(true)
+    expect(text()).toEqual(stripIds(doc(p('x'), p('ab'))))
+  })
+
+  it('drops a redo entry that touches a node removed outside history, keeping undo', () => {
+    const { ed, clock, type, text, stacks } = setup(doc(p(''), p('')))
+    type('a') // entry 1: paragraph 0
+    clock.t += 600
+    moveCaret(ed, sel([1, 0], 0))
+    type('b') // entry 2: paragraph 1
+    ed.commands.undo()
+    outside(ed, (tr) => tr.removeNode([1]))
+    expect(stacks().redo).toHaveLength(0)
+    expect(stacks().undo).toHaveLength(1)
+    expect(ed.commands.undo()).toBe(true)
+    expect(text()).toEqual(stripIds(doc(p(''))))
+  })
+
+  it('a move_node outside history still clears both stacks', () => {
+    const { ed, type, stacks } = setup(doc(p(''), p('z')))
+    type('a')
+    outside(ed, (tr) => tr.apply({ type: 'move_node', path: [1], newPath: [0] }))
+    expect(stacks().undo).toHaveLength(0)
+    expect(stacks().redo).toHaveLength(0)
   })
 })

@@ -4,6 +4,8 @@ import { deepEqualJson, getNode, isElement } from './model/node'
 import type { Data, Doc, ElementNode, Node, Selection } from './model/types'
 import { applyOp } from './ops/apply'
 import { invertOp } from './ops/invert'
+import { rebaseBoth } from './ops/rebase'
+import { transformSelection } from './ops/transform'
 import type { Operation } from './ops/types'
 import { definePlugin } from './plugin/define'
 import type { Command, PluginContext } from './plugin/types'
@@ -168,6 +170,54 @@ function rewriteStacks(prev: HistoryState, doc: Doc, rewrites: Rewrite[]): Histo
   return { undo: prev.undo.map(entry), redo: prev.redo.map(entry) }
 }
 
+/** The inverse of a recorded op sequence: inverted ops, in reverse order. */
+function invertAll(ops: Operation[]): Operation[] {
+  return ops.map(invertOp).reverse()
+}
+
+/** `sel` mapped through `ops`; `undefined` when it can't be (a point's text node was removed). */
+function mapSelection(sel: Selection | null, ops: Operation[]): Selection | null | undefined {
+  let out = sel
+  for (const op of ops) {
+    if (out === null) return null
+    const next = transformSelection(out, op)
+    if (!next) return undefined
+    out = next
+  }
+  return out
+}
+
+/**
+ * Rebases one stack over `over`, the doc ops of an outside-history tr that start from the current doc.
+ *
+ * Both stacks' top entries meet at the current doc: an undo entry's inverse ops start there (then
+ * the next entry's inverse, going down), and so do a redo entry's forward ops. So each stack is one
+ * op sequence starting at the current doc, concurrent with `over`: walking it top-down, each
+ * entry's ops are rebased over `over` (`rebaseBoth`), and `over` is carried past the entry for the
+ * one below. Selections map through `over` at their end of the entry.
+ *
+ * The first entry that can't be rebased (see `rebaseOps`) is dropped along with every entry below
+ * it: those only make sense after it. Entries above it stay.
+ */
+function rebaseStack(stack: HistoryEntry[], over: Operation[], action: HistoryAction): HistoryEntry[] {
+  const out: HistoryEntry[] = []
+  let rest = over
+  for (let i = stack.length - 1; i >= 0; i--) {
+    const e = stack[i]!
+    const ops = action === 'undo' ? invertAll(e.ops) : e.ops
+    // The selection at the current-doc end of the entry, and the one at its far end.
+    const near = mapSelection(action === 'undo' ? e.selectionAfter : e.selectionBefore, rest)
+    const res = rebaseBoth(ops, rest)
+    if (!res || near === undefined) break
+    const far = mapSelection(action === 'undo' ? e.selectionBefore : e.selectionAfter, res.over)
+    if (far === undefined) break
+    rest = res.over
+    const [selectionBefore, selectionAfter] = action === 'undo' ? [far, near] : [near, far]
+    out.push({ ...e, ops: action === 'undo' ? invertAll(res.ops) : res.ops, selectionBefore, selectionAfter })
+  }
+  return out.reverse()
+}
+
 function isHistoryRewrite(v: unknown): v is { id: string; data: Data } {
   if (typeof v !== 'object' || v === null) return false
   const r = v as { id?: unknown; data?: unknown }
@@ -247,8 +297,8 @@ function applyHistory(prev: HistoryState, tr: Transaction, options: HistoryOptio
       }
       return rewriteStacks(prev, tr.before.doc as Doc, rewrites)
     }
-    // Structural changes made outside history would make the stacks' ops invalid, so drop them.
-    return EMPTY
+    // Structural changes: map both stacks through them, dropping what can't be rebased.
+    return { undo: rebaseStack(prev.undo, docOps, 'undo'), redo: rebaseStack(prev.redo, docOps, 'redo') }
   }
 
   const ops = tr.ops.filter((op) => op.type !== 'set_selection')
@@ -318,8 +368,9 @@ export function clearHistory(editor: Editor): void {
 /**
  * Built-in undo/redo plugin, prepended by the Editor unless `history: false`.
  * Records every doc-changing tr (as finally normalized); consecutive input of the same kind
- * within `groupDelay` ms is one step. Trs with `addToHistory: false` clear both stacks, except
- * data-only ones (all `set_node_data`), which rewrite the stored payloads of the changed elements.
+ * within `groupDelay` ms is one step. Trs with `addToHistory: false` don't record: data-only ones
+ * (all `set_node_data`) rewrite the stored payloads of the changed elements; structural ones map both
+ * stacks through their ops (`rebaseStack`), dropping entries that can't be rebased and all below them.
  * `appendTransaction` trs (meta `appendedTo`) join the triggering step (see `joinAppended`).
  */
 export const historyPlugin = definePlugin({
