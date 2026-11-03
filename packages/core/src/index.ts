@@ -113,5 +113,5 @@ export { domToModel, modelToDom, readDomSelection, writeDomSelection } from './v
 export { EditorView } from './view/view'
 export type { Decoration, DecorationAttrs, InlineDecoration, WidgetDecoration } from './view/decorations'
 export { IGNORE_ATTR, isIgnoredTarget } from './view/ignore'
-export { FRAGMENT_MIME, parseFromClipboard, serializeForClipboard } from './view/clipboard'
+export { FRAGMENT_MIME, parseFromClipboard, serializeForClipboard } from './content/clipboard'
 export type { CompositionTarget, InputRecord, ViewModule } from './view/view'

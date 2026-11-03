@@ -6,7 +6,7 @@ import { definePlugin } from './plugin/define'
 import type { Command, InputIntent } from './plugin/types'
 import { insertFragment, type Fragment } from './transaction/fragment'
 import { addMark, removeMark, toggleMark } from './transaction/marks'
-import { FRAGMENT_MIME, parseFromClipboard } from './view/clipboard'
+import { FRAGMENT_MIME, parseFromClipboard } from './content/clipboard'
 import type { Transaction } from './transaction/transaction'
 import { deleteBackward, deleteForward, insertText, selectAll, splitBlock, type DeleteUnit } from './transaction/text'
 

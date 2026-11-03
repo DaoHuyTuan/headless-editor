@@ -1,5 +1,5 @@
 import type { Point, Selection } from '../model/types'
-import { FRAGMENT_MIME } from './clipboard'
+import { FRAGMENT_MIME } from '../content/clipboard'
 import { domToModel } from './dom-selection'
 import { isIgnoredEvent } from './ignore'
 import type { EditorView, ViewModule } from './view'
