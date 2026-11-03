@@ -23,3 +23,10 @@ Collected from the per-task reviews of M4 part 1 (branch `feat/m4`), from the SD
 
 ## Playground
 - The Bold button is disabled with no selection or focus.
+
+## Part 2 (WebKit)
+- Real Safari/macOS is untested: the WebKit results are Playwright's WebKit on Windows. Firefox still cannot launch here.
+- The 5 keyboard clipboard e2e tests are skipped on WebKit only (headless harness drops data from a `copy`/`cut` handler before the next paste, proven on a bare page). Whether real Safari does the same is unverified (medium). Synthetic copy/paste e2e covers the flows meanwhile.
+- Clipboard tests: html-only multi-block variants keep `text/plain` (could pass through the text fallback); there is no html-only marks variant.
+- `EditorView.hasFocus` is now public; it is marked `@internal` (a DOM selection inside the root also counts as focus). Consider hiding it behind an internal interface.
+- The WebKit delete fallback (keydown timer, used when no `beforeinput` fires) is cancelled by any dispatch between the keydown and the timer, not only by the matching `beforeinput`; harmless today, but keep in mind when adding async dispatchers.

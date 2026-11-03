@@ -2,13 +2,15 @@
 
 Recorded 2026-11-03 by running `playwright test --project=<name>` (Playwright, Windows 11, headless) once per new project. Nothing was fixed and no assertion was weakened. The only test edits are `test.skip(browserName !== 'chromium', 'CDP-only')` on the IME tests.
 
-Run totals (75 test-runs per project). Chromium is 75 passed after the config change (no regression).
+Run totals after M4 part 2 (85 test-runs per project, 2026-11-03, headless, single run, no retries). Chromium has no regression.
 
-| Browser | Passed | Failed | Skipped (CDP-only) |
+| Browser | Passed | Failed | Skipped |
 | --- | --- | --- | --- |
-| Chromium | 75 | 0 | 0 |
-| Firefox 157 (playwright firefox v1555) | 0 | 75 | 0 (never launched) |
-| WebKit 27.2 (playwright webkit v2370) | 49 | 11 | 15 |
+| Chromium | 85 | 0 | 0 |
+| Firefox 157 (playwright firefox v1555) | not run | not run | never launched |
+| WebKit 27.2 (playwright webkit v2370) | 65 | 0 | 20 (15 CDP-only IME, 5 keyboard clipboard) |
+
+Part 1 (before the fixes) was Chromium 75/75 and WebKit 49 passed, 11 failed, 15 skipped. Part 2 added synthetic copy/paste tests (85 vs 75 runs). Unit tests: 1017 passed; 27 more type tests (1044 with `vitest --typecheck`). Real Safari on macOS was NOT tested; WebKit here means Playwright's WebKit build on Windows.
 
 Clipboard permissions (`clipboard-read`, `clipboard-write`) are now granted only on the Chromium project in `playwright.config.ts`; Firefox and WebKit reject them as unknown. The earlier 19 WebKit "Unknown permission" failures were config noise and are gone.
 
@@ -19,6 +21,10 @@ All 75 tests fail in launch, before any test code runs: `browserType.launch: spa
 ## WebKit failures (11), grouped by cause
 
 ### A. Undo (`ControlOrMeta+z`) has no effect (4)
+
+**Part 2 result: fixed (commit ae4a8a0).** Root cause: `detectPlatform` preferred the user agent (which says Mac in Playwright's WebKit) over `navigator.platform` (`Win32`), so the keymap resolved `Mod` to Meta while the test sent Control. It now prefers `navigator.platform`. The 4 tests pass on WebKit.
+
+(Original suspicion, now disproved:)
 
 Suspected cause: in WebKit the undo shortcut does not reach the editor's history path (keydown handling or the `beforeinput` `historyUndo` inputType differs), so the model stays unchanged.
 
@@ -55,7 +61,7 @@ Evidence (scratch e2e, Playwright WebKit on Windows, 2026-11-03; `setData` wrapp
    - the same with an added custom MIME: the same, all empty.
    - Chromium: both handler variants round-trip, the custom MIME included.
 
-So headless WebKit does not carry data written by a `copy`/`cut` handler (`setData` + `preventDefault`) to the next keyboard paste, even for plain text on a bare page. That is cause (b). The paste handler does not drop WebKit's flavors (not (c)), because there are no values to read. Custom-MIME stripping is not the cause either: plain text is lost too. In this build, the drop happens in the port's pasteboard, not in the editor. Safari's own `setData` in copy handlers is the standard path that every web editor relies on.
+So headless WebKit does not carry data written by a `copy`/`cut` handler (`setData` + `preventDefault`) to the next keyboard paste, even for plain text on a bare page. That is cause (b). The paste handler does not drop WebKit's flavors (not (c)), because there are no values to read. Custom-MIME stripping is not the cause either: plain text is lost too. In this build, the drop happens in the port's pasteboard, not in the editor. Whether real Safari carries `setData` data from a copy handler to a keyboard paste is untested on real Safari.
 
 Safari may still strip the custom JSON MIME in real use (it restricts custom types). That does not lose content: the HTML flavor alone round-trips with fresh ids. This is pinned by:
 - unit tests: `packages/core/test/view/clipboard.test.ts` ("pasting only the html flavor of a same-doc copy …") and `packages/plugins/image/test/image.test.ts` ("pasting only the html flavour of a copied image …");
@@ -76,6 +82,10 @@ What changed:
 
 ### C. Selection API differences around an unknown (non-editable) block (2)
 
+**Part 2 result: fixed (commits fdcee36, 7f4c82a).** Root cause: when only an empty `contenteditable=false` block would be deleted, WebKit fires no `beforeinput` at all, so Backspace/Delete did nothing. A keydown fallback (`setTimeout`) performs the delete if no `beforeinput` arrived. It is guarded: cleared by cut, paste, composition, an ignored or defaultPrevented `beforeinput`, and any dispatch in between; it also handles Safari's keyCode 229 after `compositionend` (50 ms window). Both tests pass on WebKit.
+
+(Original suspicion, now refined:)
+
 - `unknown-block.spec.ts:31` `focus, type, Ctrl+A and Backspace work; the unknown block survives`. First error: selection `anchor.offset` expected 0, received 10. Suspected cause: selection API (WebKit select-all range direction or boundary normalisation differs).
 - `unknown-block.spec.ts:51` `Backspace at the start of the block after the unknown block selects it; a second Backspace removes it`. First error: `toHaveAttribute('data-hte-selected', '')`, received `null`. Suspected cause: Backspace at a block start does not produce the expected `beforeinput` `deleteContentBackward`, or the node selection is not synced to the view in WebKit.
 
@@ -92,6 +102,7 @@ These use `Input.imeSetComposition` through a CDP session, which only exists in 
 
 ## Gaps
 
-- Firefox results are missing entirely (see above).
+- Firefox results are missing entirely and Firefox still cannot be launched on this machine (see above).
+- Real Safari on macOS was not tested; every WebKit statement here is about Playwright's WebKit build.
 - Firefox clipboard behaviour is also unknown: it lacks the clipboard permissions too, but never launched here.
 - Single run per project, default workers, no retries; no flakiness assessment.
