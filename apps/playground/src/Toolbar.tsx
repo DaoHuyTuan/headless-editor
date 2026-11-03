@@ -6,6 +6,8 @@ import type { PlaygroundEditor } from './editor'
 const FONT_SIZES = ['12px', '16px', '24px', '32px'] as const
 
 const isBold = (_: unknown, editor: PlaygroundEditor) => editor.isActive('bold')
+/** Whether Bold would apply: `can()` runs the filters, so it is false inside a code block. */
+const canBold = (_: unknown, editor: PlaygroundEditor) => editor.can().toggleBold()
 const inCodeBlock = (_: unknown, editor: PlaygroundEditor) => editor.isActive('codeBlock')
 /** The size of the fontSize mark covering the selection, or `''` when there is none (or it is mixed). */
 const activeFontSize = (_: unknown, editor: PlaygroundEditor) =>
@@ -13,6 +15,7 @@ const activeFontSize = (_: unknown, editor: PlaygroundEditor) =>
 
 export function Toolbar({ editor }: { editor: PlaygroundEditor }) {
   const bold = useEditorState(editor, isBold)
+  const boldEnabled = useEditorState(editor, canBold)
   const fontSize = useEditorState(editor, activeFontSize)
   const code = useEditorState(editor, inCodeBlock)
   const fileInput = useRef<HTMLInputElement>(null)
@@ -43,6 +46,7 @@ export function Toolbar({ editor }: { editor: PlaygroundEditor }) {
         data-testid="bold"
         data-active={bold}
         aria-pressed={bold}
+        disabled={!boldEnabled}
         onMouseDown={keepFocus}
         onClick={() => editor.commands.toggleBold()}
       >

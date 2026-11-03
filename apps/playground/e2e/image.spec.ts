@@ -302,3 +302,41 @@ test.describe('the image scenario', () => {
     expect(await types(page)).toEqual(['paragraph', 'paragraph', 'image', 'paragraph'])
   })
 })
+
+test.describe('pasting over a selected image', () => {
+  test.beforeEach(async ({ page }) => {
+    await openImageScenario(page)
+  })
+
+  test('pasting text over a selected image replaces it in place', async ({ page }) => {
+    const before = await getDoc(page)
+    await editorImg(page).click()
+    await expect.poll(async () => (await getSelection(page))?.node).toEqual([1])
+    const prevented = await page.evaluate(() => {
+      const dt = new DataTransfer()
+      dt.setData('text/plain', 'pasted')
+      const e = new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true })
+      window.editor.view!.root.dispatchEvent(e)
+      return e.defaultPrevented
+    })
+    expect(prevented).toBe(true)
+    // The image's slot now holds the pasted text; nothing lands before or after it.
+    expect(await types(page)).toEqual(['paragraph', 'paragraph', 'paragraph'])
+    expect(await getText(page)).toBe('before\npasted\nafter')
+    await expect(editorImg(page)).toHaveCount(0)
+    await expect(page.locator('[data-testid=editor] p')).toHaveText(['before', 'pasted', 'after'])
+    // The caret ends after the pasted text, and typing continues there.
+    const sel = await getSelection(page)
+    expect(sel?.node).toBeUndefined()
+    expect(sel?.anchor).toEqual({ path: [1, 0], offset: 'pasted'.length })
+    expect(sel?.focus).toEqual({ path: [1, 0], offset: 'pasted'.length })
+    await page.keyboard.type('!')
+    expect(await getText(page)).toBe('before\npasted!\nafter')
+    // One undo per step: the typing, then the paste, which restores the image.
+    await page.keyboard.press('ControlOrMeta+z')
+    expect(await getText(page)).toBe('before\npasted\nafter')
+    await page.keyboard.press('ControlOrMeta+z')
+    await expect.poll(() => getDoc(page)).toEqual(before)
+    await expect(editorImg(page)).toHaveCount(1)
+  })
+})

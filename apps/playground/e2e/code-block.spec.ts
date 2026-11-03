@@ -164,11 +164,64 @@ test('bold does nothing inside a code block', async ({ page }) => {
   await page.keyboard.press('Shift+ArrowLeft')
   await page.keyboard.press('Shift+ArrowLeft')
   await page.keyboard.press('ControlOrMeta+b')
-  await page.getByTestId('bold').click()
+  // The toolbar button follows `can()`: it is disabled here, so it cannot be clicked.
+  await expect(page.getByTestId('bold')).toBeDisabled()
   const text = await code(page, 1)
   expect(text).toEqual({ text: 'funqction greet(name) {\n  return `Hello, ${name}!`\n}', marks: [] })
   await expect(page.locator('[data-testid=editor] [data-hte-code-block] strong')).toHaveCount(0)
   await expect(page.getByTestId('bold')).toHaveAttribute('aria-pressed', 'false')
+})
+
+test('the Bold toolbar button is disabled inside a code block', async ({ page }) => {
+  await openSnippet(page)
+  const bold = page.getByTestId('bold')
+  await setCaret(page, [0, 0], 3)
+  await expect(bold).toBeEnabled()
+  await setCaret(page, [1, 0], 3)
+  await expect(bold).toBeDisabled()
+  // Selected text inside the block too.
+  await page.keyboard.press('Shift+ArrowRight')
+  await expect.poll(() => getSelection(page)).toMatchObject({ anchor: { path: [1, 0], offset: 3 }, focus: { path: [1, 0], offset: 4 } })
+  await expect(bold).toBeDisabled()
+  // Back in a paragraph, it is enabled again and still works.
+  await setCaret(page, [2, 0], 0)
+  await expect(bold).toBeEnabled()
+  await page.keyboard.press('Shift+End')
+  await bold.click()
+  expect(((await getDoc(page)).children[2] as ElementNode).children).toEqual([{ text: 'after', marks: [{ type: 'bold', data: {} }] }])
+})
+
+test('Backspace-join of bold text into a code block, then Ctrl+Z restores it', async ({ page }) => {
+  await openPlayground(page)
+  await page.evaluate(() =>
+    window.editor.setContent({
+      type: 'doc',
+      children: [
+        { id: 'c', type: 'codeBlock', data: { language: 'javascript' }, children: [{ text: 'x', marks: [] }] },
+        {
+          id: 'p',
+          type: 'paragraph',
+          data: {},
+          children: [
+            { text: 'a', marks: [] },
+            { text: 'b', marks: [{ type: 'bold', data: {} }] },
+          ],
+        },
+      ],
+    }),
+  )
+  await expect.poll(() => types(page)).toEqual(['codeBlock', 'paragraph'])
+  const before = await getDoc(page)
+  await expect(page.locator('[data-testid=editor] p strong')).toHaveText('b')
+  await setCaret(page, [1, 0], 0)
+  await page.keyboard.press('Backspace')
+  // Joined into the code block, the bold mark normalized away.
+  await expect.poll(() => types(page)).toEqual(['codeBlock'])
+  expect(await code(page, 0)).toEqual({ text: 'xab', marks: [] })
+  await page.keyboard.press('ControlOrMeta+z')
+  await expect.poll(() => getDoc(page)).toEqual(before)
+  await expect(page.locator('[data-testid=editor] p strong')).toHaveText('b')
+  await expect(pre(page)).toHaveText('x')
 })
 
 test('pasting rich HTML into a code block inserts its plain text', async ({ page }) => {
