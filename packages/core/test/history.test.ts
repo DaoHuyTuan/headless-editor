@@ -682,3 +682,163 @@ describe('history maps its stacks through structural changes made outside histor
     expect(stacks().redo).toHaveLength(0)
   })
 })
+
+describe('a rebased undo/redo that lands on a non-normalized doc', () => {
+  function stepper(content: Doc) {
+    const s = setup(content, sel([0, 0], 1))
+    const step = (fn: (tr: Transaction) => void, outside = false) => {
+      const tr = s.ed.createTransaction()
+      if (outside) {
+        tr.meta.origin = 'plugin'
+        tr.meta.addToHistory = false
+      }
+      fn(tr)
+      s.ed.dispatch(tr)
+      s.clock.t += 600
+    }
+    return { ...s, step }
+  }
+  const bold = (t: string) => txt(t, 'bold')
+
+  it('folds the normalization of an undo into the stacks (merge after undo, split back on redo)', () => {
+    const { ed, text, step } = stepper(doc(p('a')))
+    step((tr) => tr.insertNode([0, 1], bold('b')))
+    step((tr) => tr.insertNode([0, 2], txt('c')), true)
+    expect(text()).toEqual(stripIds(doc(p('a', bold('b'), 'c'))))
+    expect(ed.commands.undo()).toBe(true)
+    expect(text()).toEqual(stripIds(doc(p('ac'))))
+    expect(ed.commands.undo()).toBe(false)
+    expect(ed.commands.redo()).toBe(true)
+    expect(text()).toEqual(stripIds(doc(p('a', bold('b'), 'c'))))
+    expect(ed.commands.undo()).toBe(true)
+    expect(text()).toEqual(stripIds(doc(p('ac'))))
+    expect(ed.commands.redo()).toBe(true)
+    expect(text()).toEqual(stripIds(doc(p('a', bold('b'), 'c'))))
+    expect(ed.commands.redo()).toBe(false)
+  })
+
+  it('keeps the entry below consistent with the merged text, never losing the outside text', () => {
+    const { ed, text, step } = stepper(doc(p('a')))
+    step((tr) => tr.insertNode([0, 1], bold('q')))
+    step((tr) => tr.insertNode([0, 2], txt('b')))
+    step((tr) => tr.insertNode([0, 3], bold('r')))
+    step((tr) => tr.insertNode([0, 4], txt('c')), true)
+    const steps = [
+      doc(p('a', bold('q'), 'b', bold('r'), 'c')),
+      doc(p('a', bold('q'), 'bc')),
+      doc(p('a', bold('q'), 'c')),
+      doc(p('ac')),
+    ].map(stripIds)
+    expect(text()).toEqual(steps[0])
+    for (let i = 1; i < steps.length; i++) {
+      expect(ed.commands.undo()).toBe(true)
+      expect(text()).toEqual(steps[i])
+    }
+    expect(ed.commands.undo()).toBe(false)
+    for (let i = steps.length - 2; i >= 0; i--) {
+      expect(ed.commands.redo()).toBe(true)
+      expect(text()).toEqual(steps[i])
+    }
+    expect(ed.commands.redo()).toBe(false)
+  })
+
+  it('typing right after an outside structural tr starts a new step', () => {
+    const { ed, type, text } = setup()
+    type('a')
+    const tr = ed.createTransaction()
+    tr.meta.addToHistory = false
+    tr.insertNode([0], p('x'))
+    ed.dispatch(tr)
+    type('b') // same clock: would group with "a" without the break
+    expect(ed.commands.undo()).toBe(true)
+    expect(text()).toEqual(stripIds(doc(p('x'), p('a'))))
+    expect(ed.commands.undo()).toBe(true)
+    expect(text()).toEqual(stripIds(doc(p('x'), p(''))))
+  })
+})
+
+describe('history fuzz: user steps, an outside structural tr, then undo all and redo all', () => {
+  function rng(seed: number) {
+    return () => {
+      seed |= 0
+      seed = (seed + 0x6d2b79f5) | 0
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed)
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+    }
+  }
+
+  it('never throws, never loses the outside text, and redo all restores the doc', () => {
+    let totalUndos = 0
+    for (let seed = 1; seed <= 300; seed++) {
+      const r = rng(seed)
+      const int = (n: number) => Math.floor(r() * n)
+      const { ed, clock } = setup(doc(p('abc', txt('de', 'bold')), p('fgh')), sel([0, 0], 0))
+      const texts = () => {
+        const out: [number[], number][] = []
+        ed.state.doc.children.forEach((b, i) =>
+          (b.children ?? []).forEach((t, j) => out.push([[i, j], (t as { text: string }).text.length])),
+        )
+        return out
+      }
+      const caret = () => {
+        const all = texts()
+        const [path, len] = all[int(all.length)]!
+        return { path, offset: int(len + 1), len }
+      }
+      const moveTo = (s: Selection) => {
+        const tr = ed.createTransaction()
+        tr.setSelection(s)
+        ed.dispatch(tr)
+      }
+      const steps = 2 + int(3)
+      for (let i = 0; i < steps; i++) {
+        const c = caret()
+        moveTo(sel(c.path, c.offset))
+        const kind = int(4)
+        if (kind === 0) ed.handleIntent({ inputType: 'insertText', data: 'k', range: null })
+        else if (kind === 1) ed.handleIntent({ inputType: 'deleteContentBackward', data: null, range: null })
+        else if (kind === 2) ed.handleIntent({ inputType: 'insertParagraph', data: null, range: null })
+        else if (c.len > 0) {
+          const s = int(c.len)
+          moveTo(sel(c.path, s, c.path, s + 1 + int(c.len - s)))
+          ed.commands.toggleMark('bold')
+        }
+        clock.t += 600
+      }
+      const tr = ed.createTransaction()
+      tr.meta.origin = 'plugin'
+      tr.meta.addToHistory = false
+      const blocks = ed.state.doc.children.length
+      const kind = int(3)
+      if (kind === 0) tr.insertNode([int(blocks + 1)], p('OUT'))
+      else if (kind === 1) {
+        const b = int(blocks)
+        tr.insertNode([b, int(ed.state.doc.children[b]!.children!.length + 1)], r() < 0.5 ? txt('OUT') : txt('OUT', 'bold'))
+      } else {
+        const c = caret()
+        tr.apply({ type: 'insert_text', path: c.path, offset: c.offset, text: 'OUT' })
+      }
+      ed.dispatch(tr)
+      const after = ed.getJSON()
+      const all = () =>
+        ed.state.doc.children.map((b) => (b.children ?? []).map((t) => (t as { text: string }).text).join('')).join('|')
+      const msg = `seed ${seed}`
+      expect(all(), msg).toContain('OUT')
+      let undos = 0
+      while (undos < 20 && ed.commands.undo()) {
+        undos++
+        expect(all(), msg).toContain('OUT')
+      }
+      let redos = 0
+      while (redos < 20 && ed.commands.redo()) {
+        redos++
+        expect(all(), msg).toContain('OUT')
+      }
+      expect(redos, msg).toBe(undos)
+      expect(ed.getJSON(), msg).toEqual(after)
+      totalUndos += undos
+    }
+    expect(totalUndos).toBeGreaterThan(300)
+  })
+})

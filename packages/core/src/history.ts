@@ -245,13 +245,21 @@ function isHistoryRewrite(v: unknown): v is { id: string; data: Data } {
  * `kind` and `time` are left alone, so grouping of later input is unaffected.
  */
 function joinAppended(prev: HistoryState, tr: Transaction): HistoryState {
-  const ops = tr.ops.filter((op) => op.type !== 'set_selection')
+  return joinOps(
+    prev,
+    tr.ops.filter((op) => op.type !== 'set_selection'),
+    tr.selection,
+  )
+}
+
+/** The fold of `joinAppended`, for doc ops `ops` that moved the boundary doc, ending at `selection`. */
+function joinOps(prev: HistoryState, ops: Operation[], selection: Selection | null): HistoryState {
   const u = prev.undo[prev.undo.length - 1]
   const r = prev.redo[prev.redo.length - 1]
   const inverse = ops.map(invertOp).reverse()
   return {
-    undo: u ? [...prev.undo.slice(0, -1), { ...u, ops: [...u.ops, ...ops], selectionAfter: tr.selection }] : prev.undo,
-    redo: r ? [...prev.redo.slice(0, -1), { ...r, ops: [...inverse, ...r.ops], selectionBefore: tr.selection }] : prev.redo,
+    undo: u ? [...prev.undo.slice(0, -1), { ...u, ops: [...u.ops, ...ops], selectionAfter: selection }] : prev.undo,
+    redo: r ? [...prev.redo.slice(0, -1), { ...r, ops: [...inverse, ...r.ops], selectionBefore: selection }] : prev.redo,
   }
 }
 
@@ -283,7 +291,16 @@ function applyHistory(prev: HistoryState, tr: Transaction, options: HistoryOptio
     // Nothing typed after an undo/redo may merge into the entry now on top of the undo stack.
     const top = undo[undo.length - 1]
     if (top && top.time !== -Infinity) undo = [...undo.slice(0, -1), { ...top, time: -Infinity }]
-    return { undo, redo }
+    // The tr is the entry's ops (inverted and reversed for undo), then whatever normalization added:
+    // a rebased entry can land on a doc that is not normalized (e.g. two adjacent plain text nodes).
+    const docOps = tr.ops.filter((op) => op.type !== 'set_selection')
+    const own = action === 'undo' ? invertAll(entry.ops) : entry.ops
+    if (docOps.length < own.length || !own.every((op, i) => deepEqualJson(op as never, docOps[i] as never))) return EMPTY
+    const extra = docOps.slice(own.length)
+    // Fold the normalization ops in like an appended tr: on undo, the entry below (new undo top) ends
+    // with them and the moved redo entry first reverts them; on redo, the moved entry (new undo top)
+    // ends with them and the next redo entry first reverts them.
+    return extra.length === 0 ? { undo, redo } : joinOps({ undo, redo }, extra, tr.selection)
   }
 
   if (tr.meta.addToHistory === false) {
@@ -298,7 +315,11 @@ function applyHistory(prev: HistoryState, tr: Transaction, options: HistoryOptio
       return rewriteStacks(prev, tr.before.doc as Doc, rewrites)
     }
     // Structural changes: map both stacks through them, dropping what can't be rebased.
-    return { undo: rebaseStack(prev.undo, docOps, 'undo'), redo: rebaseStack(prev.redo, docOps, 'redo') }
+    const undo = rebaseStack(prev.undo, docOps, 'undo')
+    // Typing right after must not merge into the rebased top entry: it is its own step.
+    const top = undo[undo.length - 1]
+    if (top && top.time !== -Infinity) undo[undo.length - 1] = { ...top, time: -Infinity }
+    return { undo, redo: rebaseStack(prev.redo, docOps, 'redo') }
   }
 
   const ops = tr.ops.filter((op) => op.type !== 'set_selection')
