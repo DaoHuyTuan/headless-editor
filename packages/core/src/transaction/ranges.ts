@@ -5,8 +5,13 @@ import { transformRange } from '../ops/transform'
 import type { Operation } from '../ops/types'
 import type { Transaction } from './transaction'
 
-/** One step of `forEachRange`: the range (mapped to the current doc) in, the range after this step out (null drops it). */
-export type RangeStep = (range: SelectionRange, tr: Transaction) => SelectionRange | null
+/**
+ * One step of `forEachRange`: the range (mapped to the current doc) in, the range after this step out
+ * (null drops it). Returning nothing keeps the range the `tr` editing methods called with an explicit
+ * range left (each records its result), else the input range mapped through the step's ops. `index`
+ * is the range's index in the selection the run started with.
+ */
+export type RangeStep = (range: SelectionRange, tr: Transaction, index: number) => SelectionRange | null | void
 
 /** The state of a running `forEachRange`: one slot per original range, kept in current-doc coordinates. */
 interface RangeRun {
@@ -14,6 +19,11 @@ interface RangeRun {
   slots: (SelectionRange | null)[]
   /** The index whose callback is running; its slot is not mapped (the callback returns post-edit coordinates). */
   current: number
+  /**
+   * The running callback's range as the `tr` methods leave it: its input range, mapped through the
+   * callback's ops, and replaced by the result of each editing method called in it.
+   */
+  live: SelectionRange | null
 }
 
 const runs = new WeakMap<Transaction, RangeRun>()
@@ -21,6 +31,17 @@ const runs = new WeakMap<Transaction, RangeRun>()
 /** True while a `forEachRange` callback of `tr` runs. */
 export function inForEachRange(tr: Transaction): boolean {
   return runs.has(tr)
+}
+
+/** The running callback's current range (see `RangeRun.live`); null outside a run or when it was lost. */
+export function currentRange(tr: Transaction): SelectionRange | null {
+  return runs.get(tr)?.live ?? null
+}
+
+/** Records the result of an editing method called inside a callback (see `RangeRun.live`). */
+export function setCurrentRange(tr: Transaction, range: SelectionRange | null): void {
+  const run = runs.get(tr)
+  if (run) run.live = range
 }
 
 /**
@@ -51,12 +72,20 @@ export function mapRun(tr: Transaction, op: Operation): void {
     const at = rehome()
     run.slots[i] = at && { anchor: at, focus: at }
   })
+  if (run.live) {
+    const live = transformRange(run.live, op)
+    const at = live ? null : rehome()
+    run.live = live ?? (at && { anchor: at, focus: at })
+  }
 }
 
 /**
  * Runs `fn` once per selection range, in document order, on the same `tr` (spec §5.2). Before each
  * call the range is mapped through the ops added since the run started, and results already
- * collected are mapped through later ops too. The selection then becomes the collected results,
+ * collected are mapped through later ops too. Inside `fn`, the `tr` editing methods must be given the
+ * range explicitly (a call without one throws in dev mode, and otherwise acts at the callback's
+ * range): they then edit there without setting the selection, and a callback that returns nothing
+ * keeps the range they leave. The selection then becomes the collected results,
  * normalized, with `main` on the result of the old main range (or, if that was dropped, the closest
  * result before it, else the first). Every result null: the selection becomes null.
  *
@@ -78,7 +107,7 @@ export function forEachRange(tr: Transaction, fn: RangeStep): void {
   if (runs.has(tr)) throw new Error('forEachRange: nested calls are not supported')
   const sel = tr.selection
   if (!sel) return
-  const run: RangeRun = { slots: [...sel.ranges], current: -1 }
+  const run: RangeRun = { slots: [...sel.ranges], current: -1, live: null }
   const opsBefore = tr.ops.length
   const stored: Mark[] | null = tr.storedMarks
   let consumed = false
@@ -89,8 +118,10 @@ export function forEachRange(tr: Transaction, fn: RangeStep): void {
       const range = run.slots[i]
       if (!range) continue
       run.current = i
+      run.live = range
       tr.setStoredMarks(stored)
-      run.slots[i] = fn(range, tr)
+      const result = fn(range, tr, i)
+      run.slots[i] = result === undefined ? run.live : result
       const after = tr.storedMarks
       if (after === stored) continue
       if (after === null) consumed = true

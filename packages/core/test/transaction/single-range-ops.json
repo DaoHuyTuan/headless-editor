@@ -1,0 +1,4785 @@
+{
+ "insertText at a caret": {
+  "returned": "tr",
+  "ops": [
+   {
+    "type": "insert_text",
+    "path": [
+     0,
+     0
+    ],
+    "offset": 2,
+    "text": "X"
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 3
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 3
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "abXcd",
+       "marks": []
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "insertText at a caret, stored marks": {
+  "returned": "tr",
+  "ops": [
+   {
+    "type": "split_node",
+    "path": [
+     0,
+     0
+    ],
+    "position": 2,
+    "properties": {
+     "marks": []
+    }
+   },
+   {
+    "type": "insert_node",
+    "path": [
+     0,
+     1
+    ],
+    "node": {
+     "text": "X",
+     "marks": [
+      {
+       "type": "bold",
+       "data": {}
+      }
+     ]
+    }
+   },
+   {
+    "type": "set_selection",
+    "selection": {
+     "ranges": [
+      {
+       "anchor": {
+        "path": [
+         0,
+         1
+        ],
+        "offset": 1
+       },
+       "focus": {
+        "path": [
+         0,
+         1
+        ],
+        "offset": 1
+       }
+      }
+     ],
+     "main": 0
+    },
+    "prevSelection": {
+     "ranges": [
+      {
+       "anchor": {
+        "path": [
+         0,
+         2
+        ],
+        "offset": 0
+       },
+       "focus": {
+        "path": [
+         0,
+         2
+        ],
+        "offset": 0
+       }
+      }
+     ],
+     "main": 0
+    }
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       1
+      ],
+      "offset": 1
+     },
+     "focus": {
+      "path": [
+       0,
+       1
+      ],
+      "offset": 1
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      },
+      {
+       "text": "X",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "cd",
+       "marks": []
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "insertText over a range": {
+  "returned": "tr",
+  "ops": [
+   {
+    "type": "remove_text",
+    "path": [
+     0,
+     0
+    ],
+    "offset": 1,
+    "text": "bc"
+   },
+   {
+    "type": "insert_text",
+    "path": [
+     0,
+     0
+    ],
+    "offset": 1,
+    "text": "X"
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "aXd",
+       "marks": []
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "insertText over a backward range": {
+  "returned": "tr",
+  "ops": [
+   {
+    "type": "remove_text",
+    "path": [
+     0,
+     0
+    ],
+    "offset": 1,
+    "text": "bc"
+   },
+   {
+    "type": "insert_text",
+    "path": [
+     0,
+     0
+    ],
+    "offset": 1,
+    "text": "X"
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "aXd",
+       "marks": []
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "insertText over a cross-block range": {
+  "returned": "tr",
+  "ops": [
+   {
+    "type": "remove_text",
+    "path": [
+     0,
+     1
+    ],
+    "offset": 0,
+    "text": "ef"
+   },
+   {
+    "type": "remove_text",
+    "path": [
+     0,
+     0
+    ],
+    "offset": 1,
+    "text": "bcd"
+   },
+   {
+    "type": "remove_text",
+    "path": [
+     1,
+     0
+    ],
+    "offset": 0,
+    "text": "g"
+   },
+   {
+    "type": "merge_node",
+    "path": [
+     1
+    ],
+    "position": 2,
+    "properties": {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {}
+    }
+   },
+   {
+    "type": "set_selection",
+    "selection": {
+     "ranges": [
+      {
+       "anchor": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 1
+       },
+       "focus": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 1
+       }
+      }
+     ],
+     "main": 0
+    },
+    "prevSelection": {
+     "ranges": [
+      {
+       "anchor": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 1
+       },
+       "focus": {
+        "path": [
+         0,
+         2
+        ],
+        "offset": 0
+       }
+      }
+     ],
+     "main": 0
+    }
+   },
+   {
+    "type": "insert_node",
+    "path": [
+     0,
+     1
+    ],
+    "node": {
+     "text": "X",
+     "marks": [
+      {
+       "type": "bold",
+       "data": {}
+      }
+     ]
+    }
+   },
+   {
+    "type": "set_selection",
+    "selection": {
+     "ranges": [
+      {
+       "anchor": {
+        "path": [
+         0,
+         1
+        ],
+        "offset": 1
+       },
+       "focus": {
+        "path": [
+         0,
+         1
+        ],
+        "offset": 1
+       }
+      }
+     ],
+     "main": 0
+    },
+    "prevSelection": {
+     "ranges": [
+      {
+       "anchor": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 1
+       },
+       "focus": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 1
+       }
+      }
+     ],
+     "main": 0
+    }
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       1
+      ],
+      "offset": 1
+     },
+     "focus": {
+      "path": [
+       0,
+       1
+      ],
+      "offset": 1
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "a",
+       "marks": []
+      },
+      {
+       "text": "X",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "h",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "insertText empty over a range": {
+  "returned": "tr",
+  "ops": [
+   {
+    "type": "remove_text",
+    "path": [
+     0,
+     1
+    ],
+    "offset": 0,
+    "text": "e"
+   },
+   {
+    "type": "remove_text",
+    "path": [
+     0,
+     0
+    ],
+    "offset": 1,
+    "text": "bcd"
+   },
+   {
+    "type": "set_selection",
+    "selection": {
+     "ranges": [
+      {
+       "anchor": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 1
+       },
+       "focus": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 1
+       }
+      }
+     ],
+     "main": 0
+    },
+    "prevSelection": {
+     "ranges": [
+      {
+       "anchor": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 1
+       },
+       "focus": {
+        "path": [
+         0,
+         1
+        ],
+        "offset": 0
+       }
+      }
+     ],
+     "main": 0
+    }
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 1
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 1
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "a",
+       "marks": []
+      },
+      {
+       "text": "f",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "insertText at an explicit range elsewhere": {
+  "returned": "tr",
+  "ops": [
+   {
+    "type": "remove_text",
+    "path": [
+     0,
+     0
+    ],
+    "offset": 1,
+    "text": "b"
+   },
+   {
+    "type": "set_selection",
+    "selection": {
+     "ranges": [
+      {
+       "anchor": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 1
+       },
+       "focus": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 1
+       }
+      }
+     ],
+     "main": 0
+    },
+    "prevSelection": {
+     "ranges": [
+      {
+       "anchor": {
+        "path": [
+         1,
+         0
+        ],
+        "offset": 1
+       },
+       "focus": {
+        "path": [
+         1,
+         0
+        ],
+        "offset": 1
+       }
+      }
+     ],
+     "main": 0
+    }
+   },
+   {
+    "type": "insert_text",
+    "path": [
+     0,
+     0
+    ],
+    "offset": 1,
+    "text": "X"
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "aXcd",
+       "marks": []
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "insertText at an explicit range, no selection": {
+  "returned": "tr",
+  "ops": [
+   {
+    "type": "remove_text",
+    "path": [
+     0,
+     0
+    ],
+    "offset": 1,
+    "text": "b"
+   },
+   {
+    "type": "set_selection",
+    "selection": {
+     "ranges": [
+      {
+       "anchor": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 1
+       },
+       "focus": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 1
+       }
+      }
+     ],
+     "main": 0
+    },
+    "prevSelection": null
+   },
+   {
+    "type": "insert_text",
+    "path": [
+     0,
+     0
+    ],
+    "offset": 1,
+    "text": "X"
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "aXcd",
+       "marks": []
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "insertText on a node selection": {
+  "returned": "tr",
+  "ops": [
+   {
+    "type": "insert_node",
+    "path": [
+     2
+    ],
+    "node": {
+     "id": "id3",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "X",
+       "marks": []
+      }
+     ]
+    }
+   },
+   {
+    "type": "remove_node",
+    "path": [
+     1
+    ],
+    "node": {
+     "id": "id1",
+     "type": "atom",
+     "data": {},
+     "children": []
+    }
+   },
+   {
+    "type": "set_selection",
+    "selection": {
+     "ranges": [
+      {
+       "anchor": {
+        "path": [
+         1,
+         0
+        ],
+        "offset": 1
+       },
+       "focus": {
+        "path": [
+         1,
+         0
+        ],
+        "offset": 1
+       }
+      }
+     ],
+     "main": 0
+    },
+    "prevSelection": {
+     "ranges": [
+      {
+       "anchor": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 2
+       },
+       "focus": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 2
+       }
+      }
+     ],
+     "main": 0
+    }
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       1,
+       0
+      ],
+      "offset": 1
+     },
+     "focus": {
+      "path": [
+       1,
+       0
+      ],
+      "offset": 1
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "id3",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "X",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "id2",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "cd",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "insertText empty on a node selection": {
+  "returned": "tr",
+  "ops": [
+   {
+    "type": "remove_node",
+    "path": [
+     1
+    ],
+    "node": {
+     "id": "id1",
+     "type": "atom",
+     "data": {},
+     "children": []
+    }
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "id2",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "cd",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "insertText (fn) returns": {
+  "returned": true,
+  "ops": [
+   {
+    "type": "insert_text",
+    "path": [
+     0,
+     0
+    ],
+    "offset": 2,
+    "text": "X"
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 3
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 3
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "abXcd",
+       "marks": []
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "insertText no selection": {
+  "returned": false,
+  "ops": [],
+  "selection": null,
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "abcd",
+       "marks": []
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "deleteRange cross-block": {
+  "returned": "tr",
+  "ops": [
+   {
+    "type": "remove_text",
+    "path": [
+     0,
+     1
+    ],
+    "offset": 0,
+    "text": "ef"
+   },
+   {
+    "type": "remove_text",
+    "path": [
+     0,
+     0
+    ],
+    "offset": 1,
+    "text": "bcd"
+   },
+   {
+    "type": "remove_text",
+    "path": [
+     1,
+     0
+    ],
+    "offset": 0,
+    "text": "g"
+   },
+   {
+    "type": "merge_node",
+    "path": [
+     1
+    ],
+    "position": 2,
+    "properties": {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {}
+    }
+   },
+   {
+    "type": "set_selection",
+    "selection": {
+     "ranges": [
+      {
+       "anchor": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 1
+       },
+       "focus": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 1
+       }
+      }
+     ],
+     "main": 0
+    },
+    "prevSelection": {
+     "ranges": [
+      {
+       "anchor": {
+        "path": [
+         0,
+         2
+        ],
+        "offset": 1
+       },
+       "focus": {
+        "path": [
+         0,
+         2
+        ],
+        "offset": 1
+       }
+      }
+     ],
+     "main": 0
+    }
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 1
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 1
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "a",
+       "marks": []
+      },
+      {
+       "text": "",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "h",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "deleteRange empty": {
+  "returned": "tr",
+  "ops": [],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       1,
+       0
+      ],
+      "offset": 2
+     },
+     "focus": {
+      "path": [
+       1,
+       0
+      ],
+      "offset": 2
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "abcd",
+       "marks": []
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "deleteRange over an atom": {
+  "returned": "tr",
+  "ops": [
+   {
+    "type": "remove_text",
+    "path": [
+     0,
+     0
+    ],
+    "offset": 1,
+    "text": "b"
+   },
+   {
+    "type": "remove_text",
+    "path": [
+     2,
+     0
+    ],
+    "offset": 0,
+    "text": "c"
+   },
+   {
+    "type": "remove_node",
+    "path": [
+     1
+    ],
+    "node": {
+     "id": "id1",
+     "type": "atom",
+     "data": {},
+     "children": []
+    }
+   },
+   {
+    "type": "merge_node",
+    "path": [
+     1
+    ],
+    "position": 1,
+    "properties": {
+     "id": "id2",
+     "type": "paragraph",
+     "data": {}
+    }
+   },
+   {
+    "type": "set_selection",
+    "selection": {
+     "ranges": [
+      {
+       "anchor": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 1
+       },
+       "focus": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 1
+       }
+      }
+     ],
+     "main": 0
+    },
+    "prevSelection": {
+     "ranges": [
+      {
+       "anchor": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 0
+       },
+       "focus": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 0
+       }
+      }
+     ],
+     "main": 0
+    }
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 1
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 1
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "a",
+       "marks": []
+      },
+      {
+       "text": "d",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "deleteBackward character": {
+  "returned": "tr",
+  "ops": [
+   {
+    "type": "remove_text",
+    "path": [
+     0,
+     0
+    ],
+    "offset": 1,
+    "text": "b"
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 1
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 1
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "acd",
+       "marks": []
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "deleteBackward word": {
+  "returned": "tr",
+  "ops": [
+   {
+    "type": "remove_text",
+    "path": [
+     0,
+     0
+    ],
+    "offset": 8,
+    "text": "baz"
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 8
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 8
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "foo bar ",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "deleteBackward line": {
+  "returned": "tr",
+  "ops": [
+   {
+    "type": "remove_text",
+    "path": [
+     0,
+     0
+    ],
+    "offset": 0,
+    "text": "foo bar"
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 0
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 0
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": " baz",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "deleteBackward at block start merges": {
+  "returned": "tr",
+  "ops": [
+   {
+    "type": "merge_node",
+    "path": [
+     1
+    ],
+    "position": 2,
+    "properties": {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {}
+    }
+   },
+   {
+    "type": "set_selection",
+    "selection": {
+     "ranges": [
+      {
+       "anchor": {
+        "path": [
+         0,
+         1
+        ],
+        "offset": 2
+       },
+       "focus": {
+        "path": [
+         0,
+         1
+        ],
+        "offset": 2
+       }
+      }
+     ],
+     "main": 0
+    },
+    "prevSelection": {
+     "ranges": [
+      {
+       "anchor": {
+        "path": [
+         0,
+         2
+        ],
+        "offset": 0
+       },
+       "focus": {
+        "path": [
+         0,
+         2
+        ],
+        "offset": 0
+       }
+      }
+     ],
+     "main": 0
+    }
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       1
+      ],
+      "offset": 2
+     },
+     "focus": {
+      "path": [
+       0,
+       1
+      ],
+      "offset": 2
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "abcd",
+       "marks": []
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "gh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "deleteBackward at doc start": {
+  "returned": "tr",
+  "ops": [],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 0
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 0
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "abcd",
+       "marks": []
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "deleteBackward over a range": {
+  "returned": "tr",
+  "ops": [
+   {
+    "type": "remove_text",
+    "path": [
+     0,
+     1
+    ],
+    "offset": 0,
+    "text": "ef"
+   },
+   {
+    "type": "remove_text",
+    "path": [
+     0,
+     0
+    ],
+    "offset": 1,
+    "text": "bcd"
+   },
+   {
+    "type": "remove_text",
+    "path": [
+     1,
+     0
+    ],
+    "offset": 0,
+    "text": "g"
+   },
+   {
+    "type": "merge_node",
+    "path": [
+     1
+    ],
+    "position": 2,
+    "properties": {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {}
+    }
+   },
+   {
+    "type": "set_selection",
+    "selection": {
+     "ranges": [
+      {
+       "anchor": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 1
+       },
+       "focus": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 1
+       }
+      }
+     ],
+     "main": 0
+    },
+    "prevSelection": {
+     "ranges": [
+      {
+       "anchor": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 1
+       },
+       "focus": {
+        "path": [
+         0,
+         2
+        ],
+        "offset": 0
+       }
+      }
+     ],
+     "main": 0
+    }
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 1
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 1
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "a",
+       "marks": []
+      },
+      {
+       "text": "",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "h",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "deleteBackward next to an atom node-selects": {
+  "returned": "tr",
+  "ops": [
+   {
+    "type": "set_selection",
+    "selection": {
+     "ranges": [
+      {
+       "anchor": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 2
+       },
+       "focus": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 2
+       },
+       "node": [
+        1
+       ]
+      }
+     ],
+     "main": 0
+    },
+    "prevSelection": {
+     "ranges": [
+      {
+       "anchor": {
+        "path": [
+         2,
+         0
+        ],
+        "offset": 0
+       },
+       "focus": {
+        "path": [
+         2,
+         0
+        ],
+        "offset": 0
+       }
+      }
+     ],
+     "main": 0
+    }
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2
+     },
+     "node": [
+      1
+     ]
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "atom",
+     "data": {},
+     "children": []
+    },
+    {
+     "id": "id2",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "cd",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "deleteBackward on a node selection": {
+  "returned": "tr",
+  "ops": [
+   {
+    "type": "remove_node",
+    "path": [
+     1
+    ],
+    "node": {
+     "id": "id1",
+     "type": "atom",
+     "data": {},
+     "children": []
+    }
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "id2",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "cd",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "deleteBackward after an inline atom": {
+  "returned": "tr",
+  "ops": [
+   {
+    "type": "remove_node",
+    "path": [
+     0,
+     1
+    ],
+    "node": {
+     "id": "id0",
+     "type": "chip",
+     "data": {},
+     "children": []
+    }
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       1
+      ],
+      "offset": 0
+     },
+     "focus": {
+      "path": [
+       0,
+       1
+      ],
+      "offset": 0
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      },
+      {
+       "text": "cd",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "deleteForward character": {
+  "returned": "tr",
+  "ops": [
+   {
+    "type": "remove_text",
+    "path": [
+     0,
+     0
+    ],
+    "offset": 2,
+    "text": "c"
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "abd",
+       "marks": []
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "deleteForward word": {
+  "returned": "tr",
+  "ops": [
+   {
+    "type": "remove_text",
+    "path": [
+     0,
+     0
+    ],
+    "offset": 3,
+    "text": " bar"
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 3
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 3
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "foo baz",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "deleteForward at block end merges": {
+  "returned": "tr",
+  "ops": [
+   {
+    "type": "merge_node",
+    "path": [
+     1
+    ],
+    "position": 2,
+    "properties": {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {}
+    }
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       1
+      ],
+      "offset": 2
+     },
+     "focus": {
+      "path": [
+       0,
+       1
+      ],
+      "offset": 2
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "abcd",
+       "marks": []
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "gh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "deleteForward next to an atom node-selects": {
+  "returned": "tr",
+  "ops": [
+   {
+    "type": "set_selection",
+    "selection": {
+     "ranges": [
+      {
+       "anchor": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 2
+       },
+       "focus": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 2
+       },
+       "node": [
+        1
+       ]
+      }
+     ],
+     "main": 0
+    },
+    "prevSelection": {
+     "ranges": [
+      {
+       "anchor": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 2
+       },
+       "focus": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 2
+       }
+      }
+     ],
+     "main": 0
+    }
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2
+     },
+     "node": [
+      1
+     ]
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "atom",
+     "data": {},
+     "children": []
+    },
+    {
+     "id": "id2",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "cd",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "deleteForward before an inline atom": {
+  "returned": "tr",
+  "ops": [
+   {
+    "type": "remove_node",
+    "path": [
+     0,
+     1
+    ],
+    "node": {
+     "id": "id0",
+     "type": "chip",
+     "data": {},
+     "children": []
+    }
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      },
+      {
+       "text": "cd",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "splitBlock mid": {
+  "returned": "tr",
+  "ops": [
+   {
+    "type": "split_node",
+    "path": [
+     0,
+     0
+    ],
+    "position": 2,
+    "properties": {
+     "marks": []
+    }
+   },
+   {
+    "type": "split_node",
+    "path": [
+     0
+    ],
+    "position": 1,
+    "properties": {
+     "id": "id2",
+     "type": "paragraph",
+     "data": {}
+    }
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       1,
+       0
+      ],
+      "offset": 0
+     },
+     "focus": {
+      "path": [
+       1,
+       0
+      ],
+      "offset": 0
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": [
+   {
+    "type": "bold",
+    "data": {}
+   }
+  ],
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "id2",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "cd",
+       "marks": []
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "splitBlock at the end of a heading": {
+  "returned": "tr",
+  "ops": [
+   {
+    "type": "split_node",
+    "path": [
+     0,
+     0
+    ],
+    "position": 2,
+    "properties": {
+     "marks": []
+    }
+   },
+   {
+    "type": "split_node",
+    "path": [
+     0
+    ],
+    "position": 1,
+    "properties": {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {}
+    }
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       1,
+       0
+      ],
+      "offset": 0
+     },
+     "focus": {
+      "path": [
+       1,
+       0
+      ],
+      "offset": 0
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "heading",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "splitBlock over a range": {
+  "returned": "tr",
+  "ops": [
+   {
+    "type": "remove_text",
+    "path": [
+     0,
+     1
+    ],
+    "offset": 0,
+    "text": "ef"
+   },
+   {
+    "type": "remove_text",
+    "path": [
+     0,
+     0
+    ],
+    "offset": 1,
+    "text": "bcd"
+   },
+   {
+    "type": "remove_text",
+    "path": [
+     1,
+     0
+    ],
+    "offset": 0,
+    "text": "g"
+   },
+   {
+    "type": "merge_node",
+    "path": [
+     1
+    ],
+    "position": 2,
+    "properties": {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {}
+    }
+   },
+   {
+    "type": "set_selection",
+    "selection": {
+     "ranges": [
+      {
+       "anchor": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 1
+       },
+       "focus": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 1
+       }
+      }
+     ],
+     "main": 0
+    },
+    "prevSelection": {
+     "ranges": [
+      {
+       "anchor": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 1
+       },
+       "focus": {
+        "path": [
+         0,
+         2
+        ],
+        "offset": 0
+       }
+      }
+     ],
+     "main": 0
+    }
+   },
+   {
+    "type": "split_node",
+    "path": [
+     0,
+     0
+    ],
+    "position": 1,
+    "properties": {
+     "marks": []
+    }
+   },
+   {
+    "type": "split_node",
+    "path": [
+     0
+    ],
+    "position": 1,
+    "properties": {
+     "id": "id2",
+     "type": "paragraph",
+     "data": {}
+    }
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       1,
+       0
+      ],
+      "offset": 0
+     },
+     "focus": {
+      "path": [
+       1,
+       0
+      ],
+      "offset": 0
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "a",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "id2",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "",
+       "marks": []
+      },
+      {
+       "text": "",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "h",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "splitBlock on a node selection": {
+  "returned": "tr",
+  "ops": [
+   {
+    "type": "insert_node",
+    "path": [
+     2
+    ],
+    "node": {
+     "id": "id3",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "",
+       "marks": []
+      }
+     ]
+    }
+   },
+   {
+    "type": "set_selection",
+    "selection": {
+     "ranges": [
+      {
+       "anchor": {
+        "path": [
+         2,
+         0
+        ],
+        "offset": 0
+       },
+       "focus": {
+        "path": [
+         2,
+         0
+        ],
+        "offset": 0
+       }
+      }
+     ],
+     "main": 0
+    },
+    "prevSelection": {
+     "ranges": [
+      {
+       "anchor": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 2
+       },
+       "focus": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 2
+       },
+       "node": [
+        1
+       ]
+      }
+     ],
+     "main": 0
+    }
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       2,
+       0
+      ],
+      "offset": 0
+     },
+     "focus": {
+      "path": [
+       2,
+       0
+      ],
+      "offset": 0
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "atom",
+     "data": {},
+     "children": []
+    },
+    {
+     "id": "id3",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "id2",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "cd",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "insertBlockNode mid": {
+  "returned": "tr",
+  "ops": [
+   {
+    "type": "split_node",
+    "path": [
+     0,
+     0
+    ],
+    "position": 2,
+    "properties": {
+     "marks": []
+    }
+   },
+   {
+    "type": "split_node",
+    "path": [
+     0
+    ],
+    "position": 1,
+    "properties": {
+     "id": "id3",
+     "type": "paragraph",
+     "data": {}
+    }
+   },
+   {
+    "type": "insert_node",
+    "path": [
+     1
+    ],
+    "node": {
+     "id": "id2",
+     "type": "atom",
+     "data": {},
+     "children": []
+    }
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       2,
+       0
+      ],
+      "offset": 0
+     },
+     "focus": {
+      "path": [
+       2,
+       0
+      ],
+      "offset": 0
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "id2",
+     "type": "atom",
+     "data": {},
+     "children": []
+    },
+    {
+     "id": "id3",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "cd",
+       "marks": []
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "insertBlockNode at block start": {
+  "returned": "tr",
+  "ops": [
+   {
+    "type": "insert_node",
+    "path": [
+     1
+    ],
+    "node": {
+     "id": "id2",
+     "type": "atom",
+     "data": {},
+     "children": []
+    }
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       2,
+       0
+      ],
+      "offset": 0
+     },
+     "focus": {
+      "path": [
+       2,
+       0
+      ],
+      "offset": 0
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "abcd",
+       "marks": []
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id2",
+     "type": "atom",
+     "data": {},
+     "children": []
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "insertBlockNode at doc end": {
+  "returned": "tr",
+  "ops": [
+   {
+    "type": "insert_node",
+    "path": [
+     2
+    ],
+    "node": {
+     "id": "id2",
+     "type": "atom",
+     "data": {},
+     "children": []
+    }
+   },
+   {
+    "type": "insert_node",
+    "path": [
+     3
+    ],
+    "node": {
+     "id": "id3",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "",
+       "marks": []
+      }
+     ]
+    }
+   },
+   {
+    "type": "set_selection",
+    "selection": {
+     "ranges": [
+      {
+       "anchor": {
+        "path": [
+         3,
+         0
+        ],
+        "offset": 0
+       },
+       "focus": {
+        "path": [
+         3,
+         0
+        ],
+        "offset": 0
+       }
+      }
+     ],
+     "main": 0
+    },
+    "prevSelection": {
+     "ranges": [
+      {
+       "anchor": {
+        "path": [
+         1,
+         0
+        ],
+        "offset": 2
+       },
+       "focus": {
+        "path": [
+         1,
+         0
+        ],
+        "offset": 2
+       }
+      }
+     ],
+     "main": 0
+    }
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       3,
+       0
+      ],
+      "offset": 0
+     },
+     "focus": {
+      "path": [
+       3,
+       0
+      ],
+      "offset": 0
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "abcd",
+       "marks": []
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "id2",
+     "type": "atom",
+     "data": {},
+     "children": []
+    },
+    {
+     "id": "id3",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "insertBlockNode in an empty block": {
+  "returned": "tr",
+  "ops": [
+   {
+    "type": "insert_node",
+    "path": [
+     1
+    ],
+    "node": {
+     "id": "id2",
+     "type": "atom",
+     "data": {},
+     "children": []
+    }
+   },
+   {
+    "type": "remove_node",
+    "path": [
+     2
+    ],
+    "node": {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "",
+       "marks": []
+      }
+     ]
+    }
+   },
+   {
+    "type": "insert_node",
+    "path": [
+     2
+    ],
+    "node": {
+     "id": "id3",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "",
+       "marks": []
+      }
+     ]
+    }
+   },
+   {
+    "type": "set_selection",
+    "selection": {
+     "ranges": [
+      {
+       "anchor": {
+        "path": [
+         2,
+         0
+        ],
+        "offset": 0
+       },
+       "focus": {
+        "path": [
+         2,
+         0
+        ],
+        "offset": 0
+       }
+      }
+     ],
+     "main": 0
+    },
+    "prevSelection": null
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       2,
+       0
+      ],
+      "offset": 0
+     },
+     "focus": {
+      "path": [
+       2,
+       0
+      ],
+      "offset": 0
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "id2",
+     "type": "atom",
+     "data": {},
+     "children": []
+    },
+    {
+     "id": "id3",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "insertBlockNode over a range": {
+  "returned": "tr",
+  "ops": [
+   {
+    "type": "remove_text",
+    "path": [
+     0,
+     1
+    ],
+    "offset": 0,
+    "text": "ef"
+   },
+   {
+    "type": "remove_text",
+    "path": [
+     0,
+     0
+    ],
+    "offset": 1,
+    "text": "bcd"
+   },
+   {
+    "type": "remove_text",
+    "path": [
+     1,
+     0
+    ],
+    "offset": 0,
+    "text": "g"
+   },
+   {
+    "type": "merge_node",
+    "path": [
+     1
+    ],
+    "position": 2,
+    "properties": {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {}
+    }
+   },
+   {
+    "type": "set_selection",
+    "selection": {
+     "ranges": [
+      {
+       "anchor": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 1
+       },
+       "focus": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 1
+       }
+      }
+     ],
+     "main": 0
+    },
+    "prevSelection": {
+     "ranges": [
+      {
+       "anchor": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 1
+       },
+       "focus": {
+        "path": [
+         0,
+         2
+        ],
+        "offset": 0
+       }
+      }
+     ],
+     "main": 0
+    }
+   },
+   {
+    "type": "split_node",
+    "path": [
+     0,
+     0
+    ],
+    "position": 1,
+    "properties": {
+     "marks": []
+    }
+   },
+   {
+    "type": "split_node",
+    "path": [
+     0
+    ],
+    "position": 1,
+    "properties": {
+     "id": "id3",
+     "type": "paragraph",
+     "data": {}
+    }
+   },
+   {
+    "type": "insert_node",
+    "path": [
+     1
+    ],
+    "node": {
+     "id": "id2",
+     "type": "atom",
+     "data": {},
+     "children": []
+    }
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       2,
+       0
+      ],
+      "offset": 0
+     },
+     "focus": {
+      "path": [
+       2,
+       0
+      ],
+      "offset": 0
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "a",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "id2",
+     "type": "atom",
+     "data": {},
+     "children": []
+    },
+    {
+     "id": "id3",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "",
+       "marks": []
+      },
+      {
+       "text": "",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "h",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "insertBlockNode on a node selection": {
+  "returned": "tr",
+  "ops": [
+   {
+    "type": "insert_node",
+    "path": [
+     2
+    ],
+    "node": {
+     "id": "id3",
+     "type": "atom",
+     "data": {},
+     "children": []
+    }
+   },
+   {
+    "type": "remove_node",
+    "path": [
+     1
+    ],
+    "node": {
+     "id": "id1",
+     "type": "atom",
+     "data": {},
+     "children": []
+    }
+   },
+   {
+    "type": "set_selection",
+    "selection": {
+     "ranges": [
+      {
+       "anchor": {
+        "path": [
+         2,
+         0
+        ],
+        "offset": 0
+       },
+       "focus": {
+        "path": [
+         2,
+         0
+        ],
+        "offset": 0
+       }
+      }
+     ],
+     "main": 0
+    },
+    "prevSelection": {
+     "ranges": [
+      {
+       "anchor": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 2
+       },
+       "focus": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 2
+       }
+      }
+     ],
+     "main": 0
+    }
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       2,
+       0
+      ],
+      "offset": 0
+     },
+     "focus": {
+      "path": [
+       2,
+       0
+      ],
+      "offset": 0
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "id3",
+     "type": "atom",
+     "data": {},
+     "children": []
+    },
+    {
+     "id": "id2",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "cd",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "selectAll": {
+  "returned": true,
+  "ops": [
+   {
+    "type": "set_selection",
+    "selection": {
+     "ranges": [
+      {
+       "anchor": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 0
+       },
+       "focus": {
+        "path": [
+         1,
+         0
+        ],
+        "offset": 2
+       }
+      }
+     ],
+     "main": 0
+    },
+    "prevSelection": {
+     "ranges": [
+      {
+       "anchor": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 2
+       },
+       "focus": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 2
+       }
+      }
+     ],
+     "main": 0
+    }
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 0
+     },
+     "focus": {
+      "path": [
+       1,
+       0
+      ],
+      "offset": 2
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "abcd",
+       "marks": []
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "replaceSelectedNode delete": {
+  "returned": true,
+  "ops": [
+   {
+    "type": "remove_node",
+    "path": [
+     1
+    ],
+    "node": {
+     "id": "id1",
+     "type": "atom",
+     "data": {},
+     "children": []
+    }
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "id2",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "cd",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "replaceSelectedNode split": {
+  "returned": true,
+  "ops": [
+   {
+    "type": "insert_node",
+    "path": [
+     2
+    ],
+    "node": {
+     "id": "id3",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "",
+       "marks": []
+      }
+     ]
+    }
+   },
+   {
+    "type": "set_selection",
+    "selection": {
+     "ranges": [
+      {
+       "anchor": {
+        "path": [
+         2,
+         0
+        ],
+        "offset": 0
+       },
+       "focus": {
+        "path": [
+         2,
+         0
+        ],
+        "offset": 0
+       }
+      }
+     ],
+     "main": 0
+    },
+    "prevSelection": {
+     "ranges": [
+      {
+       "anchor": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 2
+       },
+       "focus": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 2
+       },
+       "node": [
+        1
+       ]
+      }
+     ],
+     "main": 0
+    }
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       2,
+       0
+      ],
+      "offset": 0
+     },
+     "focus": {
+      "path": [
+       2,
+       0
+      ],
+      "offset": 0
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "atom",
+     "data": {},
+     "children": []
+    },
+    {
+     "id": "id3",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "id2",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "cd",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "replaceSelectedNode text": {
+  "returned": true,
+  "ops": [
+   {
+    "type": "insert_node",
+    "path": [
+     2
+    ],
+    "node": {
+     "id": "id3",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "X",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    }
+   },
+   {
+    "type": "remove_node",
+    "path": [
+     1
+    ],
+    "node": {
+     "id": "id1",
+     "type": "atom",
+     "data": {},
+     "children": []
+    }
+   },
+   {
+    "type": "set_selection",
+    "selection": {
+     "ranges": [
+      {
+       "anchor": {
+        "path": [
+         1,
+         0
+        ],
+        "offset": 1
+       },
+       "focus": {
+        "path": [
+         1,
+         0
+        ],
+        "offset": 1
+       }
+      }
+     ],
+     "main": 0
+    },
+    "prevSelection": {
+     "ranges": [
+      {
+       "anchor": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 2
+       },
+       "focus": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 2
+       }
+      }
+     ],
+     "main": 0
+    }
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       1,
+       0
+      ],
+      "offset": 1
+     },
+     "focus": {
+      "path": [
+       1,
+       0
+      ],
+      "offset": 1
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "id3",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "X",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id2",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "cd",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "replaceSelectedNode node": {
+  "returned": true,
+  "ops": [
+   {
+    "type": "insert_node",
+    "path": [
+     2
+    ],
+    "node": {
+     "id": "id3",
+     "type": "atom",
+     "data": {},
+     "children": []
+    }
+   },
+   {
+    "type": "remove_node",
+    "path": [
+     1
+    ],
+    "node": {
+     "id": "id1",
+     "type": "atom",
+     "data": {},
+     "children": []
+    }
+   },
+   {
+    "type": "set_selection",
+    "selection": {
+     "ranges": [
+      {
+       "anchor": {
+        "path": [
+         2,
+         0
+        ],
+        "offset": 0
+       },
+       "focus": {
+        "path": [
+         2,
+         0
+        ],
+        "offset": 0
+       }
+      }
+     ],
+     "main": 0
+    },
+    "prevSelection": {
+     "ranges": [
+      {
+       "anchor": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 2
+       },
+       "focus": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 2
+       }
+      }
+     ],
+     "main": 0
+    }
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       2,
+       0
+      ],
+      "offset": 0
+     },
+     "focus": {
+      "path": [
+       2,
+       0
+      ],
+      "offset": 0
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "id3",
+     "type": "atom",
+     "data": {},
+     "children": []
+    },
+    {
+     "id": "id2",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "cd",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "replaceSelectedNode last node": {
+  "returned": true,
+  "ops": [
+   {
+    "type": "insert_node",
+    "path": [
+     2
+    ],
+    "node": {
+     "id": "id2",
+     "type": "atom",
+     "data": {},
+     "children": []
+    }
+   },
+   {
+    "type": "remove_node",
+    "path": [
+     1
+    ],
+    "node": {
+     "id": "id1",
+     "type": "atom",
+     "data": {},
+     "children": []
+    }
+   },
+   {
+    "type": "insert_node",
+    "path": [
+     2
+    ],
+    "node": {
+     "id": "id3",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "",
+       "marks": []
+      }
+     ]
+    }
+   },
+   {
+    "type": "set_selection",
+    "selection": {
+     "ranges": [
+      {
+       "anchor": {
+        "path": [
+         2,
+         0
+        ],
+        "offset": 0
+       },
+       "focus": {
+        "path": [
+         2,
+         0
+        ],
+        "offset": 0
+       }
+      }
+     ],
+     "main": 0
+    },
+    "prevSelection": {
+     "ranges": [
+      {
+       "anchor": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 2
+       },
+       "focus": {
+        "path": [
+         0,
+         0
+        ],
+        "offset": 2
+       }
+      }
+     ],
+     "main": 0
+    }
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       2,
+       0
+      ],
+      "offset": 0
+     },
+     "focus": {
+      "path": [
+       2,
+       0
+      ],
+      "offset": 0
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "id2",
+     "type": "atom",
+     "data": {},
+     "children": []
+    },
+    {
+     "id": "id3",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "replaceSelectedNode without a node selection": {
+  "returned": false,
+  "ops": [],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "abcd",
+       "marks": []
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ }
+}

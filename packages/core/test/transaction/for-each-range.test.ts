@@ -154,7 +154,7 @@ describe('forEachRange', () => {
       if (wrap)
         tr.forEachRange((range, t) => {
           t.insertText('Q', range)
-          return t.selection!.ranges[0]!
+          return undefined // keeps the range the tr method left
         })
       else tr.insertText('Q')
       setIdGenerator(null)
@@ -174,7 +174,7 @@ describe('forEachRange', () => {
       if (wrap)
         tr.forEachRange((range, t) => {
           edit(t, range)
-          return t.selection!.ranges[0]!
+          return undefined // keeps the range the tr method left
         })
       else edit(tr, selection)
       setIdGenerator(null)
@@ -248,7 +248,7 @@ describe('forEachRange', () => {
       const tr = trOf(doc(el('paragraph', txt('abcd'))), createSelection([caret([0, 0], 1), caret([0, 0], 3)]), [bold])
       tr.forEachRange((range, t) => {
         t.insertText('X', range)
-        return t.selection!.ranges[0]!
+        return undefined // keeps the range the tr method left
       })
       expect(stripIds(tr.doc)).toEqual(
         stripIds(doc(el('paragraph', txt('a'), txt('X', 'bold'), txt('bc'), txt('X', 'bold'), txt('d')))),
@@ -276,7 +276,7 @@ describe('forEachRange', () => {
         tr.forEachRange((range, t) => {
           if (k++ !== which) return range
           t.insertText('X', range)
-          return t.selection!.ranges[0]!
+          return undefined // keeps the range the tr method left
         })
         return tr.storedMarks
       }

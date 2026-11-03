@@ -179,7 +179,7 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
   }
 
   createTransaction(): Transaction {
-    return new Transaction(this._state, this.registry)
+    return new Transaction(this._state, this.registry, { dev: this.dev })
   }
 
   /**

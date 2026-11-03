@@ -2,12 +2,20 @@ import { createId } from '../model/id'
 import { editableTextEntries, isNodeSelection, isOpaque, nodeSelection } from '../model/editable'
 import { getNode, isElement, isText, sameMarkSet } from '../model/node'
 import { comparePath, comparePoint, isAncestorPath, nextPath, parentPath, pointEquals, toRange } from '../model/path'
-import { mainRange, single } from '../model/selection'
+import { isNodeRange, rangeEquals, single } from '../model/selection'
 import type { ElementNode, Mark, Node, Path, Point, Range, Selection, SelectionRange, TextNode } from '../model/types'
+import { transformRange } from '../ops/transform'
 import { marksAtTr, marksOfRange } from './marks'
+import { currentRange, forEachRange, inForEachRange, setCurrentRange } from './ranges'
 import type { Transaction } from './transaction'
 
-/** Text editing algorithms. Every change is an operation on `tr`; each returns whether it did anything. */
+/**
+ * Text editing algorithms. Every change is an operation on `tr`; each returns whether it did anything.
+ *
+ * Each editing method is a per-range step (`…Step`: edits at one range and returns the range after
+ * it, without setting the selection) run by `runStep`: at every selection range when no range is
+ * given, else only at the given one (spec §5.2).
+ */
 
 export type DeleteUnit = 'character' | 'word' | 'line'
 
@@ -17,11 +25,105 @@ function pathEquals(a: Path, b: Path): boolean {
 
 /** Orders the points: callers may pass a backward selection or an unordered range. */
 function asRange(at: SelectionRange | Range): Range {
-  return toRange('anchor' in at ? at : { anchor: at.start, focus: at.end })
+  return toRange(asSelectionRange(at))
 }
 
-function caret(point: Point): Selection {
-  return single({ anchor: point, focus: point })
+function asSelectionRange(at: SelectionRange | Range): SelectionRange {
+  return 'anchor' in at ? at : { anchor: at.start, focus: at.end }
+}
+
+function caret(point: Point): SelectionRange {
+  return { anchor: point, focus: point }
+}
+
+/**
+ * What a per-range step did: the range after it (null when it is gone), or false when it did nothing
+ * (the range stays where it was).
+ */
+type StepResult = SelectionRange | null | false
+
+/** `range` mapped through the doc ops `tr` got since `from` (null when one of its points was removed). */
+function mapSince(tr: Transaction, range: SelectionRange, from: number): SelectionRange | null {
+  let out: SelectionRange | null = range
+  for (const op of tr.ops.slice(from)) {
+    if (!out) break
+    if (op.type !== 'set_selection') out = transformRange(out, op)
+  }
+  return out
+}
+
+/** Index of the first range of `sel` that overlaps or touches `target`, else of the main range. */
+function touchedRange(sel: Selection, target: SelectionRange): number {
+  const t = toRange(target)
+  const i = sel.ranges.findIndex((range) => {
+    const r = toRange(range)
+    return comparePoint(r.start, t.end) <= 0 && comparePoint(t.start, r.end) <= 0
+  })
+  return i >= 0 ? i : sel.main
+}
+
+/**
+ * Runs `step` (spec §5.2) and returns whether it did anything:
+ * - no `at`: at every selection range, through `forEachRange` (one tr, each range mapped through the
+ *   earlier edits; the selection becomes the results, set once);
+ * - `at`: only there. The selection range it touches (else the main one) becomes the result; the
+ *   other ranges are mapped through the edit, not collapsed. With no selection, the result becomes it;
+ * - inside a `forEachRange` callback: only at `at`, without setting the selection (the result is
+ *   recorded as the callback's range). A call without `at` throws in dev mode (the edit would
+ *   otherwise run at every range, once per callback); else it acts at the callback's range.
+ */
+function runStep(
+  tr: Transaction,
+  at: SelectionRange | Range | undefined,
+  edit: (range: SelectionRange) => StepResult,
+): boolean {
+  /**
+   * The edit at `target`, replacing the selection range `range`. Stored marks are cleared when the
+   * result is not where `range` maps to: exactly when a single-range `setSelection` of the result
+   * would have cleared them.
+   */
+  const step = (target: SelectionRange, range: SelectionRange = target): StepResult => {
+    const from = tr.ops.length
+    const out = edit(target)
+    if (out === false) return out
+    const mapped = mapSince(tr, range, from)
+    if (!out || !mapped || !rangeEquals(out, mapped)) tr.setStoredMarks(null)
+    return out
+  }
+  if (inForEachRange(tr)) {
+    let target = at && asSelectionRange(at)
+    if (!target) {
+      if (tr.dev) throw new Error('Inside forEachRange, pass the callback range to tr editing methods')
+      target = currentRange(tr) ?? undefined
+      if (!target) return false
+    }
+    const out = step(target, currentRange(tr) ?? target)
+    if (out !== false) setCurrentRange(tr, out)
+    return out !== false
+  }
+  const sel = tr.selection
+  let did = false
+  /** Runs the step at `target`; when it did nothing, `range` stays. */
+  const run = (range: SelectionRange, target = range): SelectionRange | null => {
+    const out = step(target, range)
+    if (out === false) return range
+    did = true
+    return out
+  }
+  if (!at) {
+    forEachRange(tr, (range) => run(range))
+    return did
+  }
+  const target = asSelectionRange(at)
+  if (!sel) {
+    const out = run(target)
+    if (did && out) tr.setSelection(single(out))
+    return did
+  }
+  const index = touchedRange(sel, target)
+  // The steps before `index` add no ops, so `target` is still in current coordinates when it runs.
+  forEachRange(tr, (range, _tr, i) => (i === index ? run(range, target) : range))
+  return did
 }
 
 function textAt(tr: Transaction, path: Path): TextNode {
@@ -149,17 +251,30 @@ function nearestEditablePoint(tr: Transaction, at: Path): Point {
 }
 
 /**
- * Deletes `range` and collapses the selection at its start. Across sibling blocks the start
- * block keeps its id: its tail and the end block's head are removed, the blocks in between are
- * removed, and the end block is merged into the start block.
+ * Deletes `range` (default: every selection range; a selected node is removed) and collapses each
+ * caret at its start; with `range`, the other selection ranges are mapped (see `runStep`). False
+ * when nothing was deleted.
+ */
+export function deleteRange(tr: Transaction, range?: Range): boolean {
+  return runStep(tr, range, (r) => {
+    if (!range && isNodeRange(r)) return replaceNodeStep(tr, r, 'delete')
+    const point = deleteRangeStep(tr, asRange(r))
+    return point ? caret(point) : false
+  })
+}
+
+/**
+ * Deletes `range` and returns where its caret lands: its start (null when the range is empty). Across
+ * sibling blocks the start block keeps its id: its tail and the end block's head are removed, the
+ * blocks in between are removed, and the end block is merged into the start block.
  *
  * An opaque edge block (unknown type or atom: no caret can be inside it) counts as fully inside the
  * range: it is removed whole and nothing is merged into or out of it. When the start edge is
  * opaque, the caret lands at the nearest editable point instead.
  */
-export function deleteRange(tr: Transaction, range: Range): boolean {
+function deleteRangeStep(tr: Transaction, range: Range): Point | null {
   const { start, end } = asRange(range)
-  if (comparePoint(start, end) === 0) return false
+  if (comparePoint(start, end) === 0) return null
   const startBlock = edgeBlockOf(tr, start.path)
   const endBlock = edgeBlockOf(tr, end.path)
   const opaqueAt = (p: Path) => isOpaque(getNode(tr.doc, p) as ElementNode, tr.registry)
@@ -195,8 +310,7 @@ export function deleteRange(tr: Transaction, range: Range): boolean {
       })
     }
   }
-  tr.setSelection(caret(startOpaque ? nearestEditablePoint(tr, startBlock) : start))
-  return true
+  return startOpaque ? nearestEditablePoint(tr, startBlock) : start
 }
 
 function emptyDefaultBlock(tr: Transaction, text = '', marks: Mark[] = []): ElementNode {
@@ -228,43 +342,57 @@ export type NodeSelectionEdit = 'delete' | 'split' | { text: string } | { node: 
  *   start of the editable text following it (an empty default block is added when none follows).
  */
 export function replaceSelectedNode(tr: Transaction, mode: NodeSelectionEdit): boolean {
-  const sel = tr.selection
-  if (!sel || !isNodeSelection(sel)) return false
-  const path = mainRange(sel).node!
+  if (!isNodeSelection(tr.selection)) return false
+  // A node range is always the only range.
+  return runStep(tr, undefined, (range) => (isNodeRange(range) ? replaceNodeStep(tr, range, mode) : false))
+}
+
+/** `replaceSelectedNode` at one node range: returns the caret after the edit (false when rejected). */
+function replaceNodeStep(tr: Transaction, range: SelectionRange & { node: Path }, mode: NodeSelectionEdit): StepResult {
+  const path = range.node
   if (mode === 'delete') {
+    const from = tr.ops.length
     tr.removeNode(path)
-    // The removal mapped the selection (dropping `node`); collapse it explicitly.
-    const mapped = tr.selection
-    tr.setSelection(mapped && caret(mainRange(mapped).anchor))
-    return true
+    // The range's anchor, mapped through the removal.
+    const mapped = mapSince(tr, range, from)
+    return mapped && caret(mapped.anchor)
   }
   if (mode === 'split') {
     const at = nextPath(path)
     tr.insertNode(at, emptyDefaultBlock(tr))
-    tr.setSelection(caret({ path: [...at, 0], offset: 0 }))
-    return true
+    return caret({ path: [...at, 0], offset: 0 })
   }
   const replacement = 'text' in mode ? emptyDefaultBlock(tr, mode.text, tr.storedMarks ?? []) : mode.node
   tr.insertNode(nextPath(path), replacement)
   if (tr.rejected !== null) return false
   tr.removeNode(path)
-  tr.setSelection(caret('text' in mode ? { path: [...path, 0], offset: mode.text.length } : caretAfterNode(tr, path)))
-  return true
+  return caret('text' in mode ? { path: [...path, 0], offset: mode.text.length } : caretAfterNode(tr, path))
+}
+
+/** Copy of `node` whose elements all get fresh ids. */
+function withFreshIds(node: ElementNode): ElementNode {
+  const copy = (n: Node): Node =>
+    isText(n) ? n : { ...n, id: createId(), ...(n.children ? { children: n.children.map(copy) } : {}) }
+  return copy(node) as ElementNode
 }
 
 /**
- * Inserts the block-level `node` at the selection: it replaces a selected node or an empty block;
- * at offset 0 of a block it goes before it, at its end after it, else the block is split at the caret
- * (a range selection is deleted first). The caret ends at the start of the editable text following
- * the node, in an empty default block added when none follows. False without a selection or when
- * `node` is rejected (the tr stays rejected).
+ * Inserts the block-level `node` at every selection range (or only at `at`, see `runStep`); copies
+ * after the first get fresh ids. At each range, it replaces a selected node or an empty block; at
+ * offset 0 of a block it goes before it, at its end after it, else the block is split at the caret (a
+ * non-empty range is deleted first). Each caret ends at the start of the editable text following its
+ * node, in an empty default block added when none follows. False without a selection or when `node`
+ * is rejected (the tr stays rejected).
  */
-export function insertBlockNode(tr: Transaction, node: ElementNode): boolean {
-  if (isNodeSelection(tr.selection)) return replaceSelectedNode(tr, { node })
-  const sel = tr.selection
-  if (!sel) return false
-  const range = toRange(mainRange(sel))
-  const point = deleteRange(tr, range) ? mainRange(tr.selection!).anchor : range.start
+export function insertBlockNode(tr: Transaction, node: ElementNode, at?: SelectionRange | Range): boolean {
+  let copies = 0
+  return runStep(tr, at, (range) => insertBlockNodeStep(tr, copies++ === 0 ? node : withFreshIds(node), range))
+}
+
+function insertBlockNodeStep(tr: Transaction, node: ElementNode, sel: SelectionRange): StepResult {
+  if (isNodeRange(sel)) return replaceNodeStep(tr, sel, { node })
+  const range = toRange(sel)
+  const point = deleteRangeStep(tr, range) ?? range.start
   const blockPath = blockPathOf(tr, point.path)
   const blockNode = getNode(tr.doc, blockPath) as ElementNode
   const block = readBlock(tr, blockPath)
@@ -288,33 +416,33 @@ export function insertBlockNode(tr: Transaction, node: ElementNode): boolean {
     tr.insertNode(at, node)
     if (tr.rejected !== null) return false
   }
-  tr.setSelection(caret(caretAfterNode(tr, at)))
-  return true
+  return caret(caretAfterNode(tr, at))
 }
 
-/** Deletes the selection (or `at`), then inserts `text` with the insertion marks; the caret ends after it. */
+/**
+ * Deletes every selection range (or only `at`, see `runStep`), then inserts `text` with the insertion
+ * marks; each caret ends after its insert. Without `at`, a selected node is replaced.
+ */
 export function insertText(tr: Transaction, text: string, at?: SelectionRange | Range): boolean {
-  if (!at && isNodeSelection(tr.selection)) return replaceSelectedNode(tr, text === '' ? 'delete' : { text })
-  const target = at ?? (tr.selection && mainRange(tr.selection))
-  if (!target) return false
-  const range = asRange(target)
-  // Deleting moves the selection, which clears stored marks; keep them for the insertion.
+  return runStep(tr, at, (range) =>
+    !at && isNodeRange(range)
+      ? replaceNodeStep(tr, range, text === '' ? 'delete' : { text })
+      : insertTextStep(tr, text, asRange(range)),
+  )
+}
+
+function insertTextStep(tr: Transaction, text: string, range: Range): SelectionRange {
   const stored = tr.storedMarks
   // Typing over a range keeps the marks of its first covered character (read before deleting).
   const replaced = stored ? null : marksOfRange(tr.doc, range, tr.registry)
-  const point = deleteRange(tr, range) ? mainRange(tr.selection!).anchor : range.start
-  tr.setStoredMarks(stored)
+  const point = deleteRangeStep(tr, range) ?? range.start
   const marks = replaced ?? insertionMarks(tr, point)
   tr.setStoredMarks(null)
-  if (text === '') {
-    tr.setSelection(caret(point))
-    return true
-  }
+  if (text === '') return caret(point)
   const node = textAt(tr, point.path)
   if (sameMarkSet(marks, node.marks)) {
     tr.apply({ type: 'insert_text', path: point.path, offset: point.offset, text })
-    tr.setSelection(caret({ path: point.path, offset: point.offset + text.length }))
-    return true
+    return caret({ path: point.path, offset: point.offset + text.length })
   }
   // Different marks: a new text node at the point (splitting the text when inside it).
   let path = point.path
@@ -325,8 +453,7 @@ export function insertText(tr: Transaction, text: string, at?: SelectionRange | 
     path = nextPath(path)
   }
   tr.insertNode(path, { text, marks })
-  tr.setSelection(caret({ path, offset: text.length }))
-  return true
+  return caret({ path, offset: text.length })
 }
 
 // --- segmentation ---
@@ -452,70 +579,90 @@ export function runAt(tr: Transaction, blockPath: Path, point: Point): Run {
   return run
 }
 
-function deleteDirection(tr: Transaction, unit: DeleteUnit, backward: boolean): boolean {
-  if (isNodeSelection(tr.selection)) return replaceSelectedNode(tr, 'delete')
-  const sel = tr.selection
-  if (!sel) return false
-  const range = mainRange(sel)
-  if (!pointEquals(range.anchor, range.focus)) return deleteRange(tr, toRange(range))
+function deleteDirection(tr: Transaction, unit: DeleteUnit, backward: boolean, at?: SelectionRange | Range): boolean {
+  const several = (tr.selection?.ranges.length ?? 0) > 1
+  return runStep(tr, at, (range) => deleteDirectionStep(tr, unit, backward, range, several))
+}
+
+/**
+ * Backspace/Delete at one range: a selected node is removed, a non-empty range deleted, else one
+ * `unit` before/after the caret. At a block edge next to an opaque block, with one range the block
+ * is node-selected (a second press removes it); with `several` ranges this caret does nothing and
+ * stays (spec §5.4: a node range would drop every other range).
+ */
+function deleteDirectionStep(
+  tr: Transaction,
+  unit: DeleteUnit,
+  backward: boolean,
+  range: SelectionRange,
+  several: boolean,
+): StepResult {
+  if (isNodeRange(range)) return replaceNodeStep(tr, range, 'delete')
+  const deleted = (r: Range): StepResult => {
+    const p = deleteRangeStep(tr, r)
+    return p ? caret(p) : false
+  }
+  if (!pointEquals(range.anchor, range.focus)) return deleted(toRange(range))
   const point = range.anchor
   const blockPath = blockPathOf(tr, point.path)
   // Characters and words stay within the run: an inline atom next to the caret is removed whole
-  // (its neighbour texts keep the caret; the selection maps through the removal).
+  // (its neighbour texts keep the caret: the range is mapped through the removal).
   if (unit !== 'line') {
     const run = runAt(tr, blockPath, point)
     const runOffset = toBlockOffset(run, point)
     const atRunEdge = backward ? runOffset === 0 : runOffset === run.text.length
     const atom = backward ? run.before : run.after
     if (atRunEdge && atom) {
+      const from = tr.ops.length
       tr.removeNode(atom)
-      return true
+      return mapSince(tr, range, from)
     }
     if (!atRunEdge) {
       const target = fromBlockOffset(run, targetOffset(run.text, runOffset, unit, backward))
-      return deleteRange(tr, backward ? { start: target, end: point } : { start: point, end: target })
+      return deleted(backward ? { start: target, end: point } : { start: point, end: target })
     }
   }
   const block = readBlock(tr, blockPath)
   const offset = toBlockOffset(block, point)
   const atEdge = backward ? offset === 0 : offset === block.text.length
   if (atEdge) {
-    // An opaque neighbour is selected first (a second Backspace/Delete removes it).
+    // An opaque neighbour is selected first (a second Backspace/Delete removes it); with several
+    // ranges, this caret does nothing for this press (it counts as handled).
     const opaque = adjacentOpaque(tr, blockPath, backward)
-    if (opaque) {
-      tr.setSelection(nodeSelection(tr.doc, tr.registry, opaque))
-      return true
-    }
+    if (opaque) return several ? range : nodeSelection(tr.doc, tr.registry, opaque).ranges[0]!
     const other = adjacentBlock(tr, blockPath, backward)
     if (!other) return false
     const texts = blockTexts(tr, other)
     return backward
-      ? deleteRange(tr, { start: lastPoint(texts)!, end: firstPoint(block.texts)! })
-      : deleteRange(tr, { start: lastPoint(block.texts)!, end: firstPoint(texts)! })
+      ? deleted({ start: lastPoint(texts)!, end: firstPoint(block.texts)! })
+      : deleted({ start: lastPoint(block.texts)!, end: firstPoint(texts)! })
   }
   const target = fromBlockOffset(block, targetOffset(block.text, offset, unit, backward))
-  return deleteRange(tr, backward ? { start: target, end: point } : { start: point, end: target })
+  return deleted(backward ? { start: target, end: point } : { start: point, end: target })
 }
 
-export function deleteBackward(tr: Transaction, unit: DeleteUnit = 'character'): boolean {
-  return deleteDirection(tr, unit, true)
+/** Backspace: see `deleteDirectionStep`; at every range, or only at `at` (see `runStep`). */
+export function deleteBackward(tr: Transaction, unit: DeleteUnit = 'character', at?: SelectionRange | Range): boolean {
+  return deleteDirection(tr, unit, true, at)
 }
 
-export function deleteForward(tr: Transaction, unit: DeleteUnit = 'character'): boolean {
-  return deleteDirection(tr, unit, false)
+/** Delete: see `deleteDirectionStep`; at every range, or only at `at` (see `runStep`). */
+export function deleteForward(tr: Transaction, unit: DeleteUnit = 'character', at?: SelectionRange | Range): boolean {
+  return deleteDirection(tr, unit, false, at)
 }
 
 /**
- * Deletes the selection, then splits the block at the caret. The new block gets a fresh id and
- * the same type/data, except at the very end of a non-default block, where it is the default
- * block with `data {}`. The caret ends at the start of the new block.
+ * At every selection range (or only at `at`, see `runStep`): deletes the range, then splits the block
+ * at the caret (a selected node gets an empty default block after it instead). The new block gets a
+ * fresh id and the same type/data, except at the very end of a non-default block, where it is the
+ * default block with `data {}`. Each caret ends at the start of its new block.
  */
-export function splitBlock(tr: Transaction): boolean {
-  if (isNodeSelection(tr.selection)) return replaceSelectedNode(tr, 'split')
-  const sel = tr.selection
-  if (!sel) return false
-  const range = toRange(mainRange(sel))
-  const point = deleteRange(tr, range) ? mainRange(tr.selection!).anchor : range.start
+export function splitBlock(tr: Transaction, at?: SelectionRange | Range): boolean {
+  return runStep(tr, at, (range) => (isNodeRange(range) ? replaceNodeStep(tr, range, 'split') : splitBlockStep(tr, toRange(range))))
+}
+
+function splitBlockStep(tr: Transaction, range: Range): SelectionRange {
+  const point = deleteRangeStep(tr, range) ?? range.start
   const blockPath = blockPathOf(tr, point.path)
   const blockNode = getNode(tr.doc, blockPath) as ElementNode
   const block = readBlock(tr, blockPath)
@@ -524,9 +671,7 @@ export function splitBlock(tr: Transaction): boolean {
     atEnd && blockNode.type !== tr.registry.defaultBlock
       ? { id: createId(), type: tr.registry.defaultBlock, data: {} }
       : { id: createId(), type: blockNode.type, data: blockNode.data }
-
-  tr.setSelection(caret(splitBlockAt(tr, point, blockPath, props)))
-  return true
+  return caret(splitBlockAt(tr, point, blockPath, props))
 }
 
 /**

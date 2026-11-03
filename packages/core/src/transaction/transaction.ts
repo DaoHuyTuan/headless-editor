@@ -42,14 +42,17 @@ export class Transaction {
   readonly ops: Operation[] = []
   readonly meta: TransactionMeta = {}
   rejected: string | null = null
+  /** Dev mode (the editor's `dev` option): misuse that would otherwise be tolerated throws. */
+  readonly dev: boolean
 
   private _doc: Doc
   private _selection: Selection | null
   private _storedMarks: Mark[] | null
 
-  constructor(state: EditorState, registry: Registry) {
+  constructor(state: EditorState, registry: Registry, options: { dev?: boolean } = {}) {
     this.before = state
     this.registry = registry
+    this.dev = options.dev ?? false
     // Operations never mutate a doc (they copy along the changed path), so sharing it is safe.
     this._doc = state.doc as Doc
     this._selection = state.selection
@@ -188,35 +191,49 @@ export class Transaction {
     return this.apply({ type: 'remove_node', path, node: getNode(this._doc, path) })
   }
 
-  /** Deletes the selection (or `at`) and inserts `text`; the caret ends after it. */
+  /**
+   * Deletes every selection range and inserts `text` there; each caret ends after its insert. With
+   * `at`, only there: the range it touches (else the main one) becomes the caret after the insert,
+   * the other ranges are mapped. Inside `forEachRange`, pass the callback's range.
+   */
   insertText(text: string, at?: SelectionRange | Range): this {
     textEdit.insertText(this, text, at)
     return this
   }
 
-  /** Deletes `range`, merging across blocks; the caret ends at its start. */
-  deleteRange(range: Range): this {
+  /**
+   * Deletes `range` (default: every selection range), merging across blocks; the caret ends at its
+   * start. With `range`, the other selection ranges are mapped (as for `insertText` with `at`).
+   */
+  deleteRange(range?: Range): this {
     textEdit.deleteRange(this, range)
     return this
   }
 
-  deleteBackward(unit: DeleteUnit = 'character'): this {
-    textEdit.deleteBackward(this, unit)
+  /**
+   * Deletes one `unit` before every caret (a non-empty range is deleted instead); with `at`, only
+   * there. With several ranges, a caret next to an opaque block does nothing for this press (with one,
+   * the block is node-selected).
+   */
+  deleteBackward(unit: DeleteUnit = 'character', at?: SelectionRange | Range): this {
+    textEdit.deleteBackward(this, unit, at)
     return this
   }
 
-  deleteForward(unit: DeleteUnit = 'character'): this {
-    textEdit.deleteForward(this, unit)
+  /** As `deleteBackward`, after every caret. */
+  deleteForward(unit: DeleteUnit = 'character', at?: SelectionRange | Range): this {
+    textEdit.deleteForward(this, unit, at)
     return this
   }
 
   /**
-   * Inserts the block-level `node` at the selection (replacing a selected node or an empty block,
-   * else before/after/splitting the caret's block); the caret ends in the editable text after it.
-   * Invalid data leaves the tr `rejected`.
+   * Inserts the block-level `node` at every selection range (replacing a selected node or an empty
+   * block, else before/after/splitting the caret's block; copies after the first get fresh ids); each
+   * caret ends in the editable text after its node. With `at`, only there. Invalid data leaves the tr
+   * `rejected`.
    */
-  insertBlockNode(node: ElementNode): this {
-    textEdit.insertBlockNode(this, node)
+  insertBlockNode(node: ElementNode, at?: SelectionRange | Range): this {
+    textEdit.insertBlockNode(this, node, at)
     return this
   }
 
@@ -230,9 +247,12 @@ export class Transaction {
     return this
   }
 
-  /** Splits the block at the caret (after deleting the selection); the caret ends in the new block. */
-  splitBlock(): this {
-    textEdit.splitBlock(this)
+  /**
+   * Splits the block at every caret (after deleting each range); each caret ends at the start of its
+   * new block. With `at`, only there.
+   */
+  splitBlock(at?: SelectionRange | Range): this {
+    textEdit.splitBlock(this, at)
     return this
   }
 
