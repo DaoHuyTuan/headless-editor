@@ -283,7 +283,9 @@ function applyHistory(prev: HistoryState, tr: Transaction, options: HistoryOptio
     const action = tr.meta.historyAction as HistoryAction | undefined
     const [from, to] = action === 'redo' ? [prev.redo, prev.undo] : [prev.undo, prev.redo]
     const entry = from[from.length - 1]
-    if (!entry || (action !== 'undo' && action !== 'redo')) return prev
+    // A doc change that is not the top entry's undo/redo (no entry, or no valid action): the stacks
+    // can't be mapped through it, so they would desync. (This branch only runs when the doc changed.)
+    if (!entry || (action !== 'undo' && action !== 'redo')) return EMPTY
     const rest = from.slice(0, -1)
     const moved = [...to, entry]
     let undo = action === 'undo' ? rest : moved

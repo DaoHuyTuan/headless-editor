@@ -389,6 +389,37 @@ describe('clearHistory', () => {
   })
 })
 
+describe("a doc-changing tr with origin 'history' but no valid historyAction", () => {
+  for (const action of [undefined, 'bogus']) {
+    it(`clears the stacks (historyAction: ${String(action)}) instead of desyncing them`, () => {
+      const { ed, type, text, stacks } = setup()
+      type('a')
+      ed.commands.undo()
+      type('a')
+      expect(stacks().undo).toHaveLength(1)
+      const tr = ed.createTransaction()
+      tr.meta.origin = 'history'
+      if (action !== undefined) tr.meta.historyAction = action as never
+      tr.apply({ type: 'insert_text', path: [0, 0], offset: 0, text: 'x' })
+      ed.dispatch(tr)
+      expect(text()).toEqual(stripIds(doc(p('xa'))))
+      expect(stacks()).toEqual({ undo: [], redo: [] })
+      expect(ed.commands.undo()).toBe(false)
+      expect(text()).toEqual(stripIds(doc(p('xa'))))
+    })
+  }
+
+  it('a selection-only one leaves the stacks alone', () => {
+    const { ed, type, stacks } = setup()
+    type('a')
+    const tr = ed.createTransaction()
+    tr.meta.origin = 'history'
+    tr.setSelection(sel([0, 0], 0))
+    ed.dispatch(tr)
+    expect(stacks().undo).toHaveLength(1)
+  })
+})
+
 describe('appendTransaction trs join the triggering history entry', () => {
   /** Uppercases the character before the caret after typed text. */
   const upper = definePlugin({
