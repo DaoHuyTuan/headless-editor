@@ -4,7 +4,7 @@ import type { Doc, ElementNode, Node, Path, Selection, SelectionRange } from '..
 import type { EditorState } from '../../src/state'
 import { Transaction } from '../../src/transaction/transaction'
 import { createTestEditor, doc, el, stripIds, txt } from '../../src/testing/index'
-import { testParagraph } from '../fixtures'
+import { testBold, testParagraph } from '../fixtures'
 import { deleteBackward, deleteForward } from '../../src/transaction/text'
 import { record, registry, scenarios } from './single-range-scenarios'
 import recorded from './single-range-ops.json'
@@ -225,8 +225,9 @@ describe('text editing on every range', () => {
       const tr = new Transaction(state, registry)
       tr.insertText('HELLO', span([0, 0], 0, 5))
       expect(texts(tr)).toEqual(['HELLO world'])
-      // Both carets end at the insert's edges and merge into the main one, after the insert.
-      expect(tr.selection!.ranges[tr.selection!.main]).toEqual(caret([0, 0], 5))
+      // Main (at 5) touches `at`, so it becomes the caret after the insert; the caret at 0 is mapped
+      // and stays at 0: two carets remain, at 0 and 5, with main at 5.
+      expect(tr.selection).toEqual(createSelection([caret([0, 0], 0), caret([0, 0], 5)], 1))
     })
 
     it('explicit deleteBackward next to an opaque block with several ranges does nothing', () => {
@@ -280,6 +281,51 @@ describe('text editing on every range', () => {
       tr.deleteBackward('word')
       expect(texts(tr)).toEqual(['foo '])
       expect(tr.selection).toEqual(single(caret([0, 0], 4)))
+    })
+
+    describe('a word across text leaves (mark boundaries)', () => {
+      const bold = (t: string) => txt(t, 'bold')
+      const fwdWord = (d: Doc, ...ranges: SelectionRange[]) => {
+        const tr = trOf(d, ...ranges)
+        tr.deleteForward('word')
+        return tr
+      }
+      it('G2: second caret inside the first leaf', () => {
+        const tr = fwdWord(doc(p(bold('ab'), 'cd ef')), caret([0, 0], 0), caret([0, 0], 2))
+        expect(texts(tr)).toEqual([' ef'])
+        expect(tr.selection!.ranges).toHaveLength(1)
+      })
+      it('G3: second caret at the start of the next leaf', () => {
+        const tr = fwdWord(doc(p(bold('ab'), 'cd ef')), caret([0, 0], 0), caret([0, 1], 0))
+        expect(texts(tr)).toEqual([' ef'])
+        // In the tr the carets sit at one position written in two leaves (the emptied bold one and the
+        // next); the commit-time cleanup of empty texts merges them.
+        const ed = createTestEditor({
+          plugins: [testParagraph, testBold],
+          doc: doc(p(bold('ab'), 'cd ef')),
+          selection: sel(caret([0, 0], 0), caret([0, 1], 0)),
+        })
+        ed.commands.deleteForward('word')
+        expect(ed.state.selection!.ranges).toHaveLength(1)
+      })
+      it('G4: second caret at the start of a middle leaf', () => {
+        const tr = fwdWord(doc(p('a', bold('b'), 'c d')), caret([0, 0], 0), caret([0, 1], 0))
+        expect(texts(tr)).toEqual([' d'])
+      })
+      it('G5: second caret at the end of a middle leaf', () => {
+        const tr = fwdWord(doc(p('a', bold('b'), 'c d')), caret([0, 0], 0), caret([0, 1], 1))
+        expect(texts(tr)).toEqual([' d'])
+      })
+      it('a caret at the edge of the removal, written in the next leaf, still runs', () => {
+        const tr = trOf(doc(p(bold('ab'), 'cd')), caret([0, 0], 1), caret([0, 1], 0))
+        tr.deleteForward()
+        expect(texts(tr)).toEqual(['ad'])
+      })
+      it('a caret at the edge of the removal, written in the earlier leaf, still runs', () => {
+        const tr = trOf(doc(p(bold('ab'), 'cd')), caret([0, 0], 1), caret([0, 0], 2))
+        tr.deleteForward()
+        expect(texts(tr)).toEqual(['ad'])
+      })
     })
 
     it('a range only partly swallowed still runs on what is left', () => {

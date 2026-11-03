@@ -6,7 +6,7 @@ import { isNodeRange, rangeEquals, single } from '../model/selection'
 import type { ElementNode, Mark, Node, Path, Point, Range, Selection, SelectionRange, TextNode } from '../model/types'
 import { transformRange } from '../ops/transform'
 import { marksAtTr, marksOfRange } from './marks'
-import { currentRange, forEachRange, inForEachRange, setCurrentRange } from './ranges'
+import { currentRange, flagSwallowed, forEachRange, inForEachRange, setCurrentRange } from './ranges'
 import type { Transaction } from './transaction'
 
 /**
@@ -207,6 +207,21 @@ function inlineOpaqueBetween(tr: Transaction, start: Point, end: Point): Path[] 
 }
 
 /**
+ * Whether anything lies between the ordered points `a` and `b`: a block boundary, a character of
+ * editable text, or an inline opaque element. False for two ways to write one position (the end of a
+ * text leaf and the start of the next).
+ */
+function hasContentBetween(tr: Transaction, a: Point, b: Point): boolean {
+  if (!pathEquals(blockPathOf(tr, a.path), blockPathOf(tr, b.path))) return true
+  for (const [t, p] of editableTextEntries(tr.doc, tr.registry, { start: a, end: b })) {
+    const from = pathEquals(p, a.path) ? a.offset : 0
+    const to = pathEquals(p, b.path) ? b.offset : t.text.length
+    if (to > from) return true
+  }
+  return inlineOpaqueBetween(tr, a, b).length > 0
+}
+
+/**
  * Removes the editable text between two points, text by text, and the inline opaque elements
  * (inline atoms) between them, whole. No other node is removed. Works last to first, so the paths
  * still to be handled (and `start`) stay valid.
@@ -283,6 +298,17 @@ export function deleteRange(tr: Transaction, range?: SelectionRange | Range): bo
 function deleteRangeStep(tr: Transaction, range: Range): Point | null {
   const { start, end } = asRange(range)
   if (comparePoint(start, end) === 0) return null
+  // A range still to run with a point strictly inside this removal is swallowed by it (its own step
+  // would delete past it). "Strictly": with content on both sides, so a point at an edge written in
+  // a neighbouring text leaf still counts as at the edge.
+  flagSwallowed(
+    tr,
+    (p) =>
+      comparePoint(start, p) < 0 &&
+      comparePoint(p, end) < 0 &&
+      hasContentBetween(tr, start, p) &&
+      hasContentBetween(tr, p, end),
+  )
   const startBlock = edgeBlockOf(tr, start.path)
   const endBlock = edgeBlockOf(tr, end.path)
   const opaqueAt = (p: Path) => isOpaque(getNode(tr.doc, p) as ElementNode, tr.registry)

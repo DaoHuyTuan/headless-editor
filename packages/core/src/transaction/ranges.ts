@@ -57,6 +57,20 @@ export function currentRange(tr: Transaction): SelectionRange | null {
   return runs.get(tr)?.live ?? null
 }
 
+/**
+ * Called by an editing step before it removes content: flags every range still to run with a point
+ * for which `inside` holds (strictly inside the whole removal, in pre-removal coordinates) as
+ * swallowed (see `RangeRun.swallowed`). The per-op check in `mapRun` only sees one text leaf at a
+ * time; a removal spanning leaves (a word across a mark boundary) needs this.
+ */
+export function flagSwallowed(tr: Transaction, inside: (point: Point) => boolean): void {
+  const run = runs.get(tr)
+  if (!run) return
+  run.slots.forEach((range, i) => {
+    if (range && i > run.current && (inside(range.anchor) || inside(range.focus))) run.swallowed[i] = true
+  })
+}
+
 /** Records the result of an editing method called inside a callback (see `RangeRun.live`). */
 export function setCurrentRange(tr: Transaction, range: SelectionRange | null): void {
   const run = runs.get(tr)
