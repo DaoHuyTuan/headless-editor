@@ -395,6 +395,14 @@ export function clearHistory(editor: Editor): void {
  * (all `set_node_data`) rewrite the stored payloads of the changed elements; structural ones map both
  * stacks through their ops (`rebaseStack`), dropping entries that can't be rebased and all below them.
  * `appendTransaction` trs (meta `appendedTo`) join the triggering step (see `joinAppended`).
+ *
+ * The `undo` / `redo` commands fill the tr with the entry's ops and mark it `origin: 'history'`.
+ * Ops a composed command adds to that same tr after them (e.g. `undo` then `insertText` in one
+ * command) are folded into the stacks like normalization ops: they join the entry now on top of the
+ * undo stack, if any (and the next redo entry first reverts them), so they are not an undo step of
+ * their own. Dispatch a separate tr to record them as one. A doc-changing tr marked `origin: 'history'`
+ * that is not a valid undo/redo of the top entry (no or an unknown `historyAction`, an empty stack,
+ * or ops that don't start with the entry's) empties both stacks, since they can't be mapped through it.
  */
 export const historyPlugin = definePlugin({
   name: 'history',
