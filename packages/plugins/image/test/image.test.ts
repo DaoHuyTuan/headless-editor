@@ -196,6 +196,62 @@ describe('image upload', () => {
     expect(editor.getHTML()).not.toContain('blob:')
   })
 
+  /** Types `data` at the end of the first paragraph (selection-only tr first, then input). */
+  function typeInFirst(editor: ReturnType<typeof setup>['editor'], data: string): void {
+    const tr = editor.createTransaction()
+    const len = text(editor.state.doc as Doc).length
+    tr.setSelection(sel([0, 0], len))
+    editor.dispatch(tr)
+    editor.handleIntent({ inputType: 'insertText', data, range: null })
+  }
+
+  it('a failure while the preview is in the doc keeps history: typing done after the upload started is undoable', async () => {
+    const { editor, uploads } = setup()
+    editor.storage.image.upload([png()])
+    typeInFirst(editor, 'c')
+    expect(text(editor.state.doc as Doc)).toBe('abc')
+    uploads[0]!.reject(new Error('boom'))
+    await editor.storage.image.whenIdle()
+    expect(images(editor.state.doc as Doc)).toHaveLength(0)
+    expect(editor.commands.undo()).toBe(true)
+    expect(text(editor.state.doc as Doc)).toBe('ab')
+    expect(images(editor.state.doc as Doc)).toHaveLength(0)
+    // The upload step itself can't be rebased over the removal of its image: it is dropped.
+    expect(editor.commands.undo()).toBe(false)
+    expect(editor.commands.redo()).toBe(true)
+    expect(text(editor.state.doc as Doc)).toBe('abc')
+    expect(editor.getHTML()).not.toContain('blob:')
+  })
+
+  it('a failure while the preview is in the doc drops the upload step and every entry below it', async () => {
+    // Rebase semantics: the first entry that can't be mapped through the removal (the upload's
+    // insert of the preview) is dropped with everything below it, so typing done before the upload
+    // is no longer undoable, while the doc keeps it.
+    const { editor, uploads } = setup()
+    typeInFirst(editor, 'c')
+    editor.storage.image.upload([png()])
+    uploads[0]!.reject(new Error('boom'))
+    await editor.storage.image.whenIdle()
+    expect(text(editor.state.doc as Doc)).toBe('abc')
+    expect(images(editor.state.doc as Doc)).toHaveLength(0)
+    expect(editor.commands.undo()).toBe(false)
+    expect(text(editor.state.doc as Doc)).toBe('abc')
+    expect(editor.getHTML()).not.toContain('blob:')
+  })
+
+  it('undo, then the upload fails: history is cleared (an undone preview can not be mapped)', async () => {
+    const { editor, uploads } = setup()
+    typeInFirst(editor, 'c')
+    editor.storage.image.upload([png()])
+    expect(editor.commands.undo()).toBe(true)
+    uploads[0]!.reject(new Error('boom'))
+    await editor.storage.image.whenIdle()
+    expect(editor.commands.redo()).toBe(false)
+    expect(editor.commands.undo()).toBe(false)
+    expect(text(editor.state.doc as Doc)).toBe('abc')
+    expect(editor.getHTML()).not.toContain('blob:')
+  })
+
   it('a throw in the success path keeps the image and is reported, not treated as a failure', async () => {
     const { editor, uploads, onUploadError } = setup()
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
