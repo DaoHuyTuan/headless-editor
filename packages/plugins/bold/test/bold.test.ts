@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest'
 import { createTestEditor, doc, el, sel, stripIds, txt } from '@hte/core/testing'
+import { createSelection } from '@hte/core'
 import { paragraph } from '@hte/paragraph'
 import { bold } from '../src/index'
 
@@ -54,6 +55,18 @@ describe('bold plugin', () => {
       content: '<p><b style="font-weight:normal">a</b><span style="font-weight:400">b</span></p>',
     })
     expect(ed.getHTML()).toBe('<p>ab</p>')
+  })
+
+  it('toggleBold acts on every selection range', () => {
+    const range = (from: number, to: number) => ({ anchor: { path: [0, 0], offset: from }, focus: { path: [0, 0], offset: to } })
+    const ed = setup(doc(p(txt('abcdef'))), createSelection([range(1, 2), range(4, 5)]))
+    expect(ed.commands.toggleBold()).toBe(true)
+    expect(stripIds(ed.getJSON())).toEqual(
+      stripIds(doc(p(txt('a'), txt('b', 'bold'), txt('cd'), txt('e', 'bold'), txt('f')))),
+    )
+    expect(ed.isActive('bold')).toBe(true)
+    expect(ed.commands.toggleBold()).toBe(true)
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p(txt('abcdef')))))
   })
 })
 

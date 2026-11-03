@@ -388,17 +388,21 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     this.dispatch(tr)
   }
 
-  /** Marks: `isMarkActive` on the selection. Elements: the block containing the selection start. */
+  /**
+   * True only when every selection range has it (spec §5.4). Marks: `isMarkActive`. Elements: per
+   * range, the block containing the range's start.
+   */
   isActive(type: string, data?: Partial<Data>): boolean {
     if (this.registry.mark(type)) return isMarkActive(this._state, type, data, this.registry)
     const sel = this._state.selection
     if (!sel) return false
-    const range = mainRange(sel)
-    const start = comparePoint(range.anchor, range.focus) <= 0 ? range.anchor : range.focus
-    const block = this.blockAt(start.path)
-    if (!block || block.type !== type) return false
-    if (!data) return true
-    return Object.entries(data).every(([k, v]) => v !== undefined && k in block.data && deepEqualJson(block.data[k]!, v))
+    return sel.ranges.every((range) => {
+      const start = comparePoint(range.anchor, range.focus) <= 0 ? range.anchor : range.focus
+      const block = this.blockAt(start.path)
+      if (!block || block.type !== type) return false
+      if (!data) return true
+      return Object.entries(data).every(([k, v]) => v !== undefined && k in block.data && deepEqualJson(block.data[k]!, v))
+    })
   }
 
   getPluginState<S = unknown>(name: string): S {

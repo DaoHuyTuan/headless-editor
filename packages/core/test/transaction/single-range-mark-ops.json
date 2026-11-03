@@ -1,0 +1,4766 @@
+{
+ "addMark over a range": {
+  "returned": true,
+  "ops": [
+   {
+    "type": "split_node",
+    "path": [
+     0,
+     0
+    ],
+    "position": 3,
+    "properties": {
+     "marks": []
+    }
+   },
+   {
+    "type": "split_node",
+    "path": [
+     0,
+     0
+    ],
+    "position": 1,
+    "properties": {
+     "marks": []
+    }
+   },
+   {
+    "type": "add_mark",
+    "path": [
+     0,
+     1
+    ],
+    "mark": {
+     "type": "bold",
+     "data": {}
+    }
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       1
+      ],
+      "offset": 0
+     },
+     "focus": {
+      "path": [
+       0,
+       2
+      ],
+      "offset": 0
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "rejected": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "a",
+       "marks": []
+      },
+      {
+       "text": "bc",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "d",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "efgh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "addMark over a backward range": {
+  "returned": true,
+  "ops": [
+   {
+    "type": "split_node",
+    "path": [
+     0,
+     0
+    ],
+    "position": 3,
+    "properties": {
+     "marks": []
+    }
+   },
+   {
+    "type": "split_node",
+    "path": [
+     0,
+     0
+    ],
+    "position": 1,
+    "properties": {
+     "marks": []
+    }
+   },
+   {
+    "type": "add_mark",
+    "path": [
+     0,
+     1
+    ],
+    "mark": {
+     "type": "bold",
+     "data": {}
+    }
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       2
+      ],
+      "offset": 0
+     },
+     "focus": {
+      "path": [
+       0,
+       1
+      ],
+      "offset": 0
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "rejected": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "a",
+       "marks": []
+      },
+      {
+       "text": "bc",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "d",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "efgh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "addMark cross-block": {
+  "returned": true,
+  "ops": [
+   {
+    "type": "split_node",
+    "path": [
+     1,
+     1
+    ],
+    "position": 1,
+    "properties": {
+     "marks": []
+    }
+   },
+   {
+    "type": "add_mark",
+    "path": [
+     1,
+     1
+    ],
+    "mark": {
+     "type": "italic",
+     "data": {}
+    }
+   },
+   {
+    "type": "add_mark",
+    "path": [
+     1,
+     0
+    ],
+    "mark": {
+     "type": "italic",
+     "data": {}
+    }
+   },
+   {
+    "type": "add_mark",
+    "path": [
+     0,
+     1
+    ],
+    "mark": {
+     "type": "italic",
+     "data": {}
+    }
+   },
+   {
+    "type": "split_node",
+    "path": [
+     0,
+     0
+    ],
+    "position": 1,
+    "properties": {
+     "marks": []
+    }
+   },
+   {
+    "type": "add_mark",
+    "path": [
+     0,
+     1
+    ],
+    "mark": {
+     "type": "italic",
+     "data": {}
+    }
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       1
+      ],
+      "offset": 0
+     },
+     "focus": {
+      "path": [
+       1,
+       2
+      ],
+      "offset": 0
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "rejected": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "a",
+       "marks": []
+      },
+      {
+       "text": "b",
+       "marks": [
+        {
+         "type": "italic",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "cd",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        },
+        {
+         "type": "italic",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        },
+        {
+         "type": "italic",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": [
+        {
+         "type": "fontSize",
+         "data": {
+          "size": "12px"
+         }
+        },
+        {
+         "type": "italic",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "i",
+       "marks": [
+        {
+         "type": "italic",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "j",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "addMark already there": {
+  "returned": true,
+  "ops": [],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       1
+      ],
+      "offset": 0
+     },
+     "focus": {
+      "path": [
+       0,
+       2
+      ],
+      "offset": 2
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "rejected": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      },
+      {
+       "text": "cd",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        },
+        {
+         "type": "italic",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": [
+        {
+         "type": "fontSize",
+         "data": {
+          "size": "12px"
+         }
+        }
+       ]
+      },
+      {
+       "text": "ij",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "addMark replaces other data": {
+  "returned": true,
+  "ops": [
+   {
+    "type": "split_node",
+    "path": [
+     1,
+     1
+    ],
+    "position": 1,
+    "properties": {
+     "marks": []
+    }
+   },
+   {
+    "type": "add_mark",
+    "path": [
+     1,
+     1
+    ],
+    "mark": {
+     "type": "fontSize",
+     "data": {
+      "size": "20px"
+     }
+    }
+   },
+   {
+    "type": "split_node",
+    "path": [
+     1,
+     0
+    ],
+    "position": 1,
+    "properties": {
+     "marks": [
+      {
+       "type": "fontSize",
+       "data": {
+        "size": "12px"
+       }
+      }
+     ]
+    }
+   },
+   {
+    "type": "remove_mark",
+    "path": [
+     1,
+     1
+    ],
+    "mark": {
+     "type": "fontSize",
+     "data": {
+      "size": "12px"
+     }
+    }
+   },
+   {
+    "type": "add_mark",
+    "path": [
+     1,
+     1
+    ],
+    "mark": {
+     "type": "fontSize",
+     "data": {
+      "size": "20px"
+     }
+    }
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       1,
+       1
+      ],
+      "offset": 0
+     },
+     "focus": {
+      "path": [
+       1,
+       3
+      ],
+      "offset": 0
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "rejected": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      },
+      {
+       "text": "cd",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        },
+        {
+         "type": "italic",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "g",
+       "marks": [
+        {
+         "type": "fontSize",
+         "data": {
+          "size": "12px"
+         }
+        }
+       ]
+      },
+      {
+       "text": "h",
+       "marks": [
+        {
+         "type": "fontSize",
+         "data": {
+          "size": "20px"
+         }
+        }
+       ]
+      },
+      {
+       "text": "i",
+       "marks": [
+        {
+         "type": "fontSize",
+         "data": {
+          "size": "20px"
+         }
+        }
+       ]
+      },
+      {
+       "text": "j",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "addMark at a caret stores": {
+  "returned": true,
+  "ops": [],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       1
+      ],
+      "offset": 1
+     },
+     "focus": {
+      "path": [
+       0,
+       1
+      ],
+      "offset": 1
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": [
+   {
+    "type": "bold",
+    "data": {}
+   },
+   {
+    "type": "italic",
+    "data": {}
+   }
+  ],
+  "rejected": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      },
+      {
+       "text": "cd",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        },
+        {
+         "type": "italic",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": [
+        {
+         "type": "fontSize",
+         "data": {
+          "size": "12px"
+         }
+        }
+       ]
+      },
+      {
+       "text": "ij",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "addMark at a caret with stored marks": {
+  "returned": true,
+  "ops": [],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 1
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 1
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": [
+   {
+    "type": "bold",
+    "data": {}
+   },
+   {
+    "type": "italic",
+    "data": {}
+   }
+  ],
+  "rejected": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      },
+      {
+       "text": "cd",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        },
+        {
+         "type": "italic",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": [
+        {
+         "type": "fontSize",
+         "data": {
+          "size": "12px"
+         }
+        }
+       ]
+      },
+      {
+       "text": "ij",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "addMark at a caret replaces stored data": {
+  "returned": true,
+  "ops": [],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       1,
+       0
+      ],
+      "offset": 1
+     },
+     "focus": {
+      "path": [
+       1,
+       0
+      ],
+      "offset": 1
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": [
+   {
+    "type": "fontSize",
+    "data": {
+     "size": "20px"
+    }
+   }
+  ],
+  "rejected": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      },
+      {
+       "text": "cd",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        },
+        {
+         "type": "italic",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": [
+        {
+         "type": "fontSize",
+         "data": {
+          "size": "12px"
+         }
+        }
+       ]
+      },
+      {
+       "text": "ij",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "addMark explicit range elsewhere": {
+  "returned": true,
+  "ops": [
+   {
+    "type": "split_node",
+    "path": [
+     0,
+     0
+    ],
+    "position": 3,
+    "properties": {
+     "marks": []
+    }
+   },
+   {
+    "type": "split_node",
+    "path": [
+     0,
+     0
+    ],
+    "position": 1,
+    "properties": {
+     "marks": []
+    }
+   },
+   {
+    "type": "add_mark",
+    "path": [
+     0,
+     1
+    ],
+    "mark": {
+     "type": "bold",
+     "data": {}
+    }
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       1,
+       0
+      ],
+      "offset": 2
+     },
+     "focus": {
+      "path": [
+       1,
+       0
+      ],
+      "offset": 2
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": [
+   {
+    "type": "italic",
+    "data": {}
+   }
+  ],
+  "rejected": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "a",
+       "marks": []
+      },
+      {
+       "text": "bc",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "d",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "efgh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "addMark explicit collapsed range": {
+  "returned": true,
+  "ops": [],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       1,
+       0
+      ],
+      "offset": 2
+     },
+     "focus": {
+      "path": [
+       1,
+       0
+      ],
+      "offset": 2
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "rejected": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "abcd",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "efgh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "addMark explicit range, no selection": {
+  "returned": true,
+  "ops": [
+   {
+    "type": "split_node",
+    "path": [
+     1,
+     0
+    ],
+    "position": 3,
+    "properties": {
+     "marks": []
+    }
+   },
+   {
+    "type": "add_mark",
+    "path": [
+     1,
+     0
+    ],
+    "mark": {
+     "type": "bold",
+     "data": {}
+    }
+   },
+   {
+    "type": "split_node",
+    "path": [
+     0,
+     0
+    ],
+    "position": 1,
+    "properties": {
+     "marks": []
+    }
+   },
+   {
+    "type": "add_mark",
+    "path": [
+     0,
+     1
+    ],
+    "mark": {
+     "type": "bold",
+     "data": {}
+    }
+   }
+  ],
+  "selection": null,
+  "storedMarks": null,
+  "rejected": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "a",
+       "marks": []
+      },
+      {
+       "text": "bcd",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "efg",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "h",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "addMark no selection": {
+  "returned": false,
+  "ops": [],
+  "selection": null,
+  "storedMarks": null,
+  "rejected": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "abcd",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "efgh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "addMark unknown type": {
+  "returned": false,
+  "ops": [],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 1
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 3
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "rejected": "Unknown mark type \"nope\"",
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "abcd",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "efgh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "addMark invalid data": {
+  "returned": false,
+  "ops": [],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 1
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 3
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "rejected": "Invalid string: must match pattern /^\\d+px$/",
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "abcd",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "efgh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "addMark on a node selection": {
+  "returned": true,
+  "ops": [],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2
+     },
+     "node": [
+      1
+     ]
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": [
+   {
+    "type": "bold",
+    "data": {}
+   }
+  ],
+  "rejected": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "atom",
+     "data": {},
+     "children": []
+    },
+    {
+     "id": "id2",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "cd",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "addMark (tr method)": {
+  "returned": "tr",
+  "ops": [
+   {
+    "type": "split_node",
+    "path": [
+     0,
+     0
+    ],
+    "position": 3,
+    "properties": {
+     "marks": []
+    }
+   },
+   {
+    "type": "split_node",
+    "path": [
+     0,
+     0
+    ],
+    "position": 1,
+    "properties": {
+     "marks": []
+    }
+   },
+   {
+    "type": "add_mark",
+    "path": [
+     0,
+     1
+    ],
+    "mark": {
+     "type": "bold",
+     "data": {}
+    }
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       1
+      ],
+      "offset": 0
+     },
+     "focus": {
+      "path": [
+       0,
+       2
+      ],
+      "offset": 0
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "rejected": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "a",
+       "marks": []
+      },
+      {
+       "text": "bc",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "d",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "efgh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "removeMark over part of a text": {
+  "returned": true,
+  "ops": [
+   {
+    "type": "split_node",
+    "path": [
+     0,
+     2
+    ],
+    "position": 1,
+    "properties": {
+     "marks": [
+      {
+       "type": "bold",
+       "data": {}
+      },
+      {
+       "type": "italic",
+       "data": {}
+      }
+     ]
+    }
+   },
+   {
+    "type": "remove_mark",
+    "path": [
+     0,
+     2
+    ],
+    "mark": {
+     "type": "bold",
+     "data": {}
+    }
+   },
+   {
+    "type": "split_node",
+    "path": [
+     0,
+     1
+    ],
+    "position": 1,
+    "properties": {
+     "marks": [
+      {
+       "type": "bold",
+       "data": {}
+      }
+     ]
+    }
+   },
+   {
+    "type": "remove_mark",
+    "path": [
+     0,
+     2
+    ],
+    "mark": {
+     "type": "bold",
+     "data": {}
+    }
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       2
+      ],
+      "offset": 0
+     },
+     "focus": {
+      "path": [
+       0,
+       4
+      ],
+      "offset": 0
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "rejected": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      },
+      {
+       "text": "c",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "d",
+       "marks": []
+      },
+      {
+       "text": "e",
+       "marks": [
+        {
+         "type": "italic",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "f",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        },
+        {
+         "type": "italic",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": [
+        {
+         "type": "fontSize",
+         "data": {
+          "size": "12px"
+         }
+        }
+       ]
+      },
+      {
+       "text": "ij",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "removeMark cross-block": {
+  "returned": true,
+  "ops": [
+   {
+    "type": "split_node",
+    "path": [
+     1,
+     0
+    ],
+    "position": 1,
+    "properties": {
+     "marks": [
+      {
+       "type": "fontSize",
+       "data": {
+        "size": "12px"
+       }
+      }
+     ]
+    }
+   },
+   {
+    "type": "remove_mark",
+    "path": [
+     1,
+     0
+    ],
+    "mark": {
+     "type": "fontSize",
+     "data": {
+      "size": "12px"
+     }
+    }
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 1
+     },
+     "focus": {
+      "path": [
+       1,
+       1
+      ],
+      "offset": 0
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "rejected": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      },
+      {
+       "text": "cd",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        },
+        {
+         "type": "italic",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "g",
+       "marks": []
+      },
+      {
+       "text": "h",
+       "marks": [
+        {
+         "type": "fontSize",
+         "data": {
+          "size": "12px"
+         }
+        }
+       ]
+      },
+      {
+       "text": "ij",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "removeMark absent": {
+  "returned": true,
+  "ops": [],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 1
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 3
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "rejected": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "abcd",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "efgh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "removeMark at a caret stores": {
+  "returned": true,
+  "ops": [],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       2
+      ],
+      "offset": 1
+     },
+     "focus": {
+      "path": [
+       0,
+       2
+      ],
+      "offset": 1
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": [
+   {
+    "type": "italic",
+    "data": {}
+   }
+  ],
+  "rejected": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      },
+      {
+       "text": "cd",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        },
+        {
+         "type": "italic",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": [
+        {
+         "type": "fontSize",
+         "data": {
+          "size": "12px"
+         }
+        }
+       ]
+      },
+      {
+       "text": "ij",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "removeMark at a caret with stored marks": {
+  "returned": true,
+  "ops": [],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 1
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 1
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": [
+   {
+    "type": "bold",
+    "data": {}
+   }
+  ],
+  "rejected": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "abcd",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "efgh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "removeMark explicit range elsewhere": {
+  "returned": true,
+  "ops": [
+   {
+    "type": "split_node",
+    "path": [
+     0,
+     2
+    ],
+    "position": 1,
+    "properties": {
+     "marks": [
+      {
+       "type": "bold",
+       "data": {}
+      },
+      {
+       "type": "italic",
+       "data": {}
+      }
+     ]
+    }
+   },
+   {
+    "type": "remove_mark",
+    "path": [
+     0,
+     2
+    ],
+    "mark": {
+     "type": "bold",
+     "data": {}
+    }
+   },
+   {
+    "type": "remove_mark",
+    "path": [
+     0,
+     1
+    ],
+    "mark": {
+     "type": "bold",
+     "data": {}
+    }
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       1,
+       1
+      ],
+      "offset": 1
+     },
+     "focus": {
+      "path": [
+       1,
+       1
+      ],
+      "offset": 1
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": [
+   {
+    "type": "italic",
+    "data": {}
+   }
+  ],
+  "rejected": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      },
+      {
+       "text": "cd",
+       "marks": []
+      },
+      {
+       "text": "e",
+       "marks": [
+        {
+         "type": "italic",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "f",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        },
+        {
+         "type": "italic",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": [
+        {
+         "type": "fontSize",
+         "data": {
+          "size": "12px"
+         }
+        }
+       ]
+      },
+      {
+       "text": "ij",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "removeMark explicit collapsed range": {
+  "returned": true,
+  "ops": [],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       1,
+       1
+      ],
+      "offset": 1
+     },
+     "focus": {
+      "path": [
+       1,
+       1
+      ],
+      "offset": 1
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "rejected": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      },
+      {
+       "text": "cd",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        },
+        {
+         "type": "italic",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": [
+        {
+         "type": "fontSize",
+         "data": {
+          "size": "12px"
+         }
+        }
+       ]
+      },
+      {
+       "text": "ij",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "removeMark no selection": {
+  "returned": false,
+  "ops": [],
+  "selection": null,
+  "storedMarks": null,
+  "rejected": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      },
+      {
+       "text": "cd",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        },
+        {
+         "type": "italic",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": [
+        {
+         "type": "fontSize",
+         "data": {
+          "size": "12px"
+         }
+        }
+       ]
+      },
+      {
+       "text": "ij",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "removeMark (tr method)": {
+  "returned": "tr",
+  "ops": [
+   {
+    "type": "split_node",
+    "path": [
+     0,
+     2
+    ],
+    "position": 1,
+    "properties": {
+     "marks": [
+      {
+       "type": "bold",
+       "data": {}
+      },
+      {
+       "type": "italic",
+       "data": {}
+      }
+     ]
+    }
+   },
+   {
+    "type": "remove_mark",
+    "path": [
+     0,
+     2
+    ],
+    "mark": {
+     "type": "bold",
+     "data": {}
+    }
+   },
+   {
+    "type": "split_node",
+    "path": [
+     0,
+     1
+    ],
+    "position": 1,
+    "properties": {
+     "marks": [
+      {
+       "type": "bold",
+       "data": {}
+      }
+     ]
+    }
+   },
+   {
+    "type": "remove_mark",
+    "path": [
+     0,
+     2
+    ],
+    "mark": {
+     "type": "bold",
+     "data": {}
+    }
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       2
+      ],
+      "offset": 0
+     },
+     "focus": {
+      "path": [
+       0,
+       4
+      ],
+      "offset": 0
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "rejected": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      },
+      {
+       "text": "c",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "d",
+       "marks": []
+      },
+      {
+       "text": "e",
+       "marks": [
+        {
+         "type": "italic",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "f",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        },
+        {
+         "type": "italic",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": [
+        {
+         "type": "fontSize",
+         "data": {
+          "size": "12px"
+         }
+        }
+       ]
+      },
+      {
+       "text": "ij",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "toggleMark adds over a range": {
+  "returned": true,
+  "ops": [
+   {
+    "type": "split_node",
+    "path": [
+     0,
+     0
+    ],
+    "position": 3,
+    "properties": {
+     "marks": []
+    }
+   },
+   {
+    "type": "split_node",
+    "path": [
+     0,
+     0
+    ],
+    "position": 1,
+    "properties": {
+     "marks": []
+    }
+   },
+   {
+    "type": "add_mark",
+    "path": [
+     0,
+     1
+    ],
+    "mark": {
+     "type": "bold",
+     "data": {}
+    }
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       1
+      ],
+      "offset": 0
+     },
+     "focus": {
+      "path": [
+       0,
+       2
+      ],
+      "offset": 0
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "rejected": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "a",
+       "marks": []
+      },
+      {
+       "text": "bc",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "d",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "efgh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "toggleMark removes over a range": {
+  "returned": true,
+  "ops": [
+   {
+    "type": "remove_mark",
+    "path": [
+     0,
+     2
+    ],
+    "mark": {
+     "type": "bold",
+     "data": {}
+    }
+   },
+   {
+    "type": "remove_mark",
+    "path": [
+     0,
+     1
+    ],
+    "mark": {
+     "type": "bold",
+     "data": {}
+    }
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       1
+      ],
+      "offset": 0
+     },
+     "focus": {
+      "path": [
+       0,
+       2
+      ],
+      "offset": 2
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "rejected": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      },
+      {
+       "text": "cd",
+       "marks": []
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "italic",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": [
+        {
+         "type": "fontSize",
+         "data": {
+          "size": "12px"
+         }
+        }
+       ]
+      },
+      {
+       "text": "ij",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "toggleMark adds over a partly marked range": {
+  "returned": true,
+  "ops": [
+   {
+    "type": "split_node",
+    "path": [
+     0,
+     0
+    ],
+    "position": 1,
+    "properties": {
+     "marks": []
+    }
+   },
+   {
+    "type": "add_mark",
+    "path": [
+     0,
+     1
+    ],
+    "mark": {
+     "type": "bold",
+     "data": {}
+    }
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       1
+      ],
+      "offset": 0
+     },
+     "focus": {
+      "path": [
+       0,
+       2
+      ],
+      "offset": 1
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "rejected": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "a",
+       "marks": []
+      },
+      {
+       "text": "b",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "cd",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        },
+        {
+         "type": "italic",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": [
+        {
+         "type": "fontSize",
+         "data": {
+          "size": "12px"
+         }
+        }
+       ]
+      },
+      {
+       "text": "ij",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "toggleMark with data, other data present": {
+  "returned": true,
+  "ops": [
+   {
+    "type": "remove_mark",
+    "path": [
+     1,
+     0
+    ],
+    "mark": {
+     "type": "fontSize",
+     "data": {
+      "size": "12px"
+     }
+    }
+   },
+   {
+    "type": "add_mark",
+    "path": [
+     1,
+     0
+    ],
+    "mark": {
+     "type": "fontSize",
+     "data": {
+      "size": "20px"
+     }
+    }
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       1,
+       0
+      ],
+      "offset": 0
+     },
+     "focus": {
+      "path": [
+       1,
+       0
+      ],
+      "offset": 2
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "rejected": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      },
+      {
+       "text": "cd",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        },
+        {
+         "type": "italic",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": [
+        {
+         "type": "fontSize",
+         "data": {
+          "size": "20px"
+         }
+        }
+       ]
+      },
+      {
+       "text": "ij",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "toggleMark with data, same data": {
+  "returned": true,
+  "ops": [
+   {
+    "type": "remove_mark",
+    "path": [
+     1,
+     0
+    ],
+    "mark": {
+     "type": "fontSize",
+     "data": {
+      "size": "12px"
+     }
+    }
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       1,
+       0
+      ],
+      "offset": 0
+     },
+     "focus": {
+      "path": [
+       1,
+       0
+      ],
+      "offset": 2
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "rejected": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      },
+      {
+       "text": "cd",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        },
+        {
+         "type": "italic",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": []
+      },
+      {
+       "text": "ij",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "toggleMark at a caret in plain text": {
+  "returned": true,
+  "ops": [],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 1
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 1
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": [
+   {
+    "type": "bold",
+    "data": {}
+   }
+  ],
+  "rejected": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      },
+      {
+       "text": "cd",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        },
+        {
+         "type": "italic",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": [
+        {
+         "type": "fontSize",
+         "data": {
+          "size": "12px"
+         }
+        }
+       ]
+      },
+      {
+       "text": "ij",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "toggleMark at a caret in bold text": {
+  "returned": true,
+  "ops": [],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       1
+      ],
+      "offset": 1
+     },
+     "focus": {
+      "path": [
+       0,
+       1
+      ],
+      "offset": 1
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": [],
+  "rejected": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      },
+      {
+       "text": "cd",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        },
+        {
+         "type": "italic",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": [
+        {
+         "type": "fontSize",
+         "data": {
+          "size": "12px"
+         }
+        }
+       ]
+      },
+      {
+       "text": "ij",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "toggleMark at a caret, caret rule at offset 0": {
+  "returned": true,
+  "ops": [],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       2
+      ],
+      "offset": 0
+     },
+     "focus": {
+      "path": [
+       0,
+       2
+      ],
+      "offset": 0
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": [
+   {
+    "type": "bold",
+    "data": {}
+   },
+   {
+    "type": "italic",
+    "data": {}
+   }
+  ],
+  "rejected": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      },
+      {
+       "text": "cd",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        },
+        {
+         "type": "italic",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": [
+        {
+         "type": "fontSize",
+         "data": {
+          "size": "12px"
+         }
+        }
+       ]
+      },
+      {
+       "text": "ij",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "toggleMark at a caret with stored marks": {
+  "returned": true,
+  "ops": [],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       1
+      ],
+      "offset": 1
+     },
+     "focus": {
+      "path": [
+       0,
+       1
+      ],
+      "offset": 1
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": [],
+  "rejected": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      },
+      {
+       "text": "cd",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        },
+        {
+         "type": "italic",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": [
+        {
+         "type": "fontSize",
+         "data": {
+          "size": "12px"
+         }
+        }
+       ]
+      },
+      {
+       "text": "ij",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "toggleMark at a caret with empty stored marks": {
+  "returned": true,
+  "ops": [],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       1
+      ],
+      "offset": 1
+     },
+     "focus": {
+      "path": [
+       0,
+       1
+      ],
+      "offset": 1
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": [
+   {
+    "type": "bold",
+    "data": {}
+   }
+  ],
+  "rejected": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      },
+      {
+       "text": "cd",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        },
+        {
+         "type": "italic",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": [
+        {
+         "type": "fontSize",
+         "data": {
+          "size": "12px"
+         }
+        }
+       ]
+      },
+      {
+       "text": "ij",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "toggleMark on a node selection": {
+  "returned": true,
+  "ops": [],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2
+     },
+     "node": [
+      1
+     ]
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": [
+   {
+    "type": "bold",
+    "data": {}
+   }
+  ],
+  "rejected": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "atom",
+     "data": {},
+     "children": []
+    },
+    {
+     "id": "id2",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "cd",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "toggleMark no selection": {
+  "returned": false,
+  "ops": [],
+  "selection": null,
+  "storedMarks": null,
+  "rejected": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "abcd",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "efgh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "toggleMark unknown type": {
+  "returned": false,
+  "ops": [],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 1
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 1
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "rejected": "Unknown mark type \"nope\"",
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "abcd",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "efgh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "toggleMark invalid data": {
+  "returned": false,
+  "ops": [],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 1
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 1
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "rejected": "Invalid string: must match pattern /^\\d+px$/",
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "abcd",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "efgh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "toggleMark (tr method)": {
+  "returned": "tr",
+  "ops": [
+   {
+    "type": "remove_mark",
+    "path": [
+     0,
+     2
+    ],
+    "mark": {
+     "type": "bold",
+     "data": {}
+    }
+   },
+   {
+    "type": "remove_mark",
+    "path": [
+     0,
+     1
+    ],
+    "mark": {
+     "type": "bold",
+     "data": {}
+    }
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       1
+      ],
+      "offset": 0
+     },
+     "focus": {
+      "path": [
+       0,
+       2
+      ],
+      "offset": 2
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "rejected": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      },
+      {
+       "text": "cd",
+       "marks": []
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "italic",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": [
+        {
+         "type": "fontSize",
+         "data": {
+          "size": "12px"
+         }
+        }
+       ]
+      },
+      {
+       "text": "ij",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "isMarkActive over a fully marked range": {
+  "returned": true,
+  "ops": [],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       1
+      ],
+      "offset": 0
+     },
+     "focus": {
+      "path": [
+       0,
+       2
+      ],
+      "offset": 2
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "rejected": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      },
+      {
+       "text": "cd",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        },
+        {
+         "type": "italic",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": [
+        {
+         "type": "fontSize",
+         "data": {
+          "size": "12px"
+         }
+        }
+       ]
+      },
+      {
+       "text": "ij",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "isMarkActive over a partly marked range": {
+  "returned": false,
+  "ops": [],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 1
+     },
+     "focus": {
+      "path": [
+       0,
+       1
+      ],
+      "offset": 1
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "rejected": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      },
+      {
+       "text": "cd",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        },
+        {
+         "type": "italic",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": [
+        {
+         "type": "fontSize",
+         "data": {
+          "size": "12px"
+         }
+        }
+       ]
+      },
+      {
+       "text": "ij",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "isMarkActive with data": {
+  "returned": [
+   true,
+   false
+  ],
+  "ops": [],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       1,
+       0
+      ],
+      "offset": 0
+     },
+     "focus": {
+      "path": [
+       1,
+       0
+      ],
+      "offset": 1
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "rejected": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      },
+      {
+       "text": "cd",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        },
+        {
+         "type": "italic",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": [
+        {
+         "type": "fontSize",
+         "data": {
+          "size": "12px"
+         }
+        }
+       ]
+      },
+      {
+       "text": "ij",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "isMarkActive at a caret": {
+  "returned": [
+   true,
+   false
+  ],
+  "ops": [],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       2
+      ],
+      "offset": 0
+     },
+     "focus": {
+      "path": [
+       0,
+       2
+      ],
+      "offset": 0
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "rejected": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      },
+      {
+       "text": "cd",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        },
+        {
+         "type": "italic",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": [
+        {
+         "type": "fontSize",
+         "data": {
+          "size": "12px"
+         }
+        }
+       ]
+      },
+      {
+       "text": "ij",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "isMarkActive at a caret with stored marks": {
+  "returned": [
+   false,
+   true
+  ],
+  "ops": [],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 1
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 1
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": [
+   {
+    "type": "italic",
+    "data": {}
+   }
+  ],
+  "rejected": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      },
+      {
+       "text": "cd",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        },
+        {
+         "type": "italic",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": [
+        {
+         "type": "fontSize",
+         "data": {
+          "size": "12px"
+         }
+        }
+       ]
+      },
+      {
+       "text": "ij",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "isMarkActive over a block boundary only": {
+  "returned": true,
+  "ops": [],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       2
+      ],
+      "offset": 2
+     },
+     "focus": {
+      "path": [
+       1,
+       0
+      ],
+      "offset": 0
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "rejected": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      },
+      {
+       "text": "cd",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        },
+        {
+         "type": "italic",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": [
+        {
+         "type": "fontSize",
+         "data": {
+          "size": "12px"
+         }
+        }
+       ]
+      },
+      {
+       "text": "ij",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "isMarkActive no selection": {
+  "returned": false,
+  "ops": [],
+  "selection": null,
+  "storedMarks": null,
+  "rejected": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      },
+      {
+       "text": "cd",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        },
+        {
+         "type": "italic",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": [
+        {
+         "type": "fontSize",
+         "data": {
+          "size": "12px"
+         }
+        }
+       ]
+      },
+      {
+       "text": "ij",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "marksAt a caret": {
+  "returned": [
+   {
+    "type": "bold",
+    "data": {}
+   },
+   {
+    "type": "italic",
+    "data": {}
+   }
+  ],
+  "ops": [],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       2
+      ],
+      "offset": 1
+     },
+     "focus": {
+      "path": [
+       0,
+       2
+      ],
+      "offset": 1
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "rejected": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      },
+      {
+       "text": "cd",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        },
+        {
+         "type": "italic",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": [
+        {
+         "type": "fontSize",
+         "data": {
+          "size": "12px"
+         }
+        }
+       ]
+      },
+      {
+       "text": "ij",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "marksAt a backward range": {
+  "returned": [
+   {
+    "type": "bold",
+    "data": {}
+   }
+  ],
+  "ops": [],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       2
+      ],
+      "offset": 1
+     },
+     "focus": {
+      "path": [
+       0,
+       1
+      ],
+      "offset": 1
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "rejected": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      },
+      {
+       "text": "cd",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        },
+        {
+         "type": "italic",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": [
+        {
+         "type": "fontSize",
+         "data": {
+          "size": "12px"
+         }
+        }
+       ]
+      },
+      {
+       "text": "ij",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "marksAt with stored marks": {
+  "returned": [
+   {
+    "type": "bold",
+    "data": {}
+   }
+  ],
+  "ops": [],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       2
+      ],
+      "offset": 1
+     },
+     "focus": {
+      "path": [
+       0,
+       2
+      ],
+      "offset": 1
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": [
+   {
+    "type": "bold",
+    "data": {}
+   }
+  ],
+  "rejected": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      },
+      {
+       "text": "cd",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        },
+        {
+         "type": "italic",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": [
+        {
+         "type": "fontSize",
+         "data": {
+          "size": "12px"
+         }
+        }
+       ]
+      },
+      {
+       "text": "ij",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "marksAt no selection": {
+  "returned": [],
+  "ops": [],
+  "selection": null,
+  "storedMarks": null,
+  "rejected": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      },
+      {
+       "text": "cd",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        },
+        {
+         "type": "italic",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": [
+        {
+         "type": "fontSize",
+         "data": {
+          "size": "12px"
+         }
+        }
+       ]
+      },
+      {
+       "text": "ij",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "marksOfRange": {
+  "returned": [
+   [
+    {
+     "type": "bold",
+     "data": {}
+    }
+   ],
+   null
+  ],
+  "ops": [],
+  "selection": null,
+  "storedMarks": null,
+  "rejected": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "id0",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      },
+      {
+       "text": "cd",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "ef",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        },
+        {
+         "type": "italic",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "id1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "gh",
+       "marks": [
+        {
+         "type": "fontSize",
+         "data": {
+          "size": "12px"
+         }
+        }
+       ]
+      },
+      {
+       "text": "ij",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ }
+}

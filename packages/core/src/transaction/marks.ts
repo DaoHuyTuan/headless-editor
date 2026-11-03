@@ -1,13 +1,20 @@
 import { editableTextEntries, type NodeTypes } from '../model/editable'
 import { deepEqualJson, getNode, isText, textEntries } from '../model/node'
 import { comparePoint, nextPath, parentPath } from '../model/path'
-import { mainRange, single } from '../model/selection'
+import { single } from '../model/selection'
 import type { Data, DeepReadonly, Doc, Json, Mark, Path, Point, Range, SelectionRange, TextNode } from '../model/types'
+import { transformRange } from '../ops/transform'
 import type { Registry } from '../plugin/registry'
 import type { EditorState } from '../state'
+import { currentRange, inForEachRange } from './ranges'
 import type { Transaction } from './transaction'
 
-/** Mark algorithms. Each records its changes as operations on `tr` and returns whether it applied. */
+/**
+ * Mark algorithms. Each records its changes as operations on `tr` and returns whether it applied.
+ *
+ * With several selection ranges (spec §5.4): the edits act on every range, the queries are true only
+ * when every range has the mark, and the stored marks are one set for the whole selection.
+ */
 
 /** The parts of a state the mark queries read (an `EditorState` or a transaction's current view). */
 export type MarkStateView = Pick<EditorState, 'doc' | 'selection' | 'storedMarks'>
@@ -55,11 +62,24 @@ function marksAtPoint(doc: DeepReadonly<Doc>, point: Point): Mark[] {
   return node.marks
 }
 
-/** `storedMarks`, else the marks of the text at the selection start (see `marksAtPoint`). */
+/**
+ * The marks every range's start caret has (see `marksAtPoint`), in the first range's order. One
+ * range: its caret's marks.
+ */
+function sharedMarks(doc: DeepReadonly<Doc>, ranges: readonly SelectionRange[]): Mark[] {
+  const [first = [], ...rest] = ranges.map((r) => marksAtPoint(doc, ordered(r).start))
+  return first.filter((m) => rest.every((ms) => ms.some((x) => x.type === m.type && deepEqualJson(x.data, m.data))))
+}
+
+/**
+ * `storedMarks`, else the marks of the text at the selection start (see `marksAtPoint`). With several
+ * ranges, the marks every range's start has (the stored marks are one set for the whole selection,
+ * so a mark only some carets have is not carried to the others).
+ */
 export function marksAt(state: MarkStateView): Mark[] {
   if (state.storedMarks) return state.storedMarks
   if (!state.selection) return []
-  return marksAtPoint(state.doc, ordered(mainRange(state.selection)).start)
+  return sharedMarks(state.doc, state.selection.ranges)
 }
 
 /** Marks for text inserted at `point` in `tr`: stored marks, else `marksAt` that caret. */
@@ -98,15 +118,29 @@ export function marksOfRange(doc: DeepReadonly<Doc>, range: Range | SelectionRan
 }
 
 /**
- * Collapsed (or covering no characters) → `marksAt`; a range → every text with at least one
- * covered character has a matching mark. Pass the editor's `registry` to ignore texts inside
- * unknown elements and atoms (which are not editable).
+ * True when every selection range has the mark. Per range: collapsed (or covering no characters) →
+ * the stored marks, else the marks of the text at its start (`marksAtPoint`); otherwise every text
+ * with at least one covered character has a matching mark. Pass the editor's `registry` to ignore
+ * texts inside unknown elements and atoms (which are not editable).
  */
 export function isMarkActive(state: MarkStateView, type: string, data?: Partial<Data>, registry?: NodeTypes): boolean {
   const sel = state.selection
   if (!sel) return false
-  const covered = coveredTexts(state.doc, ordered(mainRange(sel)), registry)
-  if (covered.length === 0) return marksAt(state).some((m) => matches(m, type, data))
+  return sel.ranges.every((range) => rangeHasMark(state, range, type, data, registry))
+}
+
+function rangeHasMark(
+  state: MarkStateView,
+  range: SelectionRange,
+  type: string,
+  data: Partial<Data> | undefined,
+  registry: NodeTypes | undefined,
+): boolean {
+  const covered = coveredTexts(state.doc, ordered(range), registry)
+  if (covered.length === 0) {
+    const marks = state.storedMarks ?? marksAtPoint(state.doc, ordered(range).start)
+    return marks.some((m) => matches(m, type, data))
+  }
   return covered.every((c) => c.node.marks.some((m) => matches(m, type, data)))
 }
 
@@ -153,70 +187,130 @@ function validated(tr: Transaction, type: string, data: unknown): Mark | null {
   return { type, data: result.data }
 }
 
-/** The range to act on: `range` (ordered), else the selection. Null without either. */
-function targetRange(tr: Transaction, range?: Range): Range | null {
-  if (range) return ordered(range)
-  return tr.selection ? ordered(mainRange(tr.selection)) : null
-}
-
-/** Updates stored marks at the caret, starting from `marksAt`. */
-function updateStored(tr: Transaction, update: (marks: Mark[]) => Mark[]): void {
-  tr.setStoredMarks(sortMarks(update(marksAt(trView(tr))), tr.registry))
+/** `range` mapped through the doc ops `tr` got since `from` (null when one of its points was removed). */
+function mapSince(tr: Transaction, range: SelectionRange, from: number): SelectionRange | null {
+  let out: SelectionRange | null = range
+  for (const op of tr.ops.slice(from)) {
+    if (!out) break
+    if (op.type !== 'set_selection') out = transformRange(out, op)
+  }
+  return out
 }
 
 /**
- * Adds `mark` over the range (default: the selection), replacing a mark of the same type with
- * different data. Without an explicit range, a collapsed selection updates the stored marks.
+ * The selection ranges a no-range mark edit acts on: every range; inside a `forEachRange` callback,
+ * the callback's range (a no-range call there throws in dev mode: it would act once per callback).
+ * Null when there is none.
+ */
+function selectionTargets(tr: Transaction): readonly SelectionRange[] | null {
+  if (inForEachRange(tr)) {
+    if (tr.dev) throw new Error('Inside forEachRange, pass the callback range to tr editing methods')
+    const live = currentRange(tr)
+    return live ? [live] : null
+  }
+  return tr.selection ? tr.selection.ranges : null
+}
+
+/**
+ * Runs a mark edit (spec §5.2, §5.4) and returns whether it had a target:
+ * - `range`: `span` there only (nothing when collapsed). The selection ranges are not set, only
+ *   mapped through the ops (inside a `forEachRange` callback too);
+ * - no `range`: `span` at every non-collapsed selection range (in document order, each mapped
+ *   through the earlier ones' ops), and `carets` once with the collapsed ones (the stored marks are
+ *   one set for the whole selection). The selection is not set.
+ */
+function eachTarget(
+  tr: Transaction,
+  range: Range | undefined,
+  span: (target: Range) => void,
+  carets: (ranges: readonly SelectionRange[]) => void,
+): boolean {
+  if (range) {
+    const target = ordered(range)
+    if (!isCollapsedRange(target)) span(target)
+    return true
+  }
+  const ranges = selectionTargets(tr)
+  if (!ranges) return false
+  const collapsed = ranges.filter((r) => isCollapsedRange(ordered(r)))
+  if (collapsed.length > 0) carets(collapsed)
+  const from = tr.ops.length
+  for (const r of ranges) {
+    if (isCollapsedRange(ordered(r))) continue
+    const mapped = mapSince(tr, r, from)
+    if (mapped) span(ordered(mapped))
+  }
+  return true
+}
+
+/**
+ * Updates the stored marks for the carets `ranges`, starting from the current stored marks, else the
+ * marks every caret shares (`sharedMarks`; one caret: `marksAt` it).
+ */
+function updateStored(tr: Transaction, ranges: readonly SelectionRange[], update: (marks: Mark[]) => Mark[]): void {
+  tr.setStoredMarks(sortMarks(update(tr.storedMarks ?? sharedMarks(tr.doc, ranges)), tr.registry))
+}
+
+/**
+ * Adds `mark` over the range (default: every selection range), replacing a mark of the same type
+ * with different data. Without an explicit range, collapsed selection ranges update the stored
+ * marks (once, for all of them).
  */
 export function addMark(tr: Transaction, mark: Mark, range?: Range): boolean {
   const valid = validated(tr, mark.type, mark.data)
   if (!valid) return false
-  const target = targetRange(tr, range)
-  if (!target) return false
-  if (isCollapsedRange(target)) {
-    if (!range) updateStored(tr, (marks) => [...marks.filter((m) => m.type !== valid.type), valid])
-    return true
-  }
-  eachCoveredSpan(
+  return eachTarget(
     tr,
-    target,
-    (node) => !node.marks.some((m) => m.type === valid.type && deepEqualJson(m.data, valid.data)),
-    (path, node) => {
-      const existing = node.marks.find((m) => m.type === valid.type)
-      if (existing) tr.apply({ type: 'remove_mark', path, mark: existing })
-      tr.apply({ type: 'add_mark', path, mark: valid })
-    },
+    range,
+    (target) =>
+      eachCoveredSpan(
+        tr,
+        target,
+        (node) => !node.marks.some((m) => m.type === valid.type && deepEqualJson(m.data, valid.data)),
+        (path, node) => {
+          const existing = node.marks.find((m) => m.type === valid.type)
+          if (existing) tr.apply({ type: 'remove_mark', path, mark: existing })
+          tr.apply({ type: 'add_mark', path, mark: valid })
+        },
+      ),
+    (carets) => updateStored(tr, carets, (marks) => [...marks.filter((m) => m.type !== valid.type), valid]),
   )
-  return true
-}
-
-/** Removes marks of `type` over the range (default: the selection; collapsed → stored marks). */
-export function removeMark(tr: Transaction, type: string, range?: Range): boolean {
-  const target = targetRange(tr, range)
-  if (!target) return false
-  if (isCollapsedRange(target)) {
-    if (!range) updateStored(tr, (marks) => marks.filter((m) => m.type !== type))
-    return true
-  }
-  eachCoveredSpan(
-    tr,
-    target,
-    (node) => node.marks.some((m) => m.type === type),
-    (path, node) => {
-      for (const m of node.marks.filter((x) => x.type === type).reverse()) tr.apply({ type: 'remove_mark', path, mark: m })
-    },
-  )
-  return true
 }
 
 /**
- * Removes the mark when it is active on the whole selection, else adds `{ type, data }`.
- * A collapsed selection toggles it in the stored marks.
+ * Removes marks of `type` over the range (default: every selection range; collapsed ones → the
+ * stored marks, once).
+ */
+export function removeMark(tr: Transaction, type: string, range?: Range): boolean {
+  return eachTarget(
+    tr,
+    range,
+    (target) =>
+      eachCoveredSpan(
+        tr,
+        target,
+        (node) => node.marks.some((m) => m.type === type),
+        (path, node) => {
+          for (const m of node.marks.filter((x) => x.type === type).reverse())
+            tr.apply({ type: 'remove_mark', path, mark: m })
+        },
+      ),
+    (carets) => updateStored(tr, carets, (marks) => marks.filter((m) => m.type !== type)),
+  )
+}
+
+/**
+ * Removes the mark when it is active on every selection range (`isMarkActive`), else adds
+ * `{ type, data }` at every range. The direction is decided once, over all ranges, before any edit;
+ * collapsed ranges toggle it in the stored marks. Inside a `forEachRange` callback it throws in dev
+ * mode (use `addMark`/`removeMark` with the callback's range); otherwise it toggles at that range.
  */
 export function toggleMark(tr: Transaction, type: string, data?: Data): boolean {
   const valid = validated(tr, type, data ?? {})
   if (!valid) return false
-  if (!tr.selection) return false
-  const active = isMarkActive(trView(tr), type, data, tr.registry)
+  const ranges = selectionTargets(tr)
+  if (!ranges) return false
+  const view = trView(tr)
+  const active = ranges.every((range) => rangeHasMark(view, range, type, data, tr.registry))
   return active ? removeMark(tr, type) : addMark(tr, valid)
 }
