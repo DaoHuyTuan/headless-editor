@@ -365,3 +365,40 @@ describe('normalize: rule 11 on the editing paths that join text with newlines',
     expect(e.getHTML()).toBe('<p>pxy</p><p>zq</p>')
   })
 })
+
+describe('normalize: rule 11 splits every newline of a block in one pass', () => {
+  it('splits newlines spread over several texts and an inline element in one fix, keeping order', () => {
+    const d = doc({ id: 'b', type: 'paragraph', data: {}, children: [txt('a\nb'), el('link', txt('c\nd\ne')), txt('f\ng', 'bold')] })
+    const tr = run(d)
+    expect(stripIds(tr.doc)).toEqual(
+      stripIds(
+        doc(
+          el('paragraph', txt('a')),
+          el('paragraph', txt('b'), el('link', txt('c')), txt('')),
+          el('paragraph', txt(''), el('link', txt('d')), txt('')),
+          el('paragraph', txt(''), el('link', txt('e')), txt('f', 'bold')),
+          el('paragraph', txt('g', 'bold')),
+        ),
+      ),
+    )
+    expect(tr.doc.children[0]!.id).toBe('b')
+    expect(new Set(tr.doc.children.map((b) => b.id)).size).toBe(5)
+    expect([...tr.ops].reverse().map(invertOp).reduce(applyOp, tr.doc)).toEqual(d)
+  })
+
+  it('splits a 2000-line paragraph in under 200 ms', () => {
+    const lines = Array.from({ length: 2000 }, (_, i) => `line ${i}`)
+    const content = doc(el('paragraph', txt(lines.join('\n'))))
+    const e = createTestEditor({ plugins: [testParagraph, testBold, testCode] })
+    e.setContent(content) // warm-up
+    let best = Infinity
+    for (let r = 0; r < 3; r++) {
+      const t0 = performance.now()
+      e.setContent(content)
+      best = Math.min(best, performance.now() - t0)
+    }
+    expect(e.state.doc.children).toHaveLength(2000)
+    expect(e.state.doc.children[1999]).toMatchObject({ type: 'paragraph', children: [{ text: 'line 1999' }] })
+    expect(best).toBeLessThan(200)
+  })
+})

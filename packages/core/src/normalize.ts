@@ -133,11 +133,12 @@ function fixElement(tr: Transaction, node: ElementNode, path: Path, options: Opt
   // Rule 11: `\n` is a line break only in `content: 'text'` blocks (HTML collapses it elsewhere, so it
   // would not round-trip). A `content: 'inline'` block holding one (e.g. joined with a code block's
   // text by Backspace, a range delete or a paste) is split there into a block of its type with a fresh
-  // id, and the `\n` removed. See `splitAtNewline`.
+  // id, and the `\n` removed. Every `\n` of the block is split in this one fix (see `splitAtNewlines`),
+  // so a many-line text costs one fix, not one restart from the root per line.
   if (spec.kind === 'block' && spec.content === 'inline') {
-    const at = firstNewline(node, path, registry)
-    if (at) {
-      splitAtNewline(tr, node, path, at)
+    const at = newlines(node, path, registry)
+    if (at.length > 0) {
+      splitAtNewlines(tr, node, path, at)
       return true
     }
   }
@@ -192,32 +193,37 @@ function fixElement(tr: Transaction, node: ElementNode, path: Path, options: Opt
   return false
 }
 
-/** The first `\n` in the editable texts of `node` (inside non-atom inline elements too, not in opaque ones). */
-function firstNewline(node: ElementNode, path: Path, registry: Registry): Point | null {
+/** Every `\n` in the editable texts of `node`, in document order (inside non-atom inline elements too, not in opaque ones). */
+function newlines(node: ElementNode, path: Path, registry: Registry, out: Point[] = []): Point[] {
   const kids = node.children ?? []
   for (let i = 0; i < kids.length; i++) {
     const c = kids[i]!
     if (isText(c)) {
-      const offset = c.text.indexOf('\n')
-      if (offset !== -1) return { path: [...path, i], offset }
+      for (let offset = c.text.indexOf('\n'); offset !== -1; offset = c.text.indexOf('\n', offset + 1)) {
+        out.push({ path: [...path, i], offset })
+      }
     } else if (registry.node(c.type)?.kind === 'inline' && !isOpaque(c, registry)) {
-      const found = firstNewline(c, [...path, i], registry)
-      if (found) return found
+      newlines(c, [...path, i], registry, out)
     }
   }
-  return null
+  return out
 }
 
 /**
- * Splits the block at `path` right after the `\n` at `at` (through any inline ancestors, which get
- * fresh ids; the new block gets a fresh id and the block's type and data, the first piece keeps the
- * id), then removes the `\n`, now at the end of the first piece. Marks stay on each piece; a caret
- * before the `\n` stays at the end of the first piece and one after it lands at the start of the new
- * block (points map forward through the split).
+ * Splits the block at `path` right after each `\n` of `at` (in document order), last to first so the
+ * earlier points stay valid: a split only moves content after its point, and each new block lands
+ * right after `path`, ahead of the pieces split off before it. Each split goes through any inline
+ * ancestors (which get fresh ids); each new block gets a fresh id and the block's type and data, and
+ * the first piece keeps the id. The `\n`, now at the end of the left piece, is then removed. Marks
+ * stay on each piece; a caret before a `\n` stays at the end of its line and one after it lands at
+ * the start of the next block (points map forward through the split).
  */
-function splitAtNewline(tr: Transaction, block: ElementNode, path: Path, at: Point): void {
-  splitBlockAt(tr, { path: at.path, offset: at.offset + 1 }, path, { id: createId(), type: block.type, data: block.data })
-  tr.apply({ type: 'remove_text', path: at.path, offset: at.offset, text: '\n' })
+function splitAtNewlines(tr: Transaction, block: ElementNode, path: Path, at: Point[]): void {
+  for (let k = at.length - 1; k >= 0; k--) {
+    const { path: textPath, offset } = at[k]!
+    splitBlockAt(tr, { path: textPath, offset: offset + 1 }, path, { id: createId(), type: block.type, data: block.data })
+    tr.apply({ type: 'remove_text', path: textPath, offset, text: '\n' })
+  }
 }
 
 /** Moves the children of the element at `at` out before it (selection points follow), then removes it. */
