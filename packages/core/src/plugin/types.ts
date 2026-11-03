@@ -1,9 +1,11 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
-import type { Data, DeepReadonly, ElementNode, Node, Path, Selection } from '../model/types'
+import type { Data, DeepReadonly, ElementNode, Node, Path, Range, Selection } from '../model/types'
 import type { Transaction } from '../transaction/transaction'
 import type { EditorState } from '../state'
 import type { Editor } from '../editor'
 import type { Fragment } from '../transaction/fragment'
+import type { EditorView } from '../view/view'
+import type { Decoration } from '../view/decorations'
 
 /** `0` marks the content hole. */
 export type DOMOutputSpec =
@@ -17,7 +19,7 @@ export type DOMOutputSpec =
 
 export interface MarkDOM {
   tag: string
-  attrs?: Record<string, string>
+  attrs?: Record<string, string | number | undefined>
   style?: Record<string, string>
 }
 
@@ -28,11 +30,31 @@ export interface ParseRule {
   getData?: (el: HTMLElement, styleValue?: string) => Data | false
 }
 
+/** What `transformPasted` gets besides the fragment. */
+export interface PasteInfo {
+  /** Where the fragment will be inserted (a drop's drop point); null for the selection. */
+  at: Selection | null
+}
+
 export interface InputIntent {
   inputType: string
   data: string | null
   range: Selection | null
   dataTransfer?: DataTransfer | null
+}
+
+/**
+ * A rule run after the core inserts text from an `insertText` intent (not composition, not paste).
+ * `match` is tested against the text of the caret's block from the start of its text run (an inline
+ * atom ends a run) to the caret; anchor it with `$` (a match not ending at the caret is ignored).
+ * `range` covers the matched text. Returning true applies the changes made on `tr`, dispatched as
+ * their own history step (so one undo reverts the rule and keeps the typed text), and stops the
+ * remaining rules; returning false discards `tr`.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export interface InputRule<Ctx = PluginContext<any, any, any, any>> {
+  match: RegExp
+  handler: (ctx: Ctx, match: RegExpMatchArray, range: Range, tr: Transaction) => boolean
 }
 
 export type Command = (props: { tr: Transaction; state: EditorState; editor: Editor }) => boolean
@@ -49,11 +71,18 @@ export type BoundCommands<C> = {
   [K in keyof C]: C[K] extends (...args: infer A) => Command ? (...args: A) => boolean : never
 }
 
-export interface PluginContext<O, S, C extends CommandMap = NoOptions> {
+export interface PluginContext<O, S, C extends CommandMap = NoOptions, T = unknown> {
   editor: Editor
   name: string
   readonly options: O
   getState(): S
+  /**
+   * This plugin's own storage (`editor.storage[name]`), typed from its `storage` factory.
+   * `undefined` until that factory has run: inside the factory itself, while the initial content is
+   * normalized, and when `commands` is called during construction (the functions it returns run later
+   * and see it). Set when `keymap` is called and from `onCreate` on.
+   */
+  readonly storage: T
   /**
    * This plugin's own commands, bound like `editor.commands` (fresh tr with origin `command`,
    * dispatched when it applies). Always this plugin's factories, even when a higher-priority
@@ -70,17 +99,18 @@ export interface NodeSpec {
 }
 
 /**
- * Marks render from their data only: `render(data)` must not read plugin options, and mark plugins
- * have no invalidation, so an options change never re-renders existing marked text.
+ * `render(data, { options })` gets the plugin's current options. When they change
+ * (`setPluginOptions`), the view re-renders the text that carries this mark.
  */
-export interface MarkSpec<D = Data> {
-  render: (data: D) => MarkDOM
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export interface MarkSpec<D = Data, O = any> {
+  render: (data: D, ctx: { options: O }) => MarkDOM
 }
 
 export type DOMEventName = 'keydown' | 'beforeinput' | 'input'
 
 /** What a node view gets: the current node, whether it is node-selected, and ways to read and change it. */
-export interface NodeViewProps<D = Data, O = unknown> {
+export interface NodeViewProps<D = Data, O = unknown, T = unknown, S = unknown> {
   /** The current model node. */
   node: DeepReadonly<ElementNode> & { readonly data: DeepReadonly<D> }
   /** Whether the node is node-selected. */
@@ -88,6 +118,14 @@ export interface NodeViewProps<D = Data, O = unknown> {
   editor: Editor
   /** The node plugin's current options. */
   options: O
+  /** The node plugin's storage (`editor.storage[type]`). */
+  storage: T
+  /**
+   * The node plugin's current state, read when accessed (a getter on the props object). A change of
+   * plugin state alone does not call `update`; a view that must re-render on it subscribes itself
+   * (in React, `usePluginState`).
+   */
+  readonly state: S
   /** The node's path in the current doc (looked up by id), or null when it is no longer in the doc. */
   getPos(): Path | null
   /**
@@ -95,24 +133,40 @@ export interface NodeViewProps<D = Data, O = unknown> {
    * False when the node is gone or the change was rejected.
    */
   updateData(partial: Partial<D>): boolean
+  /**
+   * For a non-atom node: the element the core renders the node's children into (`<div data-hte-content
+   * contenteditable="true">`, a `<span>` for an inline node). Created with the view and the same in
+   * every update. The view places it inside its own DOM, never under a `contenteditable="false"`
+   * element (see `NodeViewFactory`), and never changes it; the core owns it.
+   * Undefined for atoms.
+   */
+  contentDOM?: HTMLElement
 }
 
-export interface NodeViewInstance<D = Data, O = unknown> {
+export interface NodeViewInstance<D = Data, O = unknown, T = unknown, S = unknown> {
   /** Called when the node's data, its `selected` state or the plugin's options change. */
-  update(props: NodeViewProps<D, O>): void
+  update(props: NodeViewProps<D, O, T, S>): void
   /** Called once, when the node leaves the doc or the view is destroyed. */
   destroy(): void
 }
 
 /**
  * Renders a node into `container` (created by the renderer: `<div>` for a block, `<span>` for an
- * inline node, `contenteditable="false"`). Called once per element id; the container is never rebuilt
- * for a data change. Elements inside it marked `data-editor-ignore` are fully left to the view.
+ * inline node; `contenteditable="false"` for an atom). Called once per element id; the container is
+ * never rebuilt for a data change. Elements inside it marked `data-editor-ignore` are fully left to
+ * the view. A non-atom node's view gets `props.contentDOM` and places it in its DOM (synchronously or
+ * later, e.g. on a React commit). The elements on the path from the container down to `contentDOM`
+ * must stay editable (no `contenteditable` attribute): a `contenteditable="false"` ancestor would make
+ * `contentDOM` a separate editing host that the caret, selection extension and select-all do not
+ * cross (the editor warns). Only the view's elements beside that path (headers, labels) are marked
+ * `contenteditable="false"`, and its controls `data-editor-ignore`. Inside `contentDOM`, events,
+ * mutations, selection and composition are the editor's as in any block; outside it the atom rules
+ * apply (`stopEvent`, `ignoreMutation`).
  */
-export type NodeViewFactory<D = Data, O = unknown> = (
+export type NodeViewFactory<D = Data, O = unknown, T = unknown, S = unknown> = (
   container: HTMLElement,
-  props: NodeViewProps<D, O>,
-) => NodeViewInstance<D, O>
+  props: NodeViewProps<D, O, T, S>,
+) => NodeViewInstance<D, O, T, S>
 
 export interface PluginSpec<
   Name extends string = string,
@@ -126,41 +180,92 @@ export interface PluginSpec<
   /** Default 100; higher runs first. */
   priority?: number
   node?: NodeSpec
-  mark?: MarkSpec<D>
+  mark?: MarkSpec<D, O>
   data?: StandardSchemaV1<unknown, D>
   options?: O
-  /** Gets a context without `C` (its own commands) to avoid circular inference. */
+  /** Gets a context without `C` (its own commands) or `T` (`ctx.storage` is `unknown`) to avoid circular inference. */
   commands?: (ctx: PluginContext<O, S>) => C
-  keymap?: (ctx: PluginContext<O, S, C>) => Record<string, () => boolean>
-  onBeforeInput?: (intent: InputIntent, ctx: PluginContext<O, S, C>) => boolean
-  handleDOMEvents?: Partial<Record<DOMEventName, (event: Event, ctx: PluginContext<O, S, C>) => boolean>>
+  keymap?: (ctx: PluginContext<O, S, C, T>) => Record<string, () => boolean>
+  onBeforeInput?: (intent: InputIntent, ctx: PluginContext<O, S, C, T>) => boolean
+  /** Input rules, run in plugin priority order, then in array order (see `InputRule`). */
+  inputRules?: InputRule<PluginContext<O, S, C, T>>[]
+  handleDOMEvents?: Partial<Record<DOMEventName, (event: Event, ctx: PluginContext<O, S, C, T>) => boolean>>
   filterTransaction?: (tr: Transaction, state: EditorState) => boolean
   appendTransaction?: (trs: Transaction[], oldState: EditorState, newState: EditorState) => Transaction | null
-  normalize?: (entry: [Node, Path], tr: Transaction, ctx: PluginContext<O, S, C>) => void
+  normalize?: (entry: [Node, Path], tr: Transaction, ctx: PluginContext<O, S, C, T>) => void
   parseHTML?: ParseRule[]
   renderHTML?: (node: ElementNode, ctx: { options: O }) => DOMOutputSpec
-  transformPasted?: (fragment: Fragment, ctx: PluginContext<O, S, C>) => Fragment
   /**
-   * For an event inside a node view of this plugin's type: true makes the editor ignore it (no
+   * The plain text of an element of this plugin's node type, where content becomes plain text: the
+   * `text/plain` clipboard flavor, an inline atom normalized into a text-only (`content: 'text'`)
+   * block, plugins converting content to text (e.g. the code block's paste and `setCodeBlock`).
+   * Without it an element's text is its children's text, so a childless atom has none (and is dropped
+   * from a text-only block). Meant for inline atoms (e.g. a mention: `@label`).
+   */
+  renderText?: (node: DeepReadonly<ElementNode>, ctx: { options: O }) => string
+  /**
+   * Rewrites a pasted or dropped fragment before it is inserted. `info.at` is where it will be
+   * inserted (the drop point of a drop); null means at the selection, so a hook deciding by position
+   * reads `info.at ?? state.selection`.
+   */
+  transformPasted?: (fragment: Fragment, ctx: PluginContext<O, S, C, T>, info: PasteInfo) => Fragment
+  /**
+   * For an event inside a node view of this plugin's type (outside its `contentDOM`, whose events
+   * are editor content): true makes the editor ignore it (no
    * handling, no `preventDefault`). Events inside `data-editor-ignore` are ignored without asking.
    */
-  stopEvent?: (event: Event, node: ElementNode, ctx: PluginContext<O, S, C>) => boolean
+  stopEvent?: (event: Event, node: ElementNode, ctx: PluginContext<O, S, C, T>) => boolean
   /**
-   * For a DOM mutation inside a node view of this plugin's type: false has it reverted (the node
+   * For a DOM mutation inside a node view of this plugin's type (outside its `contentDOM`, whose
+   * mutations are reverted from the model like any content; moving `contentDOM` itself is ignored): false has it reverted (the node
    * view is rebuilt). Without this hook such mutations are ignored; inside `data-editor-ignore` they
    * always are.
    */
-  ignoreMutation?: (record: MutationRecord, node: ElementNode, ctx: PluginContext<O, S, C>) => boolean
+  ignoreMutation?: (record: MutationRecord, node: ElementNode, ctx: PluginContext<O, S, C, T>) => boolean
+  /**
+   * Non-persisted highlights and widgets drawn by the view (e.g. syntax highlighting), computed for
+   * the new state on every view update. They are never part of the doc, `getJSON()` or `getHTML()`.
+   */
+  decorations?: (state: EditorState, ctx: PluginContext<O, S, C, T>) => Decoration[]
   onInvalidData?: (raw: unknown) => Data | null
   /** `apply` gets the final (normalized) tr; `ctx.getState()` still returns `prev` there. */
-  state?: { init: () => S; apply: (tr: Transaction, prev: S, ctx: PluginContext<O, S, C>) => S }
+  state?: { init: () => S; apply: (tr: Transaction, prev: S, ctx: PluginContext<O, S, C, T>) => S }
   /**
-   * Creates the plugin's storage (`editor.storage[name]`), once per editor, after every plugin's
-   * commands are bound (so `ctx.commands` is usable).
+   * Creates the plugin's storage (`editor.storage[name]`, `ctx.storage` in the other hooks), once
+   * per editor, by priority, after every plugin's commands are bound (so `ctx.commands` is usable).
+   * Its own `ctx.storage` is still `undefined` here (typed so, which also keeps `T` inferable).
+   * `T` is inferred from the return type. When this factory takes `ctx`, declare it before any hook
+   * whose `ctx` parameter is used: TypeScript types those hooks in order, and one typed first would
+   * fix `T` to `undefined` (a compile error on the factory). A factory without parameters may go anywhere.
    */
-  storage?: (ctx: PluginContext<O, S, C>) => T
+  storage?: (ctx: PluginContext<O, S, C, undefined>) => T
   /** Called by `editor.destroy()`, in reverse priority order (lowest priority first). */
-  destroy?: (ctx: PluginContext<O, S, C>) => void
+  destroy?: (ctx: PluginContext<O, S, C, T>) => void
+  /*
+   * Lifecycle hooks (spec §5.11). Each runs by priority with the same cached context as the other
+   * hooks. A throwing hook does not stop the others: errors are collected and the first is rethrown
+   * once all ran.
+   */
+  /** Called once at the end of the editor constructor, after every plugin's storage exists (no DOM). */
+  onCreate?: (ctx: PluginContext<O, S, C, T>) => void
+  /**
+   * Called each time a view is attached to a DOM root, at the end of the view constructor. A returned
+   * function is called when that view is destroyed (`unmount`, `mount(other)`, `destroy`); cleanups
+   * run in reverse order. When an `onMount` throws, the view is torn down (cleanups included) and
+   * `mount` rethrows.
+   */
+  onMount?: (ctx: PluginContext<O, S, C, T>, view: EditorView) => void | (() => void)
+  /**
+   * Called after a committed tr that changed the doc, right after the editor's `update` event
+   * (`editor.on` listeners run first). Outside the pipeline: dispatching from here is a nested dispatch.
+   */
+  onUpdate?: (ctx: PluginContext<O, S, C, T>, e: { tr: Transaction }) => void
+  /** Like `onUpdate`, for a committed tr that changed the selection (after `selectionUpdate`). */
+  onSelectionUpdate?: (ctx: PluginContext<O, S, C, T>, e: { tr: Transaction }) => void
+  /** Focus entered the view root from outside it. */
+  onFocus?: (ctx: PluginContext<O, S, C, T>, e: FocusEvent) => void
+  /** Focus left the view root. A focus move between elements inside the root is not a blur. */
+  onBlur?: (ctx: PluginContext<O, S, C, T>, e: FocusEvent) => void
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -216,13 +321,63 @@ export type CommandsOf<P extends readonly AnyPlugin[]> = UnionToIntersection<
 /** Storage of every plugin in a list that declares one, keyed by plugin name. */
 export type StorageOf<P extends readonly AnyPlugin[]> = UnionToIntersection<{ [K in keyof P]: StorageEntry<P[K]> }[number]>
 
+type AsCommands<C> = C extends CommandMap ? C : NoOptions
+
+/** The parent spec with its type arguments resolved (what `extend` overrides are typed against). */
+type ResolvedSpec<Spec> = PluginSpec<
+  string,
+  DataOf<Spec>,
+  OptionsOf<Spec>,
+  AsCommands<CommandsOfPlugin<Spec>>,
+  StateOf<Spec>,
+  StorageOfPlugin<Spec>
+>
+
+/**
+ * What `extend` accepts: any spec member but `name`. Hooks are typed with the parent's type
+ * arguments (so their parameters are inferred); `data`, `commands`, `state` and `storage` may
+ * change type, and the extended plugin's `D`, `C`, `S`, `T` follow them. Other hooks of the same
+ * override still see the parent's types.
+ */
+export type PluginOverrides<Spec> = Partial<
+  Omit<ResolvedSpec<Spec>, 'name' | 'data' | 'mark' | 'commands' | 'state' | 'storage'>
+> & {
+  /* eslint-disable @typescript-eslint/no-explicit-any -- these overrides may change `D` / `S` */
+  data?: StandardSchemaV1<unknown, any>
+  mark?: MarkSpec<any, OptionsOf<Spec>>
+  commands?: (ctx: PluginContext<OptionsOf<Spec>, StateOf<Spec>>) => CommandMap
+  state?: { init: () => unknown; apply: (tr: Transaction, prev: any, ctx: any) => unknown }
+  /* eslint-enable @typescript-eslint/no-explicit-any */
+  storage?: (ctx: PluginContext<OptionsOf<Spec>, StateOf<Spec>, AsCommands<CommandsOfPlugin<Spec>>, undefined>) => unknown
+}
+
+/** The spec of `parent.extend(overrides)`: the parent's type arguments, replaced where `E` redefines them. */
+export type ExtendedSpec<Spec extends AnyPluginSpec, E> = PluginSpec<
+  Spec['name'],
+  E extends { data: StandardSchemaV1<unknown, infer D> } ? D : DataOf<Spec>,
+  OptionsOf<Spec>,
+  E extends { commands: (ctx: never) => infer C extends CommandMap } ? C : AsCommands<CommandsOfPlugin<Spec>>,
+  E extends { state: { init: () => infer S } } ? S : StateOf<Spec>,
+  E extends { storage: (ctx: never) => infer T } ? T : StorageOfPlugin<Spec>
+>
+
 export interface Plugin<Spec extends AnyPluginSpec = AnyPluginSpec> {
   readonly name: Spec['name']
   readonly spec: Spec
   /** Returns a new plugin whose options are shallow-merged with `options`. */
   configure(options: Partial<OptionsOf<Spec>>): Plugin<Spec>
+  /**
+   * Returns a new plugin whose spec is shallow-merged with the overrides `fn(parent)` returns.
+   * `parent` is this plugin's spec, so an override can wrap the original hook
+   * (`renderHTML: (n, c) => wrap(parent.renderHTML!(n, c))`, `keymap: (ctx) => ({ ...parent.keymap?.(ctx), … })`).
+   * Extending an extended plugin passes the previous extend's merged spec as `parent`.
+   */
+  extend<E extends PluginOverrides<Spec>>(fn: (parent: Spec) => E): Plugin<ExtendedSpec<Spec, E>>
   /** Returns a new plugin whose spec is shallow-merged with `overrides`. */
-  extend<E extends Partial<Omit<AnyPluginSpec, 'name'>>>(overrides: E): Plugin<Spec & E>
+  extend<E extends PluginOverrides<Spec>>(overrides: E): Plugin<ExtendedSpec<Spec, E>>
 }
+
+/** The props of a node view for the node plugin `P`: its data, options, storage and state types. */
+export type NodeViewPropsOf<P> = NodeViewProps<DataOf<P>, OptionsOf<P>, StorageOfPlugin<P>, StateOf<P>>
 
 export type AnyPlugin = Plugin<AnyPluginSpec>

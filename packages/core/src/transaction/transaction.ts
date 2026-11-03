@@ -16,6 +16,11 @@ export interface TransactionMeta {
   origin?: 'input' | 'paste' | 'command' | 'history' | 'plugin' | 'selection' | 'load'
   addToHistory?: boolean
   inputType?: string
+  /**
+   * Set by the Editor on every `appendTransaction` tr whose root was an undo/redo (`'history'`) or
+   * was recorded in history (`'record'`): history joins it to that entry instead of recording it.
+   */
+  appendedTo?: 'history' | 'record'
   [k: string]: unknown
 }
 
@@ -161,6 +166,16 @@ export class Transaction {
    */
   insertBlockNode(node: ElementNode): this {
     textEdit.insertBlockNode(this, node)
+    return this
+  }
+
+  /**
+   * Inserts the inline element `node` (e.g. an inline atom) at the caret, replacing the selection;
+   * the caret ends right after it. Its id is refreshed when already in the doc. Does nothing in a
+   * text-only block or for a type that is not a registered inline type; invalid data leaves the tr `rejected`.
+   */
+  insertInlineNode(node: ElementNode): this {
+    fragmentEdit.insertInlineNode(this, node)
     return this
   }
 

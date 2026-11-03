@@ -560,3 +560,43 @@ describe('I2: src policy in stored data', () => {
     expect(JSON.stringify(editor.getJSON())).not.toContain('javascript:')
   })
 })
+
+describe('image HTMLAttributes', () => {
+  it('merges attributes into <img>; data-driven attributes win', () => {
+    const ed = createTestEditor({
+      plugins: [paragraph, image.configure({ HTMLAttributes: { class: 'im', alt: 'x' } })],
+      content: '<img src="https://x/a.png" alt="">',
+    })
+    expect(ed.getHTML()).toBe('<img class="im" alt="" src="https://x/a.png">')
+  })
+
+  it('HTMLAttributes cannot override src or bypass safeSrc', () => {
+    const attrs = { src: 'javascript:alert(1)', SRC: 'javascript:alert(2)' }
+    const ed = createTestEditor({
+      plugins: [paragraph, image.configure({ HTMLAttributes: attrs })],
+      content: '<img src="https://x/a.png" alt="">',
+    })
+    expect(ed.getHTML()).toBe('<img src="https://x/a.png" alt="">')
+    const raw = doc(el('image', { src: 'javascript:alert(1)', alt: 'x' }))
+    expect(serializeHTML(raw, ed.registry, (n) => ed.getPluginOptions(n))).toBe('<img alt="x">')
+  })
+})
+
+describe('image extend(parent)', () => {
+  const rounded = image.extend((parent) => ({
+    renderHTML: (n, c) => {
+      const out = parent.renderHTML!(n, c) as [string, Record<string, unknown>]
+      return [out[0], { ...out[1], class: 'rounded' }]
+    },
+  }))
+
+  it('wraps renderHTML and keeps the src policy', () => {
+    const ed = createTestEditor({ plugins: [paragraph, rounded], content: '<img src="https://x/a.png" alt="">' })
+    expect(ed.getHTML()).toBe('<img src="https://x/a.png" alt="" class="rounded">')
+    const raw = doc(el('image', { src: 'javascript:alert(1)', alt: 'x' }))
+    expect(serializeHTML(raw, ed.registry, (n) => ed.getPluginOptions(n))).toBe('<img alt="x" class="rounded">')
+    // The schema still rejects an unsafe src.
+    expect(ed.commands.insertImage('javascript:alert(1)')).toBe(false)
+    expect(JSON.stringify(ed.getJSON())).not.toContain('javascript:')
+  })
+})

@@ -187,6 +187,9 @@ importers:
       '@hte/bold':
         specifier: workspace:*
         version: link:../../packages/plugins/bold
+      '@hte/code-block':
+        specifier: workspace:*
+        version: link:../../packages/plugins/code-block
       '@hte/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -196,6 +199,9 @@ importers:
       '@hte/image':
         specifier: workspace:*
         version: link:../../packages/plugins/image
+      '@hte/mention':
+        specifier: workspace:*
+        version: link:../../packages/plugins/mention
       '@hte/paragraph':
         specifier: workspace:*
         version: link:../../packages/plugins/paragraph
@@ -241,6 +247,46 @@ importers:
         specifier: workspace:*
         version: link:../paragraph
 
+  packages/plugins/code-block:
+    dependencies:
+      '@hte/core':
+        specifier: workspace:*
+        version: link:../../core
+      highlight.js:
+        specifier: ^11.10.0
+        version: 11.12.0
+      zod:
+        specifier: ^4.0.0
+        version: 4.6.7
+    devDependencies:
+      '@hte/bold':
+        specifier: workspace:*
+        version: link:../bold
+      '@hte/mention':
+        specifier: workspace:*
+        version: link:../mention
+      '@hte/paragraph':
+        specifier: workspace:*
+        version: link:../paragraph
+      '@hte/react':
+        specifier: workspace:*
+        version: link:../../react
+      '@testing-library/react':
+        specifier: ^16.3.0
+        version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@types/react':
+        specifier: ^19.1.0
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: ^19.1.0
+        version: 19.3.0(@types/react@19.3.0)
+      react:
+        specifier: ^19.1.0
+        version: 19.3.1
+      react-dom:
+        specifier: ^19.1.0
+        version: 19.3.1(react@19.3.1)
+
   packages/plugins/font-size:
     dependencies:
       '@hte/core':
@@ -258,6 +304,37 @@ importers:
         version: link:../paragraph
 
   packages/plugins/image:
+    dependencies:
+      '@hte/core':
+        specifier: workspace:*
+        version: link:../../core
+      zod:
+        specifier: ^4.0.0
+        version: 4.6.7
+    devDependencies:
+      '@hte/paragraph':
+        specifier: workspace:*
+        version: link:../paragraph
+      '@hte/react':
+        specifier: workspace:*
+        version: link:../../react
+      '@testing-library/react':
+        specifier: ^16.3.0
+        version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@types/react':
+        specifier: ^19.1.0
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: ^19.1.0
+        version: 19.3.0(@types/react@19.3.0)
+      react:
+        specifier: ^19.1.0
+        version: 19.3.1
+      react-dom:
+        specifier: ^19.1.0
+        version: 19.3.1(react@19.3.1)
+
+  packages/plugins/mention:
     dependencies:
       '@hte/core':
         specifier: workspace:*
@@ -951,6 +1028,10 @@ packages:
   happy-dom@20.14.6:
     resolution: {integrity: sha512-5DDsf4QmEIlRL6NkCv/fxSjYHHkZceL/IaYQdJc2h3G7DRTEai++VTjbfL0LB9geW2VrA3+vrjF3Efx+OTtX0Q==}
     engines: {node: '>=20.0.0'}
+
+  highlight.js@11.12.0:
+    resolution: {integrity: sha512-nbfWpyRMcMrPMmDwJB+dhX/eiaPKtc2RB+0QZskqJ3WjRA/FDS0e9hZrx8EC/lbEv8gXy98FcDbNa/dspAaJMg==}
+    engines: {node: '>=12.0.0'}
 
   js-tokens@4.0.0:
     resolution: {integrity: sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==}
@@ -1745,6 +1826,8 @@ snapshots:
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
+
+  highlight.js@11.12.0: {}
 
   js-tokens@4.0.0: {}
 

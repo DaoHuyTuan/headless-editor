@@ -67,7 +67,7 @@ describe('Registry', () => {
     expect(r.node('fontSize')).toBeUndefined()
     expect(r.node('nope')).toBeUndefined()
     expect(r.mark('bold')?.plugin).toBe(bold)
-    expect(r.mark('bold')?.render({})).toEqual({ tag: 'strong' })
+    expect(r.mark('bold')?.render({}, { options: {} })).toEqual({ tag: 'strong' })
     expect(r.mark('paragraph')).toBeUndefined()
     expect(r.markRank('fontSize')).toBeLessThan(r.markRank('bold'))
     expect(r.markRank('bold')).toBeLessThan(r.markRank('unknown'))

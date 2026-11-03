@@ -2,7 +2,7 @@ import { createId } from '../model/id'
 import { editableTextEntries, isNodeSelection, isOpaque, nodeSelection } from '../model/editable'
 import { getNode, isElement, isText, sameMarkSet } from '../model/node'
 import { comparePath, comparePoint, isAncestorPath, nextPath, parentPath, pointEquals, toRange } from '../model/path'
-import type { ElementNode, Mark, Path, Point, Range, Selection, TextNode } from '../model/types'
+import type { ElementNode, Mark, Node, Path, Point, Range, Selection, TextNode } from '../model/types'
 import { marksAtTr, marksOfRange } from './marks'
 import type { Transaction } from './transaction'
 
@@ -63,11 +63,55 @@ export function insertionMarks(tr: Transaction, point: Point): Mark[] {
   return marksAtTr(tr, point)
 }
 
-/** Removes the editable text between two points, text by text (no nodes are removed). */
+/**
+ * Whether the element is an inline opaque element: a registered inline atom, or an unknown type
+ * inside inline content (the parent `parentType` is an inline element or a `content: 'inline'` block).
+ * It counts as one character of its inline content: no caret goes inside, edits remove it whole.
+ */
+export function isInlineOpaque(tr: Transaction, el: ElementNode, parentType: string): boolean {
+  const spec = tr.registry.node(el.type)
+  if (spec) return spec.kind === 'inline' && spec.atom === true
+  const parent = tr.registry.node(parentType)
+  return !!parent && !parent.atom && (parent.kind === 'inline' || parent.content === 'inline')
+}
+
+/** The inline opaque elements whose paths lie strictly between `start` and `end` (text paths), in document order. */
+function inlineOpaqueBetween(tr: Transaction, start: Point, end: Point): Path[] {
+  const out: Path[] = []
+  const walk = (nodes: Node[], base: Path, parentType: string) => {
+    for (let i = 0; i < nodes.length; i++) {
+      const n = nodes[i]!
+      const path = [...base, i]
+      if (isText(n) || comparePath(path, start.path) < 0 || comparePath(path, end.path) > 0) continue
+      if (isInlineOpaque(tr, n, parentType)) {
+        // Neither edge can be inside it (no caret goes inside an opaque element).
+        if (!isAncestorPath(path, start.path) && !isAncestorPath(path, end.path)) out.push(path)
+      } else if (!isOpaque(n, tr.registry)) {
+        walk(n.children ?? [], path, n.type)
+      }
+    }
+  }
+  walk(tr.doc.children, [], 'doc')
+  return out
+}
+
+/**
+ * Removes the editable text between two points, text by text, and the inline opaque elements
+ * (inline atoms) between them, whole. No other node is removed. Works last to first, so the paths
+ * still to be handled (and `start`) stay valid.
+ */
 function removeTextBetween(tr: Transaction, start: Point, end: Point): void {
   const texts = [...editableTextEntries(tr.doc, tr.registry, { start, end })]
-  for (let i = texts.length - 1; i >= 0; i--) {
-    const [t, p] = texts[i]!
+  const edits: { path: Path; text?: TextNode }[] = [
+    ...texts.map(([text, path]) => ({ path, text })),
+    ...inlineOpaqueBetween(tr, start, end).map((path) => ({ path })),
+  ].sort((a, b) => comparePath(a.path, b.path))
+  for (let i = edits.length - 1; i >= 0; i--) {
+    const { path: p, text: t } = edits[i]!
+    if (!t) {
+      tr.removeNode(p)
+      continue
+    }
     const from = pathEquals(p, start.path) ? start.offset : 0
     const to = pathEquals(p, end.path) ? end.offset : t.text.length
     if (to > from) tr.apply({ type: 'remove_text', path: p, offset: from, text: t.text.slice(from, to) })
@@ -286,7 +330,7 @@ export function insertText(tr: Transaction, text: string, at?: Selection | Range
 
 // --- segmentation ---
 
-interface BlockText {
+export interface BlockText {
   texts: [TextNode, Path][]
   text: string
 }
@@ -296,7 +340,7 @@ function readBlock(tr: Transaction, blockPath: Path): BlockText {
   return { texts, text: texts.map(([t]) => t.text).join('') }
 }
 
-function toBlockOffset(block: BlockText, point: Point): number {
+export function toBlockOffset(block: BlockText, point: Point): number {
   let acc = 0
   for (const [t, p] of block.texts) {
     if (pathEquals(p, point.path)) return acc + point.offset
@@ -305,7 +349,7 @@ function toBlockOffset(block: BlockText, point: Point): number {
   throw new Error(`Point [${point.path}] is not in the block`)
 }
 
-function fromBlockOffset(block: BlockText, offset: number): Point {
+export function fromBlockOffset(block: BlockText, offset: number): Point {
   let acc = 0
   for (const [t, p] of block.texts) {
     if (offset <= acc + t.text.length) return { path: p, offset: offset - acc }
@@ -373,6 +417,40 @@ function adjacentOpaque(tr: Transaction, blockPath: Path, backward: boolean): Pa
   return sibling && isElement(sibling) && isOpaque(sibling, tr.registry) ? [...parent, index] : null
 }
 
+/** Editable texts of a block that no inline opaque element separates, with the ones right before and after it (null at the block's edges). */
+export interface Run extends BlockText {
+  before: Path | null
+  after: Path | null
+}
+
+/** The run of the block at `blockPath` that holds `point`: grapheme and word edits never leave it. */
+export function runAt(tr: Transaction, blockPath: Path, point: Point): Run {
+  const runs: Run[] = []
+  let current: Run = { texts: [], text: '', before: null, after: null }
+  const walk = (nodes: Node[], base: Path, parentType: string) => {
+    for (let i = 0; i < nodes.length; i++) {
+      const n = nodes[i]!
+      const path = [...base, i]
+      if (isText(n)) {
+        current.texts.push([n, path])
+        current.text += n.text
+      } else if (isInlineOpaque(tr, n, parentType)) {
+        current.after = path
+        runs.push(current)
+        current = { texts: [], text: '', before: path, after: null }
+      } else if (!isOpaque(n, tr.registry)) {
+        walk(n.children ?? [], path, n.type)
+      }
+    }
+  }
+  const block = getNode(tr.doc, blockPath) as ElementNode
+  walk(block.children ?? [], blockPath, block.type)
+  runs.push(current)
+  const run = runs.find((r) => r.texts.some(([, p]) => pathEquals(p, point.path)))
+  if (!run) throw new Error(`Point [${point.path}] is not in the block`)
+  return run
+}
+
 function deleteDirection(tr: Transaction, unit: DeleteUnit, backward: boolean): boolean {
   if (isNodeSelection(tr.selection)) return replaceSelectedNode(tr, 'delete')
   const sel = tr.selection
@@ -380,6 +458,22 @@ function deleteDirection(tr: Transaction, unit: DeleteUnit, backward: boolean): 
   if (!pointEquals(sel.anchor, sel.focus)) return deleteRange(tr, toRange(sel))
   const point = sel.anchor
   const blockPath = blockPathOf(tr, point.path)
+  // Characters and words stay within the run: an inline atom next to the caret is removed whole
+  // (its neighbour texts keep the caret; the selection maps through the removal).
+  if (unit !== 'line') {
+    const run = runAt(tr, blockPath, point)
+    const runOffset = toBlockOffset(run, point)
+    const atRunEdge = backward ? runOffset === 0 : runOffset === run.text.length
+    const atom = backward ? run.before : run.after
+    if (atRunEdge && atom) {
+      tr.removeNode(atom)
+      return true
+    }
+    if (!atRunEdge) {
+      const target = fromBlockOffset(run, targetOffset(run.text, runOffset, unit, backward))
+      return deleteRange(tr, backward ? { start: target, end: point } : { start: point, end: target })
+    }
+  }
   const block = readBlock(tr, blockPath)
   const offset = toBlockOffset(block, point)
   const atEdge = backward ? offset === 0 : offset === block.text.length

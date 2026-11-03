@@ -8,10 +8,12 @@ function createPlugin<Spec extends AnyPluginSpec>(spec: Spec): Plugin<Spec> {
     configure(options) {
       return createPlugin({ ...spec, options: { ...spec.options, ...options } })
     },
-    extend(overrides) {
-      return createPlugin({ ...spec, ...overrides })
+    extend(overrides: Partial<AnyPluginSpec> | ((parent: Spec) => Partial<AnyPluginSpec>)) {
+      const own = typeof overrides === 'function' ? overrides(spec) : overrides
+      // The name is the plugin's identity: an override never renames it.
+      return createPlugin({ ...spec, ...own, name: spec.name }) as Plugin<never>
     },
-  }
+  } as Plugin<Spec>
 }
 
 /**

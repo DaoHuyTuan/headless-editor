@@ -84,6 +84,23 @@ describe('serializeForClipboard / parseFromClipboard', () => {
     )
   })
 
+  it("the text flavor uses an inline atom's renderText (with the editor's current options)", () => {
+    const tag = definePlugin({
+      name: 'tag',
+      node: { kind: 'inline', atom: true },
+      options: { prefix: '#' },
+      renderText: (node, { options }) => `${options.prefix}${String(node.data.label)}`,
+    })
+    const bare = definePlugin({ name: 'bare', node: { kind: 'inline', atom: true } })
+    const atom = (type: string): ElementNode => ({ id: type, type, data: { label: 'x' }, children: [] })
+    const content = doc({ id: 'p1', type: 'paragraph', data: {}, children: [txt('hi '), atom('tag'), txt(' '), atom('bare'), txt(' yo')] })
+    const editor = setup(content, caret([0, 0], 0), [testParagraph, testBold, tag, bare])
+    const all = { start: { path: [0, 0], offset: 0 }, end: { path: [0, 4], offset: 3 } }
+    expect(serializeForClipboard(editor, all).text).toBe('hi #x  yo')
+    editor.setPluginOptions('tag', { prefix: '+' })
+    expect(serializeForClipboard(editor, all).text).toBe('hi +x  yo')
+  })
+
   it('parses html when there is no json', () => {
     const editor = setup(doc(p('p1', txt(''))), caret([0, 0], 0))
     const frag = parseFromClipboard(editor, { html: '<p>a<b>b</b></p>', text: 'ab' })
@@ -136,6 +153,26 @@ describe('serializeForClipboard / parseFromClipboard', () => {
     const editor = setup(doc(p('p1', txt(''))), caret([0, 0], 0), [testParagraph, testBold, suffix, upper])
     expect(parseFromClipboard(editor, { text: 'abc' })).toEqual([txt('ABC'), txt('!')])
     expect(calls).toEqual(['upper', 'suffix'])
+  })
+
+  it('transformPasted gets the insertion target: the drop point for a drop, the selection for a paste', () => {
+    const seen: unknown[] = []
+    const spy = definePlugin({
+      name: 'spy',
+      transformPasted: (frag: Fragment, _ctx, info) => {
+        seen.push(info.at)
+        return frag
+      },
+    })
+    const editor = setup(doc(p('p1', txt('abcd'))), caret([0, 0], 1), [testParagraph, testBold, spy])
+    const transfer = { getData: (t: string) => (t === 'text/plain' ? 'x' : '') } as unknown as DataTransfer
+    const dropAt = caret([0, 0], 3)
+    editor.handleIntent({ inputType: 'insertFromDrop', data: null, range: dropAt, dataTransfer: transfer })
+    expect(seen).toEqual([dropAt])
+    expect(parseFromClipboard(editor, { text: 'y' })).toEqual([txt('y')])
+    expect(seen[1]).toBeNull()
+    expect(parseFromClipboard(editor, { text: 'y' }, { at: caret([0, 0], 2) })).toEqual([txt('y')])
+    expect(seen[2]).toEqual(caret([0, 0], 2))
   })
 
   it('validates pasted json data: invalid data is repaired by onInvalidData or the node is dropped', () => {

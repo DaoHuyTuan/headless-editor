@@ -43,3 +43,45 @@ export async function focusEnd(page: Page): Promise<void> {
     editor.view!.focus()
   })
 }
+
+/** Puts a collapsed caret at `path` / `offset` through the editor API and focuses the editor. */
+export async function setCaret(page: Page, path: number[], offset: number): Promise<void> {
+  await page.evaluate(
+    ([path, offset]) => {
+      const editor = window.editor
+      const point = { path, offset }
+      const tr = editor.createTransaction()
+      tr.setSelection({ anchor: point, focus: point }).setMeta('addToHistory', false)
+      editor.dispatch(tr)
+      editor.view!.focus()
+    },
+    [path, offset] as const,
+  )
+}
+
+/** Opens the playground and switches to `scenario`, waiting until its content is in the editor. */
+export async function openScenario(page: Page, scenario: string, path = '/'): Promise<void> {
+  await openPlayground(page, path)
+  await page.getByTestId('scenario').selectOption(scenario)
+  await page.waitForFunction((s) => (document.querySelector('[data-testid=scenario]') as HTMLSelectElement).value === s, scenario)
+}
+
+/** Collects page errors and console errors; assert the list is empty after the test. */
+export function collectErrors(page: Page): string[] {
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(e.message))
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(m.text())
+  })
+  return errors
+}
+
+/** Drives an IME composition through CDP: each step updates the composition, then `commit` is inserted. */
+export async function compose(page: Page, steps: string[], commit: string): Promise<void> {
+  const cdp = await page.context().newCDPSession(page)
+  for (const text of steps) {
+    await cdp.send('Input.imeSetComposition', { text, selectionStart: text.length, selectionEnd: text.length })
+  }
+  await cdp.send('Input.insertText', { text: commit })
+  await cdp.detach()
+}

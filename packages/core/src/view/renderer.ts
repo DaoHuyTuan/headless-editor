@@ -1,16 +1,31 @@
 import type { Editor } from '../editor'
-import { checkAttrName, checkTag, isAttrs, kebab } from '../html/serialize'
+import { checkAttrName, checkTag, isAttrs, markAttrs } from '../html/serialize'
 import { deepEqualJson, isText, sameMarkSet } from '../model/node'
 import type { DeepReadonly, Doc, ElementNode, Node, Path, TextNode } from '../model/types'
 import { isOpaque } from '../model/editable'
 import type { DOMOutputSpec, NodeViewFactory } from '../plugin/types'
 import type { Registry } from '../plugin/registry'
 import { NodeViewHost } from './node-view'
+import {
+  DECO_ATTR,
+  WIDGET_ATTR,
+  decorationSignature,
+  groupDecorations,
+  leafParts,
+  pathKey,
+  type Decoration,
+  type LeafDecorations,
+  type LeafPart,
+} from './decorations'
 
 const ID_ATTR = 'data-hte-id'
 const LEAF_ATTR = 'data-hte-leaf'
 const NODE_VIEW_ATTR = 'data-hte-node-view'
+const CONTENT_ATTR = 'data-hte-content'
 const SELECTED_ATTR = 'data-hte-selected'
+const ZW_ATTR = 'data-hte-zw'
+/** What an empty text beside an inline element shows: a caret can sit in it, and it adds no line break. */
+const ZW = '​'
 
 /**
  * The rendered DOM of one element (or of the root, for the doc). Children occupy the hole's
@@ -34,6 +49,8 @@ interface ElementEntry extends Holder {
   rendersChildren: boolean
   /** The node view factory when `dom` is a node-view container. */
   nodeView?: NodeViewFactory
+  /** A non-atom node view's content element: the hole, placed by the view inside `dom`. */
+  contentDOM?: HTMLElement
 }
 
 interface HolePosition {
@@ -52,6 +69,8 @@ export interface RenderOptions {
   skipPath?: Path
   /** The path of the node-selected element: its root gets `data-hte-selected`, its node view `selected: true`. */
   selectedNode?: Path
+  /** Decorations to draw (see `Decoration`); those not pointing into a text of the doc are dropped. */
+  decorations?: readonly Decoration[]
 }
 
 interface RenderPass {
@@ -59,7 +78,14 @@ interface RenderPass {
   skipLeaf?: HTMLElement
   skipPath?: Path
   selectedNode?: Path
+  /** Decorations by text path (`pathKey`). */
+  decorations: Map<string, LeafDecorations>
+  /** Widget elements by key, as shown after this render. */
+  widgets: Map<string, HTMLElement>
 }
+
+/** A leaf part with its widget element resolved. */
+type ResolvedPart = Exclude<LeafPart, { kind: 'widget' }> | { kind: 'widget'; key: string; el: HTMLElement }
 
 /**
  * Renders a document into a contenteditable root and patches it on later renders.
@@ -67,8 +93,18 @@ interface RenderPass {
  * DOM contract: each element's root is the first element produced by its `renderHTML` (a `<div>` /
  * `<span>` wrapper for block / inline types without one) carrying `data-hte-id`; children go into the
  * content hole. Each text is a `<span data-hte-leaf>` holding its marks nested by rank (lowest
- * outermost) around the DOM text, or `<br data-hte-break>` when empty. Unknown elements render as an
- * empty `<div data-hte-id data-hte-unknown="<type>" contenteditable="false">`.
+ * outermost) around the DOM text, or `<br data-hte-break>` when empty. An empty text next to an element
+ * sibling (e.g. beside an inline atom) shows a zero-width space instead, and its leaf carries
+ * `data-hte-zw`: that character is not model text. The last text of an element ending with `\n` gets a
+ * `<br data-hte-break>` after its text, so the empty line after that newline shows and takes the
+ * caret (the break is not model text). Decorations split a leaf's text inside its mark
+ * wrappers: decorated segments are `<span data-hte-deco …attrs>`, widgets sit between segments
+ * (`contenteditable="false"`, `data-hte-widget`, reused by key); a leaf is kept while its text, marks
+ * and decoration signature are unchanged and its DOM is intact. Unknown elements render as an empty
+ * `<div data-hte-id data-hte-unknown="<type>" contenteditable="false">`; inline atoms' roots get
+ * `contenteditable="false"` too. A node view's root is a container (`data-hte-node-view`) whose
+ * content is the view's: an atom's is `contenteditable="false"`; a non-atom's children go into its
+ * `contentDOM` (`data-hte-content contenteditable="true"`, the whole hole), which the view places.
  *
  * Patching is keyed by element id: an element's DOM is reused while its id stays in the doc, and its
  * own root is re-rendered only when its type or data changes (or its spec DOM was damaged). Text
@@ -80,10 +116,22 @@ export class Renderer {
   private readonly rootHolder: Holder
   private byId = new Map<string, ElementEntry>()
   private readonly byDom = new WeakMap<Element, ElementEntry>()
+  /** Node-view entries by their `contentDOM`. */
+  private readonly byContent = new WeakMap<Element, ElementEntry>()
+  /** contentDOMs already warned about by `checkContentPlacement`. */
+  private readonly warnedContent = new WeakSet<Element>()
   /** The text each leaf span currently shows; missing when unknown (skipped while the model moved on). */
   private readonly leafText = new WeakMap<Element, TextNode>()
+  /** The decoration signature each leaf span was last rendered with (see `decorationSignature`). */
+  private readonly leafDecos = new WeakMap<Element, string>()
+  /** The parts (widgets resolved) each leaf span was last rendered with: an unchanged leaf is checked against them. */
+  private readonly leafShape = new WeakMap<Element, ResolvedPart[]>()
+  /** Widget elements by key, as last rendered: a widget decorated again with the same key reuses its element. */
+  private widgets = new Map<string, HTMLElement>()
   /** Element types whose shells are rebuilt (node views: updated) on the next render. */
   private readonly invalidated = new Set<string>()
+  /** Mark types whose leaves are re-rendered on the next render. */
+  private readonly invalidatedMarks = new Set<string>()
   /** Ids of node views rebuilt (new container, new instance) on the next render. */
   private readonly rebuildViews = new Set<string>()
   private readonly nodeViews: NodeViewHost
@@ -112,12 +160,19 @@ export class Renderer {
       skipLeaf: opts.skipLeaf,
       skipPath: opts.skipPath,
       selectedNode: opts.selectedNode,
+      decorations: groupDecorations(doc, opts.decorations ?? []),
+      widgets: new Map(),
+    }
+    // The composing leaf keeps its DOM, widgets included: keep their keys.
+    if (opts.skipLeaf) {
+      for (const [key, el] of this.widgets) if (opts.skipLeaf.contains(el)) pass.widgets.set(key, el)
     }
     this._rendering = true
     try {
       // Read-only: the renderer keeps references to the nodes but never changes them.
       this.reconcile(this.rootHolder, (doc as Doc).children, [], pass)
       this.byId = pass.next
+      this.widgets = pass.widgets
       this.lastDoc = doc
       // Destroy the node views whose element left the doc (or is no longer shown by a node view).
       const live = new Set<string>()
@@ -126,6 +181,7 @@ export class Renderer {
     } finally {
       this._rendering = false
       this.invalidated.clear()
+      this.invalidatedMarks.clear()
       this.rebuildViews.clear()
       for (const hook of [...this.renderedHooks]) hook()
     }
@@ -137,6 +193,11 @@ export class Renderer {
    */
   invalidate(type: string): void {
     this.invalidated.add(type)
+  }
+
+  /** Re-renders, on the next render, every text leaf that carries a mark of `type` (after its plugin's options changed). */
+  invalidateMark(type: string): void {
+    this.invalidatedMarks.add(type)
   }
 
   /** Rebuilds the node view of the element `id` on the next render: a new container and a new instance. */
@@ -164,10 +225,42 @@ export class Renderer {
     return entry && this.byId.get(entry.node.id) === entry ? entry.node : null
   }
 
-  /** The closest current node-view container that is or contains `node` (within the root), or null. */
+  /**
+   * Warns (once per contentDOM) when a node view placed its `contentDOM` below a
+   * `contenteditable="false"` element of its container: that makes it a separate editing host, which
+   * the caret, selection extension and select-all do not cross. Only the view's own DOM beside the
+   * path to `contentDOM` (headers, controls) may be non-editable.
+   */
+  checkContentPlacement(contentDOM: globalThis.Node): void {
+    const entry = this.byContent.get(contentDOM as Element)
+    if (!entry || this.warnedContent.has(contentDOM as Element)) return
+    for (let cur = contentDOM.parentNode; cur && cur !== entry.dom; cur = cur.parentNode) {
+      if (cur.nodeType === 1 && (cur as Element).getAttribute('contenteditable') === 'false') {
+        this.warnedContent.add(contentDOM as Element)
+        console.warn(
+          `[hte] The node view of "${entry.node.type}" placed its contentDOM inside a contenteditable="false" ` +
+            'element: mark only the elements beside contentDOM (headers, controls) as non-editable, never an ancestor.',
+        )
+        return
+      }
+    }
+  }
+
+  /** Whether `node` is the `contentDOM` of a current non-atom node view. */
+  isContentDOM(node: globalThis.Node): boolean {
+    if (node.nodeType !== 1 || !(node as Element).hasAttribute(CONTENT_ATTR)) return false
+    const entry = this.byContent.get(node as Element)
+    return !!entry && this.byId.get(entry.node.id) === entry
+  }
+
+  /**
+   * The closest current node-view container that is or contains `node` (within the root), or null.
+   * Null too when `node` is inside that view's `contentDOM` (or a nested one): that is editor content.
+   */
   nodeViewAround(node: globalThis.Node): HTMLElement | null {
     let cur: globalThis.Node | null = node
     while (cur && cur !== this.root) {
+      if (this.isContentDOM(cur)) return null
       if (cur.nodeType === 1 && (cur as Element).hasAttribute(NODE_VIEW_ATTR)) {
         const entry = this.byDom.get(cur as Element)
         if (entry?.nodeView && this.byId.get(entry.node.id) === entry) return cur as HTMLElement
@@ -205,6 +298,15 @@ export class Renderer {
   leafAt(path: Path): HTMLElement | null {
     const dom = this.domAt(path)
     return dom && this.isLeaf(dom) ? dom : null
+  }
+
+  /**
+   * Whether the text at `path` is rendered by a leaf that is not inside the root: its node view has
+   * not placed its `contentDOM` (yet). `leafAt` returns null for such a leaf.
+   */
+  isLeafDetached(path: Path): boolean {
+    const dom = this.domAt(path)
+    return !!dom && dom.hasAttribute(LEAF_ATTR) && !this.root.contains(dom)
   }
 
   /** The element root rendered for the element at `path`. */
@@ -288,7 +390,11 @@ export class Renderer {
         this.leafText.delete(skipLeaf)
         kids.push(skipLeaf)
       } else {
-        kids.push(this.leaf(oldLeaves[leafIndex++], child, skipLeaf))
+        const zw = child.text === '' && [children[i - 1], children[i + 1]].some((n) => n !== undefined && !isText(n))
+        // The last text of its parent ending with a newline: browsers show no line after that newline
+        // (and cannot put the caret there) unless something follows it, so the leaf ends with a break.
+        const trailingBreak = i === children.length - 1 && child.text.endsWith('\n')
+        kids.push(this.leaf(oldLeaves[leafIndex++], child, zw, trailingBreak, childPath, pass))
       }
     })
 
@@ -343,9 +449,16 @@ export class Renderer {
       // Keep the old children's DOM so they are moved into the new shell, not recreated.
       if (prev && entry.rendersChildren) entry.kids = prev.kids
       this.byDom.set(entry.dom, entry)
+      if (entry.contentDOM) this.byContent.set(entry.contentDOM, entry)
       if (prev?.nodeView) this.nodeViews.destroy(node.id)
-      // Views are keyed by id: a duplicate id gets an empty container.
-      if (entry.nodeView && !duplicate) this.nodeViews.create(entry.nodeView, entry.dom, node, selected)
+      // Views are keyed by id: a duplicate id gets a container showing only its content.
+      if (entry.nodeView && !duplicate) {
+        this.nodeViews.create(entry.nodeView, entry.dom, node, selected, entry.contentDOM)
+        // Placed by the factory itself (a later placement is checked by the mutation module).
+        if (entry.contentDOM?.parentNode) this.checkContentPlacement(entry.contentDOM)
+      } else if (entry.contentDOM) {
+        entry.dom.appendChild(entry.contentDOM)
+      }
     }
     if (selected) entry.dom.setAttribute(SELECTED_ATTR, '')
     else if (entry.dom.hasAttribute(SELECTED_ATTR)) entry.dom.removeAttribute(SELECTED_ATTR)
@@ -372,14 +485,22 @@ export class Renderer {
       dom.setAttribute('contenteditable', 'false')
       return { dom, node, hole: dom, before: null, anchor: null, kids: [], rendersChildren: false }
     }
-    const nodeView = registered.atom ? this.editor.nodeViewFactory(node.type) : undefined
+    const nodeView = this.editor.nodeViewFactory(node.type)
     if (nodeView) {
-      // The view owns the container's content; the renderer never looks inside it.
-      const dom = this.doc.createElement(registered.kind === 'inline' ? 'span' : 'div')
+      // The view owns the container's content; the renderer only manages a non-atom's contentDOM,
+      // which the view places somewhere inside it.
+      const tag = registered.kind === 'inline' ? 'span' : 'div'
+      const dom = this.doc.createElement(tag)
       dom.setAttribute(ID_ATTR, node.id)
       dom.setAttribute(NODE_VIEW_ATTR, '')
-      dom.setAttribute('contenteditable', 'false')
-      return { dom, node, hole: dom, before: null, anchor: null, kids: [], rendersChildren: false, nodeView }
+      if (registered.atom) {
+        dom.setAttribute('contenteditable', 'false')
+        return { dom, node, hole: dom, before: null, anchor: null, kids: [], rendersChildren: false, nodeView }
+      }
+      const contentDOM = this.doc.createElement(tag)
+      contentDOM.setAttribute(CONTENT_ATTR, '')
+      contentDOM.setAttribute('contenteditable', 'true')
+      return { dom, node, hole: contentDOM, before: null, anchor: null, kids: [], rendersChildren: true, nodeView, contentDOM }
     }
     const render = registered.plugin.spec.renderHTML
     const spec = render?.(node, { options: this.editor.getPluginOptions(registered.plugin.name) })
@@ -395,6 +516,8 @@ export class Renderer {
       throw new Error(`renderHTML for "${node.type}" must return an element spec`)
     }
     dom.setAttribute(ID_ATTR, node.id)
+    // An inline atom is one character: the user never edits inside it.
+    if (registered.atom && registered.kind === 'inline') dom.setAttribute('contenteditable', 'false')
     // Without a hole, children are appended after the spec's own content.
     const fallback: HolePosition = { hole: dom, before: dom.lastChild, anchor: null }
     return {
@@ -440,46 +563,143 @@ export class Renderer {
     return { dom: el, hole }
   }
 
-  private leaf(old: HTMLElement | undefined, text: TextNode, skipLeaf?: HTMLElement): HTMLElement {
-    if (old && old === skipLeaf) {
+  private leaf(
+    old: HTMLElement | undefined,
+    text: TextNode,
+    zw: boolean,
+    trailingBreak: boolean,
+    path: Path,
+    pass: RenderPass,
+  ): HTMLElement {
+    if (old && old === pass.skipLeaf) {
       // Composition owns this leaf's DOM; forget what it shows so a later render checks it again.
       this.leafText.delete(old)
       return old
     }
+    const decos = pass.decorations.get(pathKey(path))
+    // The trailing break is in the signature: the same text gains or loses it as later siblings come and go.
+    const signature = decorationSignature(decos) + (trailingBreak ? '|br' : '')
     const shown = old && this.leafText.get(old)
-    if (old && shown && shown.text === text.text && sameMarkSet(shown.marks, text.marks) && this.leafIntact(old, text)) {
-      this.leafText.set(old, text)
-      return old
+    const stale = this.invalidatedMarks.size > 0 && text.marks.some((m) => this.invalidatedMarks.has(m.type))
+    if (
+      old &&
+      shown &&
+      !stale &&
+      shown.text === text.text &&
+      sameMarkSet(shown.marks, text.marks) &&
+      (this.leafDecos.get(old) ?? '') === signature
+    ) {
+      // Same text, marks and decorations: the parts are those last rendered (no re-segmenting).
+      const cached = this.leafShape.get(old)
+      if (cached && this.claimWidgets(cached, pass) && this.leafIntact(old, text, zw, cached)) {
+        this.leafText.set(old, text)
+        return old
+      }
     }
+    const parts = this.resolveParts(text, zw, decos, pass)
+    if (trailingBreak) parts.push({ kind: 'break' })
     const leaf = old ?? this.doc.createElement('span')
     if (!old) leaf.setAttribute(LEAF_ATTR, '')
-    const content = this.leafContent(text)
-    if (!(old && leaf.childNodes.length === 1 && leaf.firstChild!.isEqualNode(content))) leaf.replaceChildren(content)
+    if (zw) leaf.setAttribute(ZW_ATTR, '')
+    else if (leaf.hasAttribute(ZW_ATTR)) leaf.removeAttribute(ZW_ATTR)
+    const content = this.leafContent(text, parts)
+    const same =
+      old !== undefined &&
+      leaf.childNodes.length === content.length &&
+      content.every((n, i) => n === leaf.childNodes[i] || leaf.childNodes[i]!.isEqualNode(n))
+    if (!same) leaf.replaceChildren(...content)
     this.leafText.set(leaf, text)
+    this.leafDecos.set(leaf, signature)
+    this.leafShape.set(leaf, parts)
     return leaf
   }
 
   /**
-   * Cheap check that a leaf still has the shape we rendered: a single-child chain with one wrapper
-   * per known mark, ending in the text (or the break). Attributes on wrappers are not compared.
+   * Keeps the widgets of a reused leaf under their keys for this render. False (nothing claimed) when
+   * a key was already taken by another element in this render: the leaf is then rebuilt.
    */
-  private leafIntact(leaf: HTMLElement, text: TextNode): boolean {
-    const markCount = text.marks.filter((m) => this.editor.registry.mark(m.type)).length
-    let cur: globalThis.Node = leaf
-    for (let depth = 0; depth <= markCount; depth++) {
-      if (cur.childNodes.length !== 1) return false
-      cur = cur.firstChild!
-      if (depth < markCount && cur.nodeType !== 1) return false
+  private claimWidgets(parts: ResolvedPart[], pass: RenderPass): boolean {
+    let ok = true
+    for (const part of parts) {
+      if (part.kind !== 'widget') continue
+      const taken = pass.widgets.get(part.key)
+      if (taken && taken !== part.el) ok = false
     }
-    if (text.text === '') return cur.nodeName === 'BR' && (cur as Element).hasAttribute('data-hte-break')
-    return cur.nodeType === 3 && (cur as Text).data === text.text
+    if (ok) for (const part of parts) if (part.kind === 'widget') pass.widgets.set(part.key, part.el)
+    return ok
   }
 
-  /** The leaf's content: mark wrappers nested by rank around the text (or a break when empty). */
-  private leafContent(text: TextNode): globalThis.Node {
-    const inner: globalThis.Node =
-      text.text === '' ? this.doc.createElement('br') : this.doc.createTextNode(text.text)
-    if (text.text === '') (inner as Element).setAttribute('data-hte-break', '')
+  /**
+   * The parts of a leaf inside its marks (see `leafParts`), with each widget's element: the one
+   * last rendered for its key (unless another leaf already took that key in this render), else a new one.
+   */
+  private resolveParts(text: TextNode, zw: boolean, decos: LeafDecorations | undefined, pass: RenderPass): ResolvedPart[] {
+    const empty: LeafPart | null = zw ? { kind: 'text', text: ZW } : text.text === '' ? { kind: 'break' } : null
+    return leafParts(text.text, decos, empty).map((part): ResolvedPart => {
+      if (part.kind !== 'widget') return part
+      const taken = pass.widgets.has(part.key)
+      let el = taken ? undefined : this.widgets.get(part.key)
+      if (!el) {
+        el = part.render(this.doc)
+        el.setAttribute(WIDGET_ATTR, '')
+        el.setAttribute('contenteditable', 'false')
+      }
+      // A duplicate key gets its own element, not keyed.
+      if (!taken) pass.widgets.set(part.key, el)
+      return { kind: 'widget', key: part.key, el }
+    })
+  }
+
+  /**
+   * Cheap check that a leaf still has the shape we rendered: a single-child chain with one wrapper
+   * per known mark, holding the parts in order (texts, decoration spans around their text, widget
+   * elements, the break). Attributes on wrappers and decoration spans are not compared.
+   */
+  private leafIntact(leaf: HTMLElement, text: TextNode, zw: boolean, parts: ResolvedPart[]): boolean {
+    if (leaf.hasAttribute(ZW_ATTR) !== zw) return false
+    const markCount = text.marks.filter((m) => this.editor.registry.mark(m.type)).length
+    let inner: globalThis.Node = leaf
+    for (let depth = 0; depth < markCount; depth++) {
+      if (inner.childNodes.length !== 1) return false
+      inner = inner.firstChild!
+      if (inner.nodeType !== 1) return false
+    }
+    const nodes = inner.childNodes
+    if (nodes.length !== parts.length) return false
+    return parts.every((part, i) => {
+      const node = nodes[i]!
+      if (part.kind === 'widget') return node === part.el
+      if (part.kind === 'break') return node.nodeName === 'BR' && (node as Element).hasAttribute('data-hte-break')
+      if (!part.attrs) return node.nodeType === 3 && (node as Text).data === part.text
+      if (node.nodeType !== 1 || !(node as Element).hasAttribute(DECO_ATTR) || node.childNodes.length !== 1) return false
+      const inside = node.firstChild!
+      return inside.nodeType === 3 && (inside as Text).data === part.text
+    })
+  }
+
+  /**
+   * The leaf's content: mark wrappers nested by rank (lowest outermost) around its parts — the text
+   * (decorated segments in `<span data-hte-deco>`), widgets, or the break / `ZW` when empty.
+   */
+  private leafContent(text: TextNode, parts: ResolvedPart[]): globalThis.Node[] {
+    const inner = parts.map((part): globalThis.Node => {
+      if (part.kind === 'widget') return part.el
+      if (part.kind === 'break') {
+        const br = this.doc.createElement('br')
+        br.setAttribute('data-hte-break', '')
+        return br
+      }
+      const textNode = this.doc.createTextNode(part.text)
+      if (!part.attrs) return textNode
+      const span = this.doc.createElement('span')
+      span.setAttribute(DECO_ATTR, '')
+      for (const [name, value] of Object.entries(part.attrs)) {
+        checkAttrName(name)
+        span.setAttribute(name, value)
+      }
+      span.appendChild(textNode)
+      return span
+    })
     const registry = this.editor.registry
     const marks = text.marks
       .filter((m) => registry.mark(m.type))
@@ -487,12 +707,16 @@ export class Renderer {
     let out = inner
     for (let i = marks.length - 1; i >= 0; i--) {
       const mark = marks[i]!
-      const dom = registry.mark(mark.type)!.render(mark.data)
+      const dom = registry.mark(mark.type)!.render(mark.data, {
+        options: this.editor.getPluginOptions(mark.type),
+      })
       const el = this.doc.createElement(checkTag(dom.tag))
-      for (const [name, value] of Object.entries(dom.attrs ?? {})) el.setAttribute(checkAttrName(name), value)
-      for (const [prop, value] of Object.entries(dom.style ?? {})) el.style.setProperty(kebab(prop), value)
-      el.appendChild(out)
-      out = el
+      for (const [name, value] of Object.entries(markAttrs(dom))) {
+        checkAttrName(name)
+        if (value !== undefined) el.setAttribute(name, String(value))
+      }
+      el.append(...out)
+      out = [el]
     }
     return out
   }

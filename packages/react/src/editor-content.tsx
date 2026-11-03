@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useSyncExternalStore, type HTMLAttributes } from 'react'
 import { createPortal } from 'react-dom'
 import type { AnyPlugin, Editor } from '@hte/core'
+import { NodeViewScope } from './node-content'
 import { getPortalStore, type PortalEntry, type PortalStore } from './node-views'
 
 export type EditorContentProps = { editor: Editor<readonly AnyPlugin[]> } & HTMLAttributes<HTMLDivElement>
@@ -17,7 +18,7 @@ const noStore: PortalStore = {
 /**
  * Renders the editor's root `<div>`; the editor mounts its view on it and owns its children. The
  * React node views (`useEditor`'s `nodeViews`) are rendered next to it as portals into the
- * containers the core creates inside the div.
+ * containers the core creates inside the div; a non-atom view shows its content with `<NodeContent />`.
  */
 export function EditorContent({ editor, ...divProps }: EditorContentProps) {
   const ref = useRef<HTMLDivElement>(null)
@@ -32,7 +33,15 @@ export function EditorContent({ editor, ...divProps }: EditorContentProps) {
   return (
     <>
       <div {...divProps} ref={ref} />
-      {entries.map(({ id, container, Component, props }) => createPortal(<Component {...props} />, container, id))}
+      {entries.map(({ id, container, Component, props }) =>
+        createPortal(
+          <NodeViewScope contentDOM={props.contentDOM} type={props.node.type}>
+            <Component {...props} />
+          </NodeViewScope>,
+          container,
+          id,
+        ),
+      )}
     </>
   )
 }

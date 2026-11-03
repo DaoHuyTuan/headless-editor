@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { historyPlugin } from '../src/history'
-import { clearHistory, definePlugin, findPathById, getNode, rewriteHistoryData } from '../src/index'
+import { clearHistory, definePlugin, findPathById, getNode, rewriteHistoryData, Transaction } from '../src/index'
+import type { AnyPlugin } from '../src/plugin/types'
 import type { Data, Doc, ElementNode, Node, Selection } from '../src/model/types'
 import { createTestEditor, doc, el, sel, stripIds, txt } from '../src/testing/index'
 import { testBold, testParagraph } from './fixtures'
@@ -378,5 +379,175 @@ describe('clearHistory', () => {
     tr.setMeta('historyClear', 'yes')
     ed.dispatch(tr)
     expect(stacks().undo).toHaveLength(1)
+  })
+})
+
+describe('appendTransaction trs join the triggering history entry', () => {
+  /** Uppercases the character before the caret after typed text. */
+  const upper = definePlugin({
+    name: 'upper',
+    appendTransaction: (trs, _old, state) => {
+      if (!trs.some((t) => t.meta.origin === 'input' && t.meta.inputType === 'insertText')) return null
+      const s = state.selection
+      if (!s || s.anchor.offset === 0) return null
+      const ch = (getNode(state.doc, s.anchor.path) as { text: string }).text[s.anchor.offset - 1]!
+      if (ch === ch.toUpperCase()) return null
+      const t = new Transaction(state, trs[0]!.registry)
+      t.apply({ type: 'remove_text', path: s.anchor.path, offset: s.anchor.offset - 1, text: ch })
+      t.apply({ type: 'insert_text', path: s.anchor.path, offset: s.anchor.offset - 1, text: ch.toUpperCase() })
+      t.setSelection(s)
+      return t
+    },
+  })
+
+  /** After every undo/redo, makes sure the first text starts with '>' (structural, fires on both). */
+  const prefix = definePlugin({
+    name: 'prefix',
+    appendTransaction: (trs, _old, state) => {
+      if (!trs.some((t) => t.meta.origin === 'history')) return null
+      if ((getNode(state.doc, [0, 0]) as { text: string }).text.startsWith('>')) return null
+      const t = new Transaction(state, trs[0]!.registry)
+      t.apply({ type: 'insert_text', path: [0, 0], offset: 0, text: '>' })
+      return t
+    },
+  })
+
+  function appendSetup(extra: AnyPlugin[], content: Doc = doc(p('')), selection: Selection = sel([0, 0], 0)) {
+    const clock = { t: 1000 }
+    const ed = createTestEditor({
+      plugins: [testParagraph, historyPlugin.configure({ now: () => clock.t }), ...extra],
+      history: false,
+      doc: content,
+      selection,
+    })
+    const type = (data: string) => ed.handleIntent({ inputType: 'insertText', data, range: null })
+    const text = () => (ed.state.doc.children[0]!.children![0] as { text: string }).text
+    const stacks = () => ed.getPluginState<HistoryState>('history')
+    return { ed, clock, type, text, stacks }
+  }
+
+  it('marks appended trs with appendedTo', () => {
+    const { ed, type } = appendSetup([upper, prefix])
+    const metas: Record<string, unknown>[] = []
+    ed.on('transaction', ({ tr }) => metas.push({ ...tr.meta }))
+    type('a')
+    ed.commands.undo()
+    expect(metas.map((m) => m.appendedTo)).toEqual([undefined, 'record', undefined, 'history'])
+  })
+
+  it('an appended tr joins the recorded entry: one undo, no intermediate state', () => {
+    const { ed, type, text, stacks } = appendSetup([upper])
+    type('a')
+    expect(text()).toBe('A')
+    expect(stacks().undo).toHaveLength(1)
+    expect(ed.commands.undo()).toBe(true)
+    expect(text()).toBe('')
+    expect(ed.commands.undo()).toBe(false)
+    expect(ed.commands.redo()).toBe(true)
+    expect(text()).toBe('A')
+    expect(ed.state.selection).toEqual(sel([0, 0], 1))
+  })
+
+  it('keeps grouping: typing within groupDelay after a joined append stays one step', () => {
+    const { ed, clock, type, text, stacks } = appendSetup([upper])
+    type('a')
+    clock.t += 100
+    type('b')
+    expect(text()).toBe('AB')
+    expect(stacks().undo).toHaveLength(1)
+    clock.t += 600
+    type('c')
+    expect(stacks().undo).toHaveLength(2)
+    ed.commands.undo()
+    expect(text()).toBe('AB')
+    ed.commands.undo()
+    expect(text()).toBe('')
+  })
+
+  it('an append fired by undo does not clear the redo stack', () => {
+    const { ed, type, text, stacks } = appendSetup([prefix])
+    type('a')
+    expect(text()).toBe('a')
+    ed.commands.undo()
+    expect(text()).toBe('>')
+    expect(stacks().redo).toHaveLength(1)
+    expect(ed.commands.redo()).toBe(true)
+    expect(text()).toBe('>a')
+  })
+
+  it('undo/redo cycles stay op-consistent with an append on both undo and redo', () => {
+    const { ed, type, text } = appendSetup([prefix])
+    type('a')
+    for (let i = 0; i < 3; i++) {
+      expect(ed.commands.undo()).toBe(true)
+      expect(text()).toBe('>')
+      expect(ed.commands.redo()).toBe(true)
+      expect(text()).toBe('>a')
+    }
+    expect(ed.commands.redo()).toBe(false)
+  })
+
+  it('keeps the neighbouring entries consistent across several undos and redos', () => {
+    const { ed, clock, type, text, stacks } = appendSetup([prefix])
+    type('a')
+    clock.t += 1000
+    type('b')
+    expect(text()).toBe('ab')
+    ed.commands.undo()
+    expect(text()).toBe('>a')
+    ed.commands.undo()
+    expect(text()).toBe('>')
+    expect(stacks().redo).toHaveLength(2)
+    ed.commands.redo()
+    expect(text()).toBe('>a')
+    ed.commands.redo()
+    expect(text()).toBe('>ab')
+    ed.commands.undo()
+    expect(text()).toBe('>a')
+    ed.commands.undo()
+    expect(text()).toBe('>')
+    expect(ed.commands.undo()).toBe(false)
+  })
+
+  it('an appended tr with its own addToHistory:false stays outside history', () => {
+    const outside = definePlugin({
+      name: 'outside',
+      appendTransaction: (trs, _old, state) => {
+        if (!trs.some((t) => t.meta.origin === 'input')) return null
+        const t = new Transaction(state, trs[0]!.registry)
+        t.meta.addToHistory = false
+        t.apply({ type: 'insert_text', path: [0, 0], offset: 0, text: '>' })
+        return t
+      },
+    })
+    const { type, text, stacks } = appendSetup([outside])
+    type('a')
+    expect(text()).toBe('>a')
+    // Structural change made outside history: today's behaviour clears the stacks.
+    expect(stacks().undo).toHaveLength(0)
+  })
+
+  it('appended trs inherit addToHistory:false from their root', () => {
+    const always = definePlugin({
+      name: 'always',
+      appendTransaction: (trs, _old, state) => {
+        if (!trs.some((t) => t.meta.origin === 'command')) return null
+        const t = new Transaction(state, trs[0]!.registry)
+        t.apply({ type: 'insert_text', path: [0, 0], offset: 0, text: '>' })
+        return t
+      },
+    })
+    const { ed, text, stacks } = appendSetup([always])
+    const metas: Record<string, unknown>[] = []
+    ed.on('transaction', ({ tr }) => metas.push({ ...tr.meta }))
+    const tr = ed.createTransaction()
+    tr.meta.origin = 'command'
+    tr.meta.addToHistory = false
+    tr.apply({ type: 'insert_text', path: [0, 0], offset: 0, text: 'x' })
+    ed.dispatch(tr)
+    expect(text()).toBe('>x')
+    expect(metas[1]).toMatchObject({ addToHistory: false })
+    expect(metas[1]!.appendedTo).toBeUndefined()
+    expect(stacks().undo).toHaveLength(0)
   })
 })

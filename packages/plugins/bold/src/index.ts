@@ -1,8 +1,18 @@
-import { definePlugin, type Command } from '@hte/core'
+/**
+ * Bold mark (`@hte/bold`). Renders `<strong>`; `options.HTMLAttributes` is merged into it.
+ * No React view, so no `data-*` attributes and no parts.
+ */
+import { definePlugin, mergeAttrs, type Command, type HTMLAttributes } from '@hte/core'
+
+export interface BoldOptions {
+  /** Extra attributes merged into the `<strong>`. */
+  HTMLAttributes: HTMLAttributes
+}
 
 export const bold = definePlugin({
   name: 'bold',
-  mark: { render: () => ({ tag: 'strong' }) },
+  options: { HTMLAttributes: {} } as BoldOptions,
+  mark: { render: (_, { options }) => ({ tag: 'strong', attrs: mergeAttrs(options.HTMLAttributes, {}) }) },
   parseHTML: [
     { tag: 'strong' },
     { tag: 'b', getData: (el) => (el.style.fontWeight === 'normal' ? false : {}) },

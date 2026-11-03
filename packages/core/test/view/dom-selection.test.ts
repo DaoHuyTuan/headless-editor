@@ -179,6 +179,32 @@ describe('read/writeDomSelection', () => {
     expect(spy).not.toHaveBeenCalled()
   })
 
+  it('moves a DOM caret outside the leaves into them, even when it maps to the same point', () => {
+    // E.g. the browser collapsed the caret into the root after its leaf was replaced.
+    ctx.renderer.render(doc(p('p1', '')))
+    domSel().setBaseAndExtent(ctx.root, 0, ctx.root, 0)
+    const sel: Selection = { anchor: { path: [0, 0], offset: 0 }, focus: { path: [0, 0], offset: 0 } }
+    expect(readDomSelection(ctx.renderer, domSel())).toEqual(sel)
+    writeDomSelection(ctx.renderer, sel, domSel())
+    const leaf = ctx.renderer.leafAt([0, 0])!
+    expect(domSel().anchorNode).toBe(leaf)
+    expect(domSel().focusNode).toBe(leaf)
+    // Now in the leaf: a second write does nothing.
+    const spy = vi.spyOn(domSel(), 'setBaseAndExtent')
+    writeDomSelection(ctx.renderer, sel, domSel())
+    expect(spy).not.toHaveBeenCalled()
+  })
+
+  it('maps the caret after a trailing newline to the end of the text, before the trailing break', () => {
+    ctx.renderer.render(doc(p('p1', 'a\n')))
+    const leaf = ctx.renderer.leafAt([0, 0])!
+    const text = leaf.firstChild as Text
+    expect(modelToDom(ctx.renderer, { path: [0, 0], offset: 2 })).toEqual({ node: text, offset: 2 })
+    expect(domToModel(ctx.renderer, leaf, 1)).toEqual({ path: [0, 0], offset: 2 })
+    expect(domToModel(ctx.renderer, leaf, 2)).toEqual({ path: [0, 0], offset: 2 })
+    expect(domToModel(ctx.renderer, leaf.querySelector('br')!, 0)).toEqual({ path: [0, 0], offset: 2 })
+  })
+
   it('reads null with no ranges or outside the root', () => {
     ctx.renderer.render(doc(p('p1', 'ab')))
     domSel().removeAllRanges()
@@ -245,5 +271,107 @@ describe('read/writeDomSelection: node selections', () => {
     const i = Array.prototype.indexOf.call(parent.childNodes, chip) as number
     domSel().setBaseAndExtent(parent, i, parent, i + 1)
     expect(readDomSelection(renderer, domSel())?.node).toBeUndefined()
+  })
+})
+
+describe('inline atoms: DOM <-> model mapping', () => {
+  const domSel = () => document.getSelection()!
+  const chip = definePlugin({
+    name: 'chip',
+    node: { kind: 'inline', atom: true },
+    renderHTML: () => ['span', { class: 'chip' }, '@abcd'],
+  })
+  const viewChip = definePlugin({ name: 'viewChip', node: { kind: 'inline', atom: true } })
+
+  function setupChip(...children: (Node | string)[]) {
+    const editor = createTestEditor({ plugins: [testParagraph, testBold, chip, viewChip] })
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    const renderer = new Renderer(root, editor)
+    renderer.render(doc(p('p1', ...children)))
+    return { root, renderer }
+  }
+
+  it('renders the inline atom root non-editable and empty texts beside it as zero-width leaves', () => {
+    const { renderer } = setupChip(txt(''), node('c1', 'chip'), txt(''))
+    const chipDom = renderer.elementAt([0, 1])!
+    expect(chipDom.getAttribute('contenteditable')).toBe('false')
+    for (const path of [[0, 0], [0, 2]]) {
+      const leaf = renderer.leafAt(path)!
+      expect(leaf.querySelector('br')).toBeNull()
+      expect(leaf.textContent).toBe('​')
+    }
+  })
+
+  it('model -> DOM -> model round-trips at every caret around the chip', () => {
+    const { renderer } = setupChip(txt(''), node('c1', 'chip'), txt('ab'), node('c2', 'chip'), txt(''))
+    for (const point of [
+      { path: [0, 0], offset: 0 },
+      { path: [0, 2], offset: 0 },
+      { path: [0, 2], offset: 1 },
+      { path: [0, 2], offset: 2 },
+      { path: [0, 4], offset: 0 },
+    ]) {
+      const dom = modelToDom(renderer, point)
+      expect(domToModel(renderer, dom.node, dom.offset)).toEqual(point)
+    }
+  })
+
+  it('maps a DOM text offset after the zero-width placeholder to model offset 0', () => {
+    const { renderer } = setupChip(txt('a'), node('c1', 'chip'), txt(''))
+    const t = textIn(renderer.leafAt([0, 2])!)
+    expect(domToModel(renderer, t, 1)).toEqual({ path: [0, 2], offset: 0 })
+  })
+
+  it('maps positions inside the chip to the boundary before it, or after it past its middle', () => {
+    const { renderer } = setupChip(txt('x'), node('c1', 'chip'), txt('y'))
+    const chipText = textIn(renderer.elementAt([0, 1])!)
+    expect(chipText.data).toBe('@abcd')
+    expect(domToModel(renderer, chipText, 0)).toEqual({ path: [0, 0], offset: 1 })
+    expect(domToModel(renderer, chipText, 2)).toEqual({ path: [0, 0], offset: 1 })
+    expect(domToModel(renderer, chipText, 3)).toEqual({ path: [0, 2], offset: 0 })
+    expect(domToModel(renderer, chipText, 5)).toEqual({ path: [0, 2], offset: 0 })
+    const chipDom = renderer.elementAt([0, 1])!
+    expect(domToModel(renderer, chipDom, 0)).toEqual({ path: [0, 0], offset: 1 })
+    expect(domToModel(renderer, chipDom, 1)).toEqual({ path: [0, 2], offset: 0 })
+  })
+
+  it('maps container positions next to the chip to the adjacent text leaves', () => {
+    const { renderer } = setupChip(txt('x'), node('c1', 'chip'), txt('y'))
+    const chipDom = renderer.elementAt([0, 1])!
+    const parent = chipDom.parentNode!
+    const i = Array.prototype.indexOf.call(parent.childNodes, chipDom) as number
+    expect(domToModel(renderer, parent, i)).toEqual({ path: [0, 0], offset: 1 })
+    expect(domToModel(renderer, parent, i + 1)).toEqual({ path: [0, 2], offset: 0 })
+  })
+
+  it('writeDomSelection keeps a DOM selection on the chip that maps to the model selection', () => {
+    const { renderer } = setupChip(txt('x'), node('c1', 'chip'), txt('y'))
+    const chipDom = renderer.elementAt([0, 1])!
+    const chipText = textIn(chipDom)
+    const leafX = textIn(renderer.leafAt([0, 0])!)
+    // E.g. mid-drag: from inside "x" to past the middle of the chip (its text, then the chip element).
+    for (const [focusNode, focusOffset] of [
+      [chipText, 4],
+      [chipDom, 1],
+    ] as const) {
+      domSel().setBaseAndExtent(leafX, 0, focusNode, focusOffset)
+      const sel: Selection = { anchor: { path: [0, 0], offset: 0 }, focus: { path: [0, 2], offset: 0 } }
+      expect(readDomSelection(renderer, domSel())).toEqual(sel)
+      const spy = vi.spyOn(domSel(), 'setBaseAndExtent')
+      writeDomSelection(renderer, sel, domSel())
+      expect(spy).not.toHaveBeenCalled()
+      spy.mockRestore()
+      expect(domSel().focusNode).toBe(focusNode)
+    }
+  })
+
+  it('writeDomSelection places the caret in the text leaves beside the chip', () => {
+    const { renderer } = setupChip(txt(''), node('c1', 'viewChip'), txt(''))
+    const sel: Selection = { anchor: { path: [0, 0], offset: 0 }, focus: { path: [0, 2], offset: 0 } }
+    writeDomSelection(renderer, sel, domSel())
+    expect(renderer.leafAt([0, 0])!.contains(domSel().anchorNode)).toBe(true)
+    expect(renderer.leafAt([0, 2])!.contains(domSel().focusNode)).toBe(true)
+    expect(readDomSelection(renderer, domSel())).toEqual(sel)
   })
 })

@@ -3,11 +3,12 @@ import { historyPlugin } from './history'
 import { normalizeKeyName, type Platform } from './keymap'
 import { parseHTML } from './html/parse'
 import { serializeHTML } from './html/serialize'
+import { runInputRules } from './input-rules'
 import { coerceDoc } from './load'
 import { firstEditableCaret, isEditablePoint, isOpaqueAt } from './model/editable'
 import { deepEqualJson, getNode, isElement } from './model/node'
 import { comparePoint } from './model/path'
-import type { Data, Doc, ElementNode, Json, Selection } from './model/types'
+import type { Data, Doc, ElementNode, Json, Point, Selection } from './model/types'
 import { normalize } from './normalize'
 import { Registry } from './plugin/registry'
 import type {
@@ -25,6 +26,7 @@ import type { EditorState } from './state'
 import type { Fragment } from './transaction/fragment'
 import { isMarkActive } from './transaction/marks'
 import { Transaction } from './transaction/transaction'
+import type { Decoration } from './view/decorations'
 import { EditorView } from './view/view'
 
 export interface EditorOptions<P extends readonly AnyPlugin[] = readonly AnyPlugin[]> {
@@ -38,10 +40,10 @@ export interface EditorOptions<P extends readonly AnyPlugin[] = readonly AnyPlug
   platform?: Platform
   /**
    * Node views keyed by node type: the renderer mounts each into a container it creates (see
-   * `NodeViewFactory`). Atom types only in M2; a non-atom type throws.
+   * `NodeViewFactory`). A non-atom type's view also gets a `contentDOM` holding its children.
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  nodeViews?: Record<string, NodeViewFactory<any, any>>
+  nodeViews?: Record<string, NodeViewFactory<any, any, any, any>>
 }
 
 export type EditorEventName = 'transaction' | 'update' | 'selectionUpdate'
@@ -80,6 +82,11 @@ function detectPlatform(): Platform {
   return /Mac/.test(nav.platform ?? '') || /Mac/.test(nav.userAgent ?? '') ? 'mac' : 'other'
 }
 
+/** Rethrows the first collected error, if any. */
+function throwFirst(errors: unknown[]): void {
+  if (errors.length > 0) throw errors[0]
+}
+
 function selectionEquals(a: Selection | null, b: Selection | null): boolean {
   if (a === null || b === null) return a === b
   return deepEqualJson(a as unknown as Json, b as unknown as Json)
@@ -95,11 +102,13 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
   private readonly dev: boolean
   private readonly platform: Platform
   private readonly pluginOptions = new Map<string, Record<string, unknown>>()
-  private readonly contexts = new Map<string, PluginContext<any, any, any>>()
+  private readonly contexts = new Map<string, PluginContext<any, any, any, any>>()
   private readonly commandFactories = new Map<string, AnyCommandFactory>()
   private readonly keymaps: { plugin: AnyPlugin; bindings: Map<string, () => boolean> }[] = []
   private readonly listeners = new Map<EditorEventName | 'options', Set<(e: any) => void>>()
-  private readonly nodeViews = new Map<string, NodeViewFactory<any, any>>()
+  private readonly nodeViews = new Map<string, NodeViewFactory<any, any, any, any>>()
+  /** `editor.storage`, filled as each plugin's storage factory returns (read by `ctx.storage`). */
+  private readonly storages: Record<string, unknown> = {}
   private destroyed = false
   /** Set while `destroy()` runs its hooks, so a re-entrant call returns at once. */
   private destroying = false
@@ -114,7 +123,6 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     for (const [type, factory] of Object.entries(options.nodeViews ?? {})) {
       const registered = this.registry.node(type)
       if (!registered) throw new Error(`Unknown node type "${type}" in nodeViews`)
-      if (!registered.atom) throw new Error('Non-atom node views arrive in M3')
       this.nodeViews.set(type, factory)
     }
 
@@ -137,21 +145,26 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
       }
       // The plugin's own commands, bound to its own factories (not the editor-wide clash winner).
       Object.assign(ctx.commands, this.bindCommands(factories, true))
-      const keymap = plugin.spec.keymap?.(ctx)
+    }
+    this.commands = this.bindCommands(this.commandFactories, true) as EditorCommands<P>
+
+    // Storage is created once all commands are bound, so factories may use ctx.commands.
+    for (const plugin of this.registry.plugins) {
+      if (plugin.spec.storage) this.storages[plugin.name] = plugin.spec.storage(this.getContext(plugin))
+    }
+    this.storage = this.storages as EditorStorage<P>
+
+    // Keymaps are collected last, so a keymap factory may read ctx.storage eagerly.
+    for (const plugin of this.registry.plugins) {
+      const keymap = plugin.spec.keymap?.(this.getContext(plugin))
       if (keymap) {
         const bindings = new Map<string, () => boolean>()
         for (const [key, fn] of Object.entries(keymap)) bindings.set(normalizeKeyName(key, this.platform), fn)
         this.keymaps.push({ plugin, bindings })
       }
     }
-    this.commands = this.bindCommands(this.commandFactories, true) as EditorCommands<P>
 
-    // Storage is created once all commands are bound, so factories may use ctx.commands.
-    const storage: Record<string, unknown> = {}
-    for (const plugin of this.registry.plugins) {
-      if (plugin.spec.storage) storage[plugin.name] = plugin.spec.storage(this.getContext(plugin))
-    }
-    this.storage = storage as EditorStorage<P>
+    throwFirst(this.runHooks((plugin, ctx) => plugin.spec.onCreate?.(ctx)))
   }
 
   /** The mounted DOM view, or null when not mounted. */
@@ -190,6 +203,11 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
       const first = this.applyTransaction(tr)
       if (!first) return
       committed.push(first)
+      // How history treats the appended trs: an undo/redo root → 'history'; a recorded root → 'record'
+      // (both join the root's entry); a root kept out of history → appended trs stay out too.
+      const appendedTo =
+        tr.meta.origin === 'history' ? 'history' : tr.docChanged && tr.meta.addToHistory !== false ? 'record' : null
+      const outside = appendedTo === null && tr.meta.addToHistory === false
       let pending = [tr]
       let roundBefore = before
       for (let round = 0; round < MAX_APPEND_ROUNDS && pending.length > 0; round++) {
@@ -201,6 +219,8 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
           const next = append(pending, roundBefore, this._state)
           if (!next) continue
           if (next.meta.origin === undefined) next.meta.origin = 'plugin'
+          if (appendedTo) next.meta.appendedTo = appendedTo
+          else if (outside) next.meta.addToHistory = false
           const done = this.applyTransaction(next)
           if (done) {
             committed.push(done)
@@ -213,11 +233,21 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     } finally {
       this.computing = false
     }
+    // Lifecycle hook errors are collected over the whole loop, so one throwing hook neither stops the
+    // other hooks nor the events of later trs; listener errors propagate as before.
+    const errors: unknown[] = []
     for (const { tr: t, selectionChanged } of committed) {
       this.emit('transaction', t)
-      if (t.docChanged) this.emit('update', t)
-      if (selectionChanged) this.emit('selectionUpdate', t)
+      if (t.docChanged) {
+        this.emit('update', t)
+        errors.push(...this.runHooks((plugin, ctx) => plugin.spec.onUpdate?.(ctx, { tr: t })))
+      }
+      if (selectionChanged) {
+        this.emit('selectionUpdate', t)
+        errors.push(...this.runHooks((plugin, ctx) => plugin.spec.onSelectionUpdate?.(ctx, { tr: t })))
+      }
     }
+    throwFirst(errors)
   }
 
   runKeymap(keyName: string): boolean {
@@ -236,6 +266,14 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
       if (handler && handler(intent, this.getContext(plugin))) return true
     }
     return false
+  }
+
+  /**
+   * Runs the plugins' input rules against the text before the caret (called by the core after it
+   * inserted text from an `insertText` intent). True when a rule fired.
+   */
+  runInputRules(): boolean {
+    return runInputRules(this, this.contextFn)
   }
 
   /** Asks each plugin's `handleDOMEvents[type]` by priority; true when one of them handled `event`. */
@@ -269,11 +307,49 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     return !plugin || !hook || hook(record, node, this.getContext(plugin))
   }
 
-  /** Runs each plugin's `transformPasted` on `fragment`, by priority. */
-  transformPasted(fragment: Fragment): Fragment {
+  /**
+   * Called by the view at the end of its constructor: runs every plugin's `onMount` by priority.
+   * Returns the cleanups the hooks returned (in call order) and the errors they threw; the view
+   * decides what to do with both.
+   */
+  handleMount(view: EditorView): { cleanups: (() => void)[]; errors: unknown[] } {
+    const cleanups: (() => void)[] = []
+    const errors = this.runHooks((plugin, ctx) => {
+      const cleanup = plugin.spec.onMount?.(ctx, view)
+      if (typeof cleanup === 'function') cleanups.push(cleanup)
+    })
+    return { cleanups, errors }
+  }
+
+  /** Called by the view when focus enters its root: runs every plugin's `onFocus` by priority. */
+  handleFocus(event: FocusEvent): void {
+    throwFirst(this.runHooks((plugin, ctx) => plugin.spec.onFocus?.(ctx, event)))
+  }
+
+  /** Called by the view when focus leaves its root: runs every plugin's `onBlur` by priority. */
+  handleBlur(event: FocusEvent): void {
+    throwFirst(this.runHooks((plugin, ctx) => plugin.spec.onBlur?.(ctx, event)))
+  }
+
+  /** Every plugin's `decorations` for `state`, by priority (what the view draws on its next render). */
+  getDecorations(state: EditorState): Decoration[] {
+    const out: Decoration[] = []
+    for (const plugin of this.registry.plugins) {
+      const hook = plugin.spec.decorations
+      if (hook) out.push(...hook(state, this.getContext(plugin)))
+    }
+    return out
+  }
+
+  /**
+   * Runs each plugin's `transformPasted` on `fragment`, by priority, with `at`: where the fragment
+   * will be inserted (a drop's drop point); omitted or null, at the selection.
+   */
+  transformPasted(fragment: Fragment, at: Selection | null = null): Fragment {
+    const info = { at }
     for (const plugin of this.registry.plugins) {
       const transform = plugin.spec.transformPasted
-      if (transform) fragment = transform(fragment, this.getContext(plugin))
+      if (transform) fragment = transform(fragment, this.getContext(plugin), info)
     }
     return fragment
   }
@@ -345,6 +421,11 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     this._view = new EditorView(this as unknown as Editor, el)
   }
 
+  /** Viewport coordinates of `point` in the mounted view (left, top, bottom), or null when unmounted or not rendered. */
+  coordsAt(point: Point): { left: number; top: number; bottom: number } | null {
+    return this._view?.coordsAt(point) ?? null
+  }
+
   /** Removes the view's listeners (the rendered content stays). Idempotent. */
   unmount(): void {
     const view = this._view
@@ -360,8 +441,12 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
   destroy(): void {
     if (this.destroyed || this.destroying) return
     this.destroying = true
-    this.unmount()
     const errors: unknown[] = []
+    try {
+      this.unmount()
+    } catch (error) {
+      errors.push(error)
+    }
     for (const plugin of [...this.registry.plugins].reverse()) {
       const hook = plugin.spec.destroy
       if (!hook) continue
@@ -382,11 +467,15 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     if (!this.pluginOptions.has(name)) throw new Error(`Unknown plugin "${name}"`)
   }
 
-  /** Cached per plugin. `commands` starts empty and is filled once the plugin's commands are collected. */
-  private getContext(plugin: AnyPlugin): PluginContext<any, any, any> {
+  /**
+   * Cached per plugin. `commands` starts empty and is filled once the plugin's commands are collected;
+   * `storage` is undefined until the plugin's storage factory returned.
+   */
+  private getContext(plugin: AnyPlugin): PluginContext<any, any, any, any> {
     let ctx = this.contexts.get(plugin.name)
     if (!ctx) {
       const options = this.pluginOptions
+      const storages = this.storages
       const editor = this as unknown as Editor
       ctx = {
         editor,
@@ -395,6 +484,9 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
           return options.get(plugin.name)
         },
         getState: () => this._state.pluginStates.get(plugin.name),
+        get storage() {
+          return storages[plugin.name]
+        },
         commands: {},
       }
       this.contexts.set(plugin.name, ctx)
@@ -403,6 +495,23 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
   }
 
   private readonly contextFn = (plugin: AnyPlugin) => this.getContext(plugin)
+
+  /**
+   * Calls `fn` for each plugin by priority, collecting what it throws instead of stopping. Stops
+   * (without error) once the editor is destroyed, e.g. by an earlier hook.
+   */
+  private runHooks(fn: (plugin: AnyPlugin, ctx: PluginContext<any, any, any, any>) => void): unknown[] {
+    const errors: unknown[] = []
+    for (const plugin of this.registry.plugins) {
+      if (this.destroyed || this.destroying) break
+      try {
+        fn(plugin, this.getContext(plugin))
+      } catch (error) {
+        errors.push(error)
+      }
+    }
+    return errors
+  }
 
   /** A normalized tr that replaces the whole document with `content`. */
   private contentTransaction(content: Doc | string, selection?: Selection): Transaction {
@@ -469,7 +578,13 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
         const tr = this.createTransaction()
         tr.meta.origin = 'command'
         const ok = factory(...args)({ tr, state: this._state, editor: this as unknown as Editor })
-        if (ok && dispatch && (tr.ops.length > 0 || tr.storedMarks !== this._state.storedMarks)) this.dispatch(tr)
+        if (ok && dispatch && (tr.ops.length > 0 || tr.storedMarks !== this._state.storedMarks)) {
+          const before = this._state
+          this.dispatch(tr)
+          // Dropped by the pipeline (a `filterTransaction` veto, or a dispatch that is not allowed
+          // now): the command did not apply.
+          if (this._state === before) return false
+        }
         return ok
       }
     }

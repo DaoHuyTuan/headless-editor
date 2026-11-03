@@ -7,8 +7,11 @@ import type {
   CommandsOf,
   CommandsOfPlugin,
   DataOf,
+  NodeViewPropsOf,
   OptionsOf,
   Plugin,
+  StateOf,
+  StorageOfPlugin,
 } from '../../src/plugin/types'
 import type { Data } from '../../src/model/types'
 
@@ -101,6 +104,127 @@ describe('plugin types', () => {
         expectTypeOf(ctx.commands.mine).toEqualTypeOf<() => boolean>()
         return false
       },
+    })
+  })
+
+  describe('typed own storage and state', () => {
+    interface Upload {
+      upload(files: File[]): void
+      isPending(id: string): boolean
+    }
+    const image = definePlugin({
+      name: 'image',
+      options: { max: 1 },
+      data: z.object({ src: z.string() }),
+      state: { init: () => ({ pending: new Set<string>() }), apply: (_tr, prev: { pending: Set<string> }) => prev },
+      commands: () => ({ insertImage: (src: string): Command => () => src !== '' }),
+      storage: (ctx): Upload => {
+        expectTypeOf(ctx.commands.insertImage).toEqualTypeOf<(src: string) => boolean>()
+        return { upload: () => {}, isPending: () => false }
+      },
+      onBeforeInput: (_intent, ctx) => {
+        expectTypeOf(ctx.storage.upload).toEqualTypeOf<(files: File[]) => void>()
+        expectTypeOf(ctx.getState().pending).toEqualTypeOf<Set<string>>()
+        ctx.storage.upload([])
+        return false
+      },
+      keymap: (ctx) => {
+        expectTypeOf(ctx.storage).toEqualTypeOf<Upload>()
+        return {}
+      },
+      destroy: (ctx) => {
+        expectTypeOf(ctx.storage).toEqualTypeOf<Upload>()
+        expectTypeOf(ctx.commands.insertImage).toEqualTypeOf<(src: string) => boolean>()
+      },
+    })
+
+    it('types ctx.storage in hooks', () => {
+      expectTypeOf<StorageOfPlugin<typeof image>>().toEqualTypeOf<Upload>()
+    })
+
+    it('infers storage when hooks come before the storage factory', () => {
+      const p = definePlugin({
+        name: 'early',
+        keymap: (ctx) => {
+          expectTypeOf(ctx.storage).toEqualTypeOf<{ n: number }>()
+          return {}
+        },
+        storage: () => ({ n: 1 }),
+      })
+      expectTypeOf<StorageOfPlugin<typeof p>>().toEqualTypeOf<{ n: number }>()
+      // A factory taking ctx, declared before the hooks that read ctx.storage.
+      const q = definePlugin({
+        name: 'late',
+        storage: (ctx) => ({ n: ctx.name.length }),
+        keymap: (ctx) => {
+          expectTypeOf(ctx.storage).toEqualTypeOf<{ n: number }>()
+          return {}
+        },
+      })
+      expectTypeOf<StorageOfPlugin<typeof q>>().toEqualTypeOf<{ n: number }>()
+    })
+
+    it('derives node view props from a plugin', () => {
+      type Props = NodeViewPropsOf<typeof image>
+      expectTypeOf<Props['storage']['isPending']>().toEqualTypeOf<(id: string) => boolean>()
+      expectTypeOf<Props['state']>().toEqualTypeOf<{ pending: Set<string> }>()
+      expectTypeOf<Props['options']>().toEqualTypeOf<{ max: number }>()
+      expectTypeOf<Props['node']['data']['src']>().toEqualTypeOf<string>()
+      expectTypeOf<Props['updateData']>().parameter(0).toEqualTypeOf<Partial<{ src: string }>>()
+    })
+
+    it('extend(parent) receives the parent spec and keeps the generics', () => {
+      const e = image.extend((parent) => {
+        expectTypeOf(parent).toEqualTypeOf<(typeof image)['spec']>()
+        return {
+          keymap: (ctx) => {
+            expectTypeOf(ctx.storage).toEqualTypeOf<Upload>()
+            return { ...parent.keymap?.(ctx), 'Mod-u': () => ctx.commands.insertImage('x') }
+          },
+          renderHTML: (n, c) => {
+            expectTypeOf(c.options).toEqualTypeOf<{ max: number }>()
+            return ['figure', {}, parent.renderHTML!(n, c)]
+          },
+        }
+      })
+      expectTypeOf(e.name).toEqualTypeOf<'image'>()
+      expectTypeOf<OptionsOf<typeof e>>().toEqualTypeOf<{ max: number }>()
+      expectTypeOf<DataOf<typeof e>>().toEqualTypeOf<{ src: string }>()
+      expectTypeOf<StateOf<typeof e>>().toEqualTypeOf<{ pending: Set<string> }>()
+      expectTypeOf<StorageOfPlugin<typeof e>>().toEqualTypeOf<Upload>()
+      expectTypeOf<CommandsOfPlugin<typeof e>>().toEqualTypeOf<{ insertImage: (src: string) => Command }>()
+      expectTypeOf(e).toMatchTypeOf<AnyPlugin>()
+      // Chained: the second extend's parent is the first one's spec.
+      const twice = e.extend((parent) => {
+        expectTypeOf(parent).toEqualTypeOf<(typeof e)['spec']>()
+        return { priority: 5 }
+      })
+      expectTypeOf<StorageOfPlugin<typeof twice>>().toEqualTypeOf<Upload>()
+      expectTypeOf(twice.name).toEqualTypeOf<'image'>()
+    })
+
+    it('extend infers C, S and T from the merged spec when an override replaces them', () => {
+      const e = image.extend(() => ({
+        commands: () => ({ other: (n: number): Command => () => n > 0 }),
+        state: { init: () => 1, apply: (_tr: unknown, prev: number) => prev },
+        storage: () => ({ replaced: true }),
+      }))
+      expectTypeOf<CommandsOfPlugin<typeof e>>().toEqualTypeOf<{ other: (n: number) => Command }>()
+      expectTypeOf<StateOf<typeof e>>().toEqualTypeOf<number>()
+      expectTypeOf<StorageOfPlugin<typeof e>>().toEqualTypeOf<{ replaced: boolean }>()
+      const o = image.extend({ storage: () => ({ obj: 1 }) })
+      expectTypeOf<StorageOfPlugin<typeof o>>().toEqualTypeOf<{ obj: number }>()
+    })
+
+    it('the object form of extend still compiles with contextual types', () => {
+      const e = image.extend({
+        priority: 3,
+        onBeforeInput: (_i, ctx) => {
+          expectTypeOf(ctx.storage).toEqualTypeOf<Upload>()
+          return false
+        },
+      })
+      expectTypeOf<StorageOfPlugin<typeof e>>().toEqualTypeOf<Upload>()
     })
   })
 })

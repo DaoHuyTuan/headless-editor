@@ -56,3 +56,25 @@ describe('bold plugin', () => {
     expect(ed.getHTML()).toBe('<p>ab</p>')
   })
 })
+
+describe('bold HTMLAttributes', () => {
+  const html = '<p>a<strong>b</strong>c</p>'
+
+  it('configure() adds attributes to <strong> in getHTML and in the live DOM', () => {
+    const ed = createTestEditor({ plugins: [paragraph, bold.configure({ HTMLAttributes: { class: 'b' } })], content: html })
+    expect(ed.getHTML()).toBe('<p>a<strong class="b">b</strong>c</p>')
+    const root = document.createElement('div')
+    ed.mount(root)
+    expect(root.querySelector('strong')?.getAttribute('class')).toBe('b')
+  })
+
+  it('setPluginOptions updates already-rendered leaves', () => {
+    const ed = createTestEditor({ plugins: [paragraph, bold], content: html })
+    const root = document.createElement('div')
+    ed.mount(root)
+    expect(root.querySelector('strong')?.hasAttribute('class')).toBe(false)
+    ed.setPluginOptions('bold', { HTMLAttributes: { class: 'c' } })
+    expect(root.querySelector('strong')?.getAttribute('class')).toBe('c')
+    expect(ed.getHTML()).toBe('<p>a<strong class="c">b</strong>c</p>')
+  })
+})

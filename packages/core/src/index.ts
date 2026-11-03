@@ -51,24 +51,33 @@ export type {
   DataOf,
   DOMEventName,
   DOMOutputSpec,
+  ExtendedSpec,
   InputIntent,
+  InputRule,
   MarkDOM,
   MarkSpec,
   NodeSpec,
   NodeViewFactory,
   NodeViewInstance,
   NodeViewProps,
+  NodeViewPropsOf,
   NoOptions,
   OptionsOf,
   ParseRule,
+  PasteInfo,
   Plugin,
   PluginContext,
+  PluginOverrides,
   PluginSpec,
   StateOf,
   StorageOf,
   StorageOfPlugin,
 } from './plugin/types'
 export { definePlugin } from './plugin/define'
+export { mergeAttrs } from './plugin/attrs'
+export { nodeText } from './content/text'
+export type { OptionsLookup } from './content/text'
+export type { Attrs, HTMLAttributes } from './plugin/attrs'
 export { DEFAULT_PRIORITY, Registry } from './plugin/registry'
 export type { RegisteredMark, RegisteredNode, ValidateResult } from './plugin/registry'
 export type { EditorState } from './state'
@@ -96,10 +105,13 @@ export type {
 export { eventToKeyName, normalizeKeyName } from './keymap'
 export type { Platform } from './keymap'
 export { corePlugin } from './core-plugin'
+export { findTrigger } from './suggestion'
+export type { FindTriggerOptions, TriggerMatch } from './suggestion'
 export { clearHistory, historyPlugin, rewriteHistoryData } from './history'
 export { Renderer } from './view/renderer'
 export { domToModel, modelToDom, readDomSelection, writeDomSelection } from './view/dom-selection'
 export { EditorView } from './view/view'
+export type { Decoration, DecorationAttrs, InlineDecoration, WidgetDecoration } from './view/decorations'
 export { IGNORE_ATTR, isIgnoredTarget } from './view/ignore'
 export { FRAGMENT_MIME, parseFromClipboard, serializeForClipboard } from './view/clipboard'
 export type { CompositionTarget, InputRecord, ViewModule } from './view/view'

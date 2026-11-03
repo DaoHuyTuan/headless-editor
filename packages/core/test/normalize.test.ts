@@ -9,6 +9,7 @@ import { invertOp } from '../src/ops/invert'
 import type { Editor } from '../src/editor'
 import { Transaction } from '../src/transaction/transaction'
 import { doc, el, sel, stripIds, txt } from '../src/testing/builders'
+import { createTestEditor } from '../src/testing/index'
 import { testBold, testParagraph } from './fixtures'
 
 const testItalic = definePlugin({ name: 'italic', mark: { render: () => ({ tag: 'em' }) } })
@@ -22,6 +23,7 @@ const ctx = (plugin: AnyPlugin): PluginContext<any, any> => ({
   name: plugin.name,
   options: plugin.spec.options ?? {},
   getState: () => undefined,
+  storage: undefined,
   commands: {},
 })
 
@@ -43,7 +45,7 @@ describe('normalize: core rules', () => {
   it('rule 2: consecutive root texts/inlines are wrapped into one default block', () => {
     const d = rawDoc(txt('a'), el('link', txt('l')), el('paragraph', txt('p')), txt('b'))
     expect(normalized(d)).toEqual(
-      stripIds(doc(el('paragraph', txt('a'), el('link', txt('l'))), el('paragraph', txt('p')), el('paragraph', txt('b')))),
+      stripIds(doc(el('paragraph', txt('a'), el('link', txt('l')), txt('')), el('paragraph', txt('p')), el('paragraph', txt('b')))),
     )
   })
 
@@ -82,12 +84,20 @@ describe('normalize: core rules', () => {
     expect(tr.selection).toEqual(sel([0, 0], 0, [0, 0], 1))
   })
 
-  it('rule 4 re-homes a caret next to an inline element into the inline’s edge text', () => {
-    const after = run(doc(el('paragraph', el('link', txt('ab')), txt('', 'bold'))), base, sel([0, 1], 0))
-    expect(stripIds(after.doc)).toEqual(stripIds(doc(el('paragraph', el('link', txt('ab'))))))
-    expect(after.selection).toEqual(sel([0, 0, 0], 2))
-    const before = run(doc(el('paragraph', txt('', 'bold'), el('link', txt('ab')))), base, sel([0, 0], 0))
-    expect(before.selection).toEqual(sel([0, 0, 0], 0))
+  it('rule 4 keeps the empty texts rule 10 needs beside an inline element, with the caret in them', () => {
+    const d = doc(el('paragraph', txt('', 'bold'), el('link', txt('ab')), txt('', 'bold')))
+    const tr = run(d, base, sel([0, 2], 0))
+    expect(tr.ops).toEqual([])
+    expect(tr.selection).toEqual(sel([0, 2], 0))
+  })
+
+  it('rule 4 re-homes a caret past an unknown (opaque) element to the nearest editable text', () => {
+    const widget: ElementNode = { id: 'w', type: 'widget', data: {}, children: [txt('hidden')] }
+    const after = run(doc(el('paragraph', txt('a'), widget, txt('', 'bold'))), base, sel([0, 2], 0))
+    expect(stripIds(after.doc)).toEqual(stripIds(doc(el('paragraph', txt('a'), widget))))
+    expect(after.selection).toEqual(sel([0, 0], 1))
+    const before = run(doc(el('paragraph', txt('', 'bold'), widget, txt('b'))), base, sel([0, 0], 0))
+    expect(before.selection).toEqual(sel([0, 1], 0))
   })
 
   it('rule 5:a non-atom block with no children gets an empty text; atoms are left alone', () => {
@@ -119,6 +129,23 @@ describe('normalize: core rules', () => {
   it('rule 8: a content:"text" block drops marks and unwraps inline elements', () => {
     const d = doc(el('code', txt('a', 'bold'), el('link', txt('b', 'italic')), txt('c')))
     expect(normalized(d)).toEqual(stripIds(doc(el('code', txt('abc')))))
+  })
+
+  it('rule 8: an inline atom in a content:"text" block becomes its renderText text (dropped without one)', () => {
+    const tag = definePlugin({
+      name: 'tag',
+      node: { kind: 'inline', atom: true },
+      options: { prefix: '#' },
+      renderText: (node, { options }) => `${options.prefix}${String(node.data.label)}`,
+    })
+    const bare = definePlugin({ name: 'bare', node: { kind: 'inline', atom: true } })
+    const atom = (type: string): ElementNode => ({ id: type, type, data: { label: 'x' }, children: [] })
+    const d = doc(el('code', txt('a'), atom('tag'), txt('b'), atom('bare'), txt('c')))
+    // The caret right after `b` stays right after it.
+    const tr = run(d, [...base, tag, bare], sel([0, 2], 1))
+    expect(stripIds(tr.doc)).toEqual(stripIds(doc(el('code', txt('a#xbc')))))
+    expect(tr.selection).toEqual(sel([0, 0], 4))
+    expect([...tr.ops].reverse().map(invertOp).reduce(applyOp, tr.doc)).toEqual(d)
   })
 
   it('rule 9: blocks nested in an inline-content block are unwrapped, recursively; ops invert back', () => {
@@ -270,5 +297,71 @@ describe('normalize: plugin hooks', () => {
       },
     })
     expect(() => run(doc(el('paragraph', txt('x'))), [testParagraph, flip])).toThrow('Normalization did not converge')
+  })
+})
+
+describe('normalize: rule 11 (no newline outside content:"text" blocks)', () => {
+  it('splits an inline-content block at each \n into blocks of its type; marks, selection and ids follow', () => {
+    const d = doc({ id: 'b', type: 'paragraph', data: {}, children: [txt('a'), txt('b\n\nc', 'bold'), txt('d')] })
+    // The caret right after the second newline goes to the start of the last piece.
+    const tr = run(d, base, sel([0, 1], 3))
+    expect(stripIds(tr.doc)).toEqual(
+      stripIds(doc(el('paragraph', txt('a'), txt('b', 'bold')), el('paragraph', txt('', 'bold')), el('paragraph', txt('c', 'bold'), txt('d')))),
+    )
+    expect(tr.selection).toEqual(sel([2, 0], 0))
+    const ids = tr.doc.children.map((b) => b.id)
+    expect(ids[0]).toBe('b')
+    expect(new Set(ids).size).toBe(3)
+    expect([...tr.ops].reverse().map(invertOp).reduce(applyOp, tr.doc)).toEqual(d)
+    expect(run(tr.doc).ops).toEqual([])
+  })
+
+  it('a caret right before a newline stays at the end of its line', () => {
+    const tr = run(doc(el('paragraph', txt('ab\ncd'))), base, sel([0, 0], 2))
+    expect(stripIds(tr.doc)).toEqual(stripIds(doc(el('paragraph', txt('ab')), el('paragraph', txt('cd')))))
+    expect(tr.selection).toEqual(sel([0, 0], 2))
+  })
+
+  it('splits through a non-atom inline element; content:"text" blocks keep their newlines', () => {
+    const d = doc(el('paragraph', txt('a'), el('link', txt('b\nc')), txt('d')), el('code', txt('x\ny')))
+    expect(normalized(d)).toEqual(
+      stripIds(doc(el('paragraph', txt('a'), el('link', txt('b')), txt('')), el('paragraph', txt(''), el('link', txt('c')), txt('d')), el('code', txt('x\ny')))),
+    )
+  })
+})
+
+describe('normalize: rule 11 on the editing paths that join text with newlines', () => {
+  const ed = (content: Doc, selection: Selection) =>
+    createTestEditor({ plugins: [testParagraph, testBold, testCode], doc: content, selection })
+  const shape = (e: ReturnType<typeof ed>) => stripIds(e.getJSON())
+
+  it('Backspace at the start of a content:"text" block after a paragraph: one paragraph per line, one undo', () => {
+    const before = doc(el('paragraph', txt('p')), el('code', txt('a\nb')))
+    const e = ed(before, sel([1, 0], 0))
+    e.handleIntent({ inputType: 'deleteContentBackward', data: null, range: e.state.selection })
+    expect(shape(e)).toEqual(stripIds(doc(el('paragraph', txt('pa')), el('paragraph', txt('b')))))
+    expect(e.state.selection).toEqual(sel([0, 0], 1))
+    expect(e.getHTML()).toBe('<p>pa</p><p>b</p>')
+    // The split is part of the Backspace tr: one undo restores the code block.
+    e.commands.undo()
+    expect(shape(e)).toEqual(stripIds(before))
+  })
+
+  it('a range delete from mid-paragraph into a content:"text" block', () => {
+    const e = ed(doc(el('paragraph', txt('pq')), el('code', txt('a\nb'))), sel([0, 0], 1, [1, 0], 1))
+    e.handleIntent({ inputType: 'deleteContentBackward', data: null, range: e.state.selection })
+    expect(shape(e)).toEqual(stripIds(doc(el('paragraph', txt('p')), el('paragraph', txt('b')))))
+    expect(e.state.selection).toEqual(sel([0, 0], 1))
+    expect(e.getHTML()).toBe('<p>p</p><p>b</p>')
+  })
+
+  it('a drop of inline text holding a newline into a paragraph', () => {
+    const e = ed(doc(el('paragraph', txt('pq'))), sel([0, 0], 0))
+    const json = JSON.stringify([txt('xy\nz')])
+    const dataTransfer = { getData: (t: string) => (t === 'application/x-hte-fragment' ? json : '') } as unknown as DataTransfer
+    e.handleIntent({ inputType: 'insertFromDrop', data: null, range: sel([0, 0], 1), dataTransfer })
+    expect(shape(e)).toEqual(stripIds(doc(el('paragraph', txt('pxy')), el('paragraph', txt('zq')))))
+    expect(e.state.selection).toEqual(sel([1, 0], 1))
+    expect(e.getHTML()).toBe('<p>pxy</p><p>zq</p>')
   })
 })

@@ -1,9 +1,9 @@
-import { isOpaque, type NodeTypes } from '../model/editable'
+import { isNodeSelection, isOpaque, type NodeTypes } from '../model/editable'
 import { createId } from '../model/id'
 import { getNode, isElement, isText, nodeEntries } from '../model/node'
 import { comparePoint, parentPath } from '../model/path'
 import type { DeepReadonly, Doc, ElementNode, Json, Node, Path, Point, Range, Selection, TextNode } from '../model/types'
-import { blockPathOf, deleteRange, insertBlockNode, replaceSelectedNode, splitBlockAt } from './text'
+import { blockPathOf, deleteRange, insertBlockNode, isInlineOpaque, replaceSelectedNode, splitBlockAt } from './text'
 import type { Transaction } from './transaction'
 
 /**
@@ -125,8 +125,12 @@ function endOfInserted(nodes: Node[], parent: Path, index: number, types: NodeTy
   return null
 }
 
-/** Inserts inline `nodes` at `point` (splitting its text); returns the end of the inserted content. */
-function insertInline(tr: Transaction, point: Point, nodes: Node[]): Point {
+/**
+ * Inserts inline `nodes` at `point` (splitting its text); returns the end of the inserted content.
+ * When the last node is an inline atom (or `after` is set) that end is right after the last node: the
+ * start of the text following it, an empty one being added when none does.
+ */
+function insertInline(tr: Transaction, point: Point, nodes: Node[], after = false): Point {
   if (nodes.length === 0) return point
   const node = getNode(tr.doc, point.path)
   if (!isText(node)) throw new Error(`Expected a text node at [${point.path}]`)
@@ -140,9 +144,47 @@ function insertInline(tr: Transaction, point: Point, nodes: Node[]): Point {
     index++
   }
   nodes.forEach((n, i) => tr.insertNode([...parent, index + i], n))
+  const last = nodes[nodes.length - 1]!
+  const parentType = parent.length === 0 ? 'doc' : (getNode(tr.doc, parent) as ElementNode).type
+  if (after || (isElement(last) && isInlineOpaque(tr, last, parentType))) {
+    return textStartAt(tr, [...parent, index + nodes.length])
+  }
   // Nodes without any text: the caret stays where the original point now is.
   const original: Point = atEnd ? point : { path: [...parent, index + nodes.length], offset: 0 }
   return endOfInserted(nodes, parent, index, tr.registry) ?? original
+}
+
+/** The start of the text at `at`; when the node there is not a text (or there is none), an empty text is inserted at `at`. */
+function textStartAt(tr: Transaction, at: Path): Point {
+  const parent = parentPath(at)
+  const siblings = parent.length === 0 ? tr.doc.children : ((getNode(tr.doc, parent) as ElementNode).children ?? [])
+  const next = siblings[at[at.length - 1]!]
+  if (!next || !isText(next)) tr.insertNode(at, { text: '', marks: [] })
+  return { path: at, offset: 0 }
+}
+
+/**
+ * Inserts the inline element `node` at the caret, replacing the selection (a selected node is first
+ * swapped for an empty default block); the caret ends right after it. Its id is replaced when already
+ * in the doc. False (nothing inserted) when `node` is not a registered inline type, without a
+ * selection, in a text-only block (`content: 'text'`), or when its data is rejected (the tr stays
+ * rejected).
+ */
+export function insertInlineNode(tr: Transaction, node: ElementNode): boolean {
+  if (tr.registry.node(node.type)?.kind !== 'inline') return false
+  if (isNodeSelection(tr.selection)) replaceSelectedNode(tr, { text: '' })
+  const sel = tr.selection
+  if (!sel) return false
+  const range = ordered(sel)
+  const block = getNode(tr.doc, blockPathOf(tr, range.start.path)) as ElementNode
+  if (tr.registry.node(block.type)?.content === 'text') return false
+  const point = deleteRange(tr, range) ? tr.selection!.anchor : range.start
+  const used = new Set<string>()
+  for (const [n] of nodeEntries(tr.doc)) if (isElement(n)) used.add(n.id)
+  const end = insertInline(tr, point, withUniqueIds([node], used), true)
+  // A rejected tr is never applied (the editor drops it), so the split text needs no undoing.
+  if (tr.rejected !== null) return false
+  return caretAt(tr, end)
 }
 
 /**

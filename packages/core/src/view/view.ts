@@ -1,6 +1,6 @@
 import type { Editor } from '../editor'
 import { nextPath, pointEquals } from '../model/path'
-import type { Path, Selection } from '../model/types'
+import type { Path, Point, Selection } from '../model/types'
 import { transformPath } from '../ops/transform'
 import type { Operation } from '../ops/types'
 import type { EditorState } from '../state'
@@ -8,7 +8,7 @@ import type { Transaction } from '../transaction/transaction'
 import { attachClipboard } from './clipboard'
 import { attachComposition } from './composition'
 import { attachDrop } from './drop'
-import { readDomSelection, writeDomSelection } from './dom-selection'
+import { modelToDom, readDomSelection, writeDomSelection } from './dom-selection'
 import { isInIgnoredElement } from './ignore'
 import { attachInput } from './input'
 import { attachMutation } from './mutation'
@@ -71,6 +71,27 @@ function samePath(a: Path, b: Path): boolean {
   return a.length === b.length && a.every((v, i) => v === b[i])
 }
 
+interface DomSelectionSnapshot {
+  anchorNode: globalThis.Node | null
+  anchorOffset: number
+  focusNode: globalThis.Node | null
+  focusOffset: number
+}
+
+function snapshot(domSel: globalThis.Selection): DomSelectionSnapshot {
+  const { anchorNode, anchorOffset, focusNode, focusOffset } = domSel
+  return { anchorNode, anchorOffset, focusNode, focusOffset }
+}
+
+function sameSnapshot(a: DomSelectionSnapshot, b: DomSelectionSnapshot): boolean {
+  return (
+    a.anchorNode === b.anchorNode &&
+    a.anchorOffset === b.anchorOffset &&
+    a.focusNode === b.focusNode &&
+    a.focusOffset === b.focusOffset
+  )
+}
+
 function sameSelection(a: Selection | null, b: Selection | null): boolean {
   if (a === null || b === null) return a === b
   if (pointEquals(a.anchor, b.anchor) && pointEquals(a.focus, b.focus)) {
@@ -99,18 +120,28 @@ export class EditorView {
   /** True while the view itself writes the DOM selection. */
   private writingSelection = false
   private destroyed = false
+  /** What the plugins' `onMount` hooks returned, in call order. */
+  private mountCleanups: (() => void)[] = []
+  /** Whether focus is inside the root (as tracked by focusin/focusout). */
+  private focusInside = false
+  /**
+   * The DOM selection as it was when the model selection could not be written because its leaf is
+   * not placed yet (see `syncSelection`); null otherwise.
+   */
+  private staleDomSelection: DomSelectionSnapshot | null = null
 
   constructor(
     readonly editor: Editor,
     readonly root: HTMLElement,
   ) {
     this.renderer = new Renderer(root, editor)
-    this.renderer.render(editor.state.doc)
+    this.renderer.render(editor.state.doc, { decorations: editor.getDecorations(editor.state) })
 
     this.disposers.push(
       editor.on('options', ({ editor: ed, plugin }) => {
         const spec = ed.registry.node(plugin)
         if (spec) this.renderer.invalidate(plugin)
+        if (ed.registry.mark(plugin)) this.renderer.invalidateMark(plugin)
         this.update(ed.state)
       }),
     )
@@ -122,6 +153,24 @@ export class EditorView {
     this.attach(attachClipboard)
     this.attach(attachNodeSelect)
     this.attach(attachDrop)
+    // Already focused (e.g. a remount on the same root): no onFocus now, but leaving is a blur.
+    const active = root.ownerDocument.activeElement
+    this.focusInside = !!active && root.contains(active)
+    this.listen(root, 'focusin', (e) => this.onFocusIn(e as FocusEvent))
+    this.listen(root, 'focusout', (e) => this.onFocusOut(e as FocusEvent))
+
+    // Plugins' onMount hooks run last, on a fully set-up view. If one throws, the view is torn
+    // down (running the cleanups already returned) and the first error is rethrown.
+    const { cleanups, errors } = editor.handleMount(this)
+    this.mountCleanups = cleanups
+    if (errors.length > 0) {
+      try {
+        this.destroy()
+      } catch {
+        // The onMount error is the one reported.
+      }
+      throw errors[0]
+    }
   }
 
   /** The last 20 input events, oldest first. */
@@ -136,15 +185,20 @@ export class EditorView {
 
   /**
    * Renders `state` and, when the editor has focus, shows its selection in the DOM. While composing,
-   * the composing leaf is left to the IME and the DOM selection is not touched.
+   * the composing leaf is left to the IME and the DOM selection is not touched. The plugins'
+   * decorations are computed for `state` on every update; the composing leaf gets them once the
+   * composition ends.
    */
   update(state: EditorState): void {
     if (this.destroyed) return
     const target = this.composing ? this.composition : null
     const selectedNode = state.selection?.node
+    const decorations = this.editor.getDecorations(state)
     this.renderer.render(
       state.doc,
-      target ? { skipLeaf: target.leaf, skipPath: target.path, selectedNode } : { selectedNode },
+      target
+        ? { skipLeaf: target.leaf, skipPath: target.path, selectedNode, decorations }
+        : { selectedNode, decorations },
     )
     if (!this.composing && this.hasFocus()) this.writeSelection(state.selection)
   }
@@ -155,11 +209,54 @@ export class EditorView {
     this.writeSelection(this.editor.state.selection)
   }
 
+  /**
+   * Viewport coordinates of the caret position at `point` (left edge, top and bottom of its line), or
+   * null when the point has no rendered leaf. A collapsed range can report an all-zero rect (e.g. in an
+   * empty leaf), so this falls back to the first client rect, then to the leaf element's left edge.
+   */
+  coordsAt(point: Point): { left: number; top: number; bottom: number } | null {
+    if (this.destroyed) return null
+    const leaf = this.renderer.leafAt(point.path)
+    if (!leaf) return null
+    let range: Range | null = null
+    try {
+      const pos = modelToDom(this.renderer, point)
+      range = this.root.ownerDocument.createRange()
+      range.setStart(pos.node, pos.offset)
+      range.collapse(true)
+    } catch {
+      range = null
+    }
+    const empty = (r: { left: number; top: number; bottom: number }): boolean =>
+      r.left === 0 && r.top === 0 && r.bottom === 0
+    if (range) {
+      const bounding = range.getBoundingClientRect()
+      if (!empty(bounding)) return { left: bounding.left, top: bounding.top, bottom: bounding.bottom }
+      const first = range.getClientRects()[0]
+      if (first && !empty(first)) return { left: first.left, top: first.top, bottom: first.bottom }
+    }
+    const rect = leaf.getBoundingClientRect()
+    return { left: rect.left, top: rect.top, bottom: rect.bottom }
+  }
+
+  /**
+   * Runs the plugins' `onMount` cleanups in reverse order, then removes every listener and destroys
+   * the renderer. A throwing cleanup does not stop the rest; the first error is rethrown at the end.
+   */
   destroy(): void {
     if (this.destroyed) return
     this.destroyed = true
+    const errors: unknown[] = []
+    for (const cleanup of this.mountCleanups.splice(0).reverse()) {
+      try {
+        cleanup()
+      } catch (error) {
+        errors.push(error)
+      }
+    }
     for (const dispose of this.disposers.splice(0).reverse()) dispose()
     this.renderer.destroy()
+    if (errors.length > 0) throw errors[0]
   }
 
   /** Attaches a view module; its disposer runs on `destroy`. */
@@ -182,6 +279,17 @@ export class EditorView {
     const domSel = this.domSelection()
     const anchor = domSel?.anchorNode
     if (!domSel || !anchor || !this.root.contains(anchor)) return
+    // The model selection is in a leaf whose node view has not placed its contentDOM yet: the DOM
+    // selection cannot show it, and reading a stale one (the caret left where it was when the write
+    // was skipped, or one the browser collapsed into the root) would overwrite it. A DOM selection
+    // the user moved since, into leaves, is still read.
+    if (this.selectionDetached()) {
+      const stale = this.staleDomSelection
+      if (stale && sameSnapshot(stale, snapshot(domSel))) return
+      if (!(this.inLeaf(anchor) && this.inLeaf(domSel.focusNode))) return
+    } else {
+      this.staleDomSelection = null
+    }
     const sel = readDomSelection(this.renderer, domSel)
     // Also covers the async selectionchange fired after our own writes: it maps back to the model.
     if (!sel || sameSelection(sel, this.editor.state.selection)) return
@@ -190,7 +298,33 @@ export class EditorView {
     this.editor.dispatch(tr)
   }
 
+  /**
+   * Shows the model selection in the DOM again when the editor has focus and is not composing:
+   * called when a node view placed its `contentDOM` after the render (e.g. a React portal commit).
+   */
+  refreshSelection(): void {
+    if (this.destroyed || this.composing || !this.hasFocus()) return
+    this.writeSelection(this.editor.state.selection)
+  }
+
   // --- internals ---
+
+  /** Whether a point of the model selection is in a rendered leaf that is not inside the root. */
+  private selectionDetached(): boolean {
+    const sel = this.editor.state.selection
+    if (!sel) return false
+    return this.renderer.isLeafDetached(sel.anchor.path) || this.renderer.isLeafDetached(sel.focus.path)
+  }
+
+  /** Whether `node` is inside a rendered leaf of the root. */
+  private inLeaf(node: globalThis.Node | null): boolean {
+    let cur: globalThis.Node | null = node
+    while (cur && cur !== this.root) {
+      if (cur.nodeType === 1 && this.renderer.pathOfLeaf(cur as Element)) return true
+      cur = cur.parentNode
+    }
+    return false
+  }
 
   private onTransaction(state: EditorState, tr: Transaction): void {
     if (this.composition) {
@@ -202,6 +336,23 @@ export class EditorView {
       if (this.composing && tr.doc !== state.doc) return
     }
     this.update(state)
+  }
+
+  /** Focus entering the root from outside it is a plugin focus; moves inside the root are not. */
+  private onFocusIn(e: FocusEvent): void {
+    if (this.destroyed || this.focusInside) return
+    this.focusInside = true
+    this.editor.handleFocus(e)
+  }
+
+  /** A focusout whose `relatedTarget` is still inside the root is a move inside it, not a blur. */
+  private onFocusOut(e: FocusEvent): void {
+    if (this.destroyed || !this.focusInside) return
+    // Focus events only carry an Element (or null) here; no `instanceof Node`, which fails across realms.
+    const next = e.relatedTarget as Node | null
+    if (next && this.root.contains(next)) return
+    this.focusInside = false
+    this.editor.handleBlur(e)
   }
 
   private domSelection(): globalThis.Selection | null {
@@ -231,6 +382,8 @@ export class EditorView {
     } finally {
       this.writingSelection = false
     }
+    // Not shown (its leaf is not placed yet): the DOM selection left as it is is stale.
+    this.staleDomSelection = this.selectionDetached() ? snapshot(domSel) : null
   }
 
   private onSelectionChange(): void {

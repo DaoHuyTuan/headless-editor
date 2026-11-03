@@ -3,9 +3,9 @@ import { serializeHTML } from '../html/serialize'
 import { parseHTML } from '../html/parse'
 import { defaultBlock, isBlock, sanitizeFragment } from '../content/sanitize'
 import { isNodeSelection } from '../model/editable'
-import { isText } from '../model/node'
+import { nodeText } from '../content/text'
 import { isCollapsed, toRange } from '../model/path'
-import type { Doc, ElementNode, Node, Path, Range } from '../model/types'
+import type { Doc, ElementNode, Node, Path, Range, Selection } from '../model/types'
 import type { Registry } from '../plugin/registry'
 import { getFragment, type Fragment } from '../transaction/fragment'
 import { replaceSelectedNode } from '../transaction/text'
@@ -15,15 +15,11 @@ import type { EditorView, ViewModule } from './view'
 /** The MIME type of the lossless JSON flavor (a `JSON.stringify`-ed `Fragment`). */
 export const FRAGMENT_MIME = 'application/x-hte-fragment'
 
-function textOf(node: Node): string {
-  return isText(node) ? node.text : (node.children ?? []).map(textOf).join('')
-}
-
 /**
  * The three clipboard flavors of `range`: `json` is the fragment itself, `html` the fragment
  * serialized as a doc (inline content is wrapped into a default block first), `text` the text of
- * each block (inline elements included) joined by `\n`. With `node` (a node selection's
- * `selection.node`), the fragment is that node alone.
+ * each block (inline elements included, through their `renderText` when they have one) joined by
+ * `\n`. With `node` (a node selection's `selection.node`), the fragment is that node alone.
  */
 export function serializeForClipboard(
   editor: Editor,
@@ -32,6 +28,7 @@ export function serializeForClipboard(
 ): { html: string; text: string; json: string } {
   const { registry } = editor
   const fragment = getFragment(editor.state.doc, range, node)
+  const textOf = (n: Node) => nodeText(n, registry, (plugin) => editor.getPluginOptions(plugin.name))
   const blocks = fragment.length > 0 && isBlock(fragment[0]!, registry)
   const doc: Doc = {
     type: 'doc',
@@ -40,7 +37,7 @@ export function serializeForClipboard(
   return {
     json: JSON.stringify(fragment),
     html: serializeHTML(doc, registry, (name) => editor.getPluginOptions(name)),
-    text: blocks ? fragment.map(textOf).join('\n') : fragment.map(textOf).join(''),
+    text: fragment.map(textOf).join(blocks ? '\n' : ''),
   }
 }
 
@@ -65,15 +62,20 @@ function fromText(text: string, registry: Registry): Fragment {
  * `application/x-hte-fragment` flavor), then `html`, then `text`, moving on when a flavor is
  * missing, malformed or yields nothing. JSON and HTML are untrusted: data is validated and unknown
  * types are dropped. Text lines become default blocks; a single line is inline text without marks.
- * Finally every plugin's `transformPasted` runs, in priority order.
+ * Finally every plugin's `transformPasted` runs, in priority order, with `options.at`: where the
+ * fragment will be inserted (a drop's drop point); omitted or null, at the selection.
  */
-export function parseFromClipboard(editor: Editor, data: { json?: string; html?: string; text?: string }): Fragment {
+export function parseFromClipboard(
+  editor: Editor,
+  data: { json?: string; html?: string; text?: string },
+  options: { at?: Selection | null } = {},
+): Fragment {
   const { registry } = editor
   let fragment: Fragment = []
   if (data.json) fragment = fromJson(data.json, registry)
   if (fragment.length === 0 && data.html) fragment = sanitizeFragment(parseHTML(data.html, registry), registry)
   if (fragment.length === 0 && data.text) fragment = fromText(data.text, registry)
-  return editor.transformPasted(fragment)
+  return editor.transformPasted(fragment, options.at ?? null)
 }
 
 /** The model range to copy, or null when the browser should handle the event (collapsed, or outside the root). */

@@ -1,18 +1,28 @@
 // @vitest-environment happy-dom
-import { StrictMode } from 'react'
+import { StrictMode, type ComponentType, type ReactNode } from 'react'
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { nodeSelection, type Editor } from '@hte/core'
+import { nodeSelection, type Editor, type NodeViewPropsOf } from '@hte/core'
 import { doc, el, sel, txt } from '@hte/core/testing'
 import { paragraph } from '@hte/paragraph'
 import { EditorContent, useEditor } from '@hte/react'
 import { image, type ImageData } from '../src/index'
-import { ImageView } from '../src/react'
+import {
+  Image,
+  ImageView,
+  useAltDraft,
+  useImageContext,
+  useImageResize,
+  useImageState,
+  type ImagePartProps,
+} from '../src/react'
 
 const plugins = [paragraph, image] as const
 type TestEditor = Editor<typeof plugins>
 
-function Harness({ onEditor, data }: { onEditor: (e: TestEditor) => void; data?: Partial<ImageData> }) {
+type View = ComponentType<NodeViewPropsOf<typeof image>>
+
+function Harness({ onEditor, data, view }: { onEditor: (e: TestEditor) => void; data?: Partial<ImageData>; view: View }) {
   const editor = useEditor({
     plugins,
     content: doc(
@@ -21,37 +31,45 @@ function Harness({ onEditor, data }: { onEditor: (e: TestEditor) => void; data?:
       el('paragraph', txt('cd')),
     ),
     selection: sel([0, 0], 1),
-    nodeViews: { image: ImageView },
+    nodeViews: { image: view },
   })
   onEditor(editor)
   return <EditorContent editor={editor} data-testid="content" />
 }
 
 let errors: ReturnType<typeof vi.spyOn>
+let warns: ReturnType<typeof vi.spyOn>
+/** Set by a test that expects a console.warn (the unsafe src drop). */
+let warnExpected = false
 beforeEach(() => {
   errors = vi.spyOn(console, 'error')
+  warns = vi.spyOn(console, 'warn')
+  warnExpected = false
 })
 afterEach(() => {
+  // StrictMode: no React error or warning in any test.
+  expect(errors).not.toHaveBeenCalled()
+  if (!warnExpected) expect(warns).not.toHaveBeenCalled()
   cleanup()
   vi.restoreAllMocks()
 })
 
 const dataOf = (e: TestEditor) => (e.state.doc.children[1] as unknown as { data: ImageData }).data
 
-function setup(data?: Partial<ImageData>) {
+function setup(data?: Partial<ImageData>, view: View = ImageView) {
   let editor!: TestEditor
   const utils = render(
     <StrictMode>
-      <Harness onEditor={(e) => (editor = e)} data={data} />
+      <Harness onEditor={(e) => (editor = e)} data={data} view={view} />
     </StrictMode>,
   )
   const root = utils.getByTestId('content')
   return {
     editor: () => editor,
     root,
-    figure: () => root.querySelector('figure.hte-image') as HTMLElement,
+    figure: () => root.querySelector('figure[data-hte-image]') as HTMLElement,
     input: () => root.querySelector('input') as HTMLInputElement,
-    handle: () => root.querySelector('.hte-image-resize') as HTMLElement,
+    handle: () => root.querySelector('[data-hte-image] > span[data-editor-ignore]') as HTMLElement,
   }
 }
 
@@ -71,7 +89,8 @@ describe('ImageView', () => {
   })
 
   it('never renders an unsafe src: the image is dropped on load', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    warnExpected = true
+    const warn = warns.mockImplementation(() => {})
     const t = setup({ src: 'javascript:alert(1)' })
     expect(t.figure()).toBeNull()
     expect(t.root.innerHTML).not.toContain('javascript:')
@@ -171,14 +190,14 @@ describe('ImageView', () => {
 
   it('data-selected follows the node selection', () => {
     const t = setup()
-    expect(t.figure().getAttribute('data-selected')).toBe('false')
+    expect(t.figure().hasAttribute('data-selected')).toBe(false)
     act(() => {
       const e = t.editor()
       const tr = e.createTransaction()
       tr.setSelection(nodeSelection(e.state.doc, e.registry, [1]))
       e.dispatch(tr)
     })
-    expect(t.figure().getAttribute('data-selected')).toBe('true')
+    expect(t.figure().getAttribute('data-selected')).toBe('')
     expect(errors).not.toHaveBeenCalled()
   })
 
@@ -242,7 +261,7 @@ describe('ImageView', () => {
     } finally {
       URL.createObjectURL = created
     }
-    const figures = () => Array.from(t.root.querySelectorAll('figure.hte-image'))
+    const figures = () => Array.from(t.root.querySelectorAll('figure[data-hte-image]'))
     expect(figures().filter((f) => f.hasAttribute('data-uploading'))).toHaveLength(1)
     await act(async () => {
       resolve('https://x.test/b.png')
@@ -250,5 +269,145 @@ describe('ImageView', () => {
     })
     expect(figures().filter((f) => f.hasAttribute('data-uploading'))).toHaveLength(0)
     expect(errors).not.toHaveBeenCalled()
+  })
+})
+
+type Props = NodeViewPropsOf<typeof image>
+
+/** Gives the node view container a width and the picture a measured width, for resize tests. */
+function measure(root: HTMLElement, imgWidth: number, space = 400) {
+  const container = root.querySelector('[data-hte-node-view]') as HTMLElement
+  Object.defineProperty(container, 'clientWidth', { configurable: true, value: space })
+  const img = container.querySelector('img')!
+  img.getBoundingClientRect = () => ({ width: imgWidth }) as DOMRect
+  return img
+}
+
+function drag(handle: HTMLElement, from: number, to: number) {
+  handle.setPointerCapture = vi.fn()
+  handle.releasePointerCapture = vi.fn()
+  const ptr = (type: string, clientX: number) =>
+    fireEvent(handle, new MouseEvent(type, { bubbles: true, clientX, button: 0 }))
+  ptr('pointerdown', from)
+  ptr('pointermove', to)
+  ptr('pointerup', to)
+}
+
+function withView(render: (p: Props) => ReactNode): View {
+  return function CustomizedView(p: Props) {
+    return <>{render(p)}</>
+  }
+}
+
+const NoAlt = withView((p) => <ImageView {...p} parts={{ altInput: false }} />)
+
+function Grip({ className }: ImagePartProps) {
+  return <Image.ResizeHandle className={`grip ${className ?? ''}`} />
+}
+const CustomGrip = withView((p) => <ImageView {...p} parts={{ resizeHandle: Grip }} classNames={{ resizeHandle: 'rh' }} />)
+
+const Classed = withView((p) => (
+  <ImageView {...p} classNames={{ root: 'r', img: 'i', altInput: 'a', resizeHandle: 'h' }} />
+))
+
+/** A view built only from the headless hooks: the author adds no data-editor-ignore. */
+function HookView(props: Props) {
+  const { selected, uploading } = useImageState(props)
+  const { width, handleProps } = useImageResize(props)
+  const { inputProps } = useAltDraft(props)
+  return (
+    <div className="custom" data-up={uploading ? '' : undefined} data-sel={selected ? '' : undefined}>
+      <img src={props.node.data.src} alt={props.node.data.alt} width={width} />
+      <input {...inputProps} />
+      <i className="grip" {...handleProps} />
+    </div>
+  )
+}
+
+function Orphan() {
+  useImageContext()
+  return null
+}
+
+describe('ImageView customization', () => {
+  it('parts: { altInput: false } hides the input; resize still works', () => {
+    const t = setup({ width: 100 }, NoAlt)
+    expect(t.root.querySelector('input')).toBeNull()
+    measure(t.root, 100)
+    drag(t.handle(), 10, 50)
+    expect(dataOf(t.editor()).width).toBe(140)
+  })
+
+  it('a replacement resizeHandle built with Image.ResizeHandle still resizes and is ignored by the editor', () => {
+    const t = setup({ width: 100 }, CustomGrip)
+    const grip = t.root.querySelector('.grip') as HTMLElement
+    expect(grip.className).toBe('grip rh')
+    expect(grip.hasAttribute('data-editor-ignore')).toBe(true)
+    measure(t.root, 100)
+    drag(grip, 0, 30)
+    expect(dataOf(t.editor()).width).toBe(130)
+  })
+
+  it('classNames go on the root and each part', () => {
+    const t = setup(undefined, Classed)
+    expect(t.figure().className).toBe('r')
+    expect(t.figure().querySelector('img')!.className).toBe('i')
+    expect(t.input().className).toBe('a')
+    expect(t.handle().className).toBe('h')
+  })
+
+  it('a view built only from the hooks: alt edit, resize, uploading, and controls ignored by the editor', async () => {
+    const t = setup({ width: 100 }, HookView)
+    const view = () => t.root.querySelector('.custom') as HTMLElement
+    const input = view().querySelector('input')!
+    const grip = view().querySelector('.grip') as HTMLElement
+    expect(input.hasAttribute('data-editor-ignore')).toBe(true)
+    expect(input.getAttribute('aria-label')).toBe('Alt text')
+    expect(grip.hasAttribute('data-editor-ignore')).toBe(true)
+    expect(grip.style.touchAction).toBe('none')
+
+    fireEvent.change(input, { target: { value: 'dog' } })
+    fireEvent.blur(input)
+    expect(dataOf(t.editor()).alt).toBe('dog')
+
+    const img = measure(t.root, 100)
+    drag(grip, 0, 20)
+    expect(dataOf(t.editor()).width).toBe(120)
+    expect(img.getAttribute('width')).toBe('120')
+
+    act(() => {
+      const e = t.editor()
+      const tr = e.createTransaction()
+      tr.setSelection(nodeSelection(e.state.doc, e.registry, [1]))
+      e.dispatch(tr)
+    })
+    expect(view().hasAttribute('data-sel')).toBe(true)
+
+    let resolve!: (u: string) => void
+    const e = t.editor()
+    e.setPluginOptions('image', { upload: () => new Promise<string>((r) => (resolve = r)) })
+    const created = URL.createObjectURL
+    URL.createObjectURL = () => 'blob:test/2'
+    try {
+      act(() => {
+        e.storage.image.upload([new File(['x'], 'a.png', { type: 'image/png' })])
+      })
+    } finally {
+      URL.createObjectURL = created
+    }
+    const uploading = () => t.root.querySelectorAll('.custom[data-up]').length
+    expect(uploading()).toBe(1)
+    await act(async () => {
+      resolve('https://x.test/b.png')
+      await e.storage.image.whenIdle()
+    })
+    expect(uploading()).toBe(0)
+  })
+
+  it('useImageContext throws outside Image.Root', () => {
+    // React reports the render error; that is the point of this test.
+    errors.mockImplementation(() => {})
+    expect(() => render(<Orphan />)).toThrow(/Image.Root/)
+    errors.mockReset()
   })
 })

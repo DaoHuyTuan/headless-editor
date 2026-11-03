@@ -264,3 +264,19 @@ describe('composition', () => {
     expect(seen).toEqual(['input'])
   })
 })
+
+describe('composition and newline splitting (normalize rule 11)', () => {
+  it('nothing is split while composing; a committed newline splits the block once, at compositionend', async () => {
+    const { editor, root, view } = mount([p('p1', txt('ab'))], caret([0, 0], 1))
+    fire(root, 'compositionstart')
+    imeWrite(view, [0, 0], 'ax\nyb')
+    await flush()
+    // The IME owns the leaf: no tr (so no normalization) until the composition ends.
+    expect(texts(editor)).toEqual(['ab'])
+    expect(view.renderer.leafAt([0, 0])!.textContent).toBe('ax\nyb')
+    fire(root, 'compositionend')
+    expect(texts(editor)).toEqual(['ax', 'yb'])
+    expect(editor.state.selection).toEqual(caret([1, 0], 1))
+    expect(editor.getHTML()).toBe('<p>ax</p><p>yb</p>')
+  })
+})

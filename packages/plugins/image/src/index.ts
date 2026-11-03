@@ -1,3 +1,13 @@
+/**
+ * Image block (`@hte/image`); React view in `@hte/image/react`. The plugin name is `image`.
+ *
+ * Stable `data-*` attributes (view): `data-hte-image` on the root `<figure>`, `data-selected` when
+ * node-selected, `data-uploading` while its upload is pending. HTML output is a plain `<img>` (no
+ * `data-*`); `options.HTMLAttributes` is merged first, so `src`, `alt` and `width` always win.
+ *
+ * Parts (`parts` / `classNames` keys, `classNames.root` too): `img`, `altInput`, `resizeHandle`.
+ * Parts and hooks are @experimental. See docs/plugin-authoring.md.
+ */
 import { z } from 'zod'
 import {
   createId,
@@ -5,6 +15,7 @@ import {
   findPathById,
   isElement,
   isNodeSelection,
+  mergeAttrs,
   nodeEntries,
   rewriteHistoryData,
   clearHistory,
@@ -14,6 +25,7 @@ import {
   type Operation,
   type Path,
   type Editor,
+  type HTMLAttributes,
   type PluginContext,
   type Selection,
 } from '@hte/core'
@@ -32,6 +44,8 @@ export interface ImageOptions {
   /** Uploads `file` and resolves with its permanent URL (must pass `safeSrc`). Required for uploads. */
   upload: (file: File) => Promise<string>
   onUploadError: ((error: unknown, file: File) => void) | undefined
+  /** Extra attributes merged into the `<img>`. */
+  HTMLAttributes: HTMLAttributes
 }
 
 export interface ImageState {
@@ -241,10 +255,6 @@ function uploadFiles(ctx: Ctx, files: readonly File[], at?: Selection | null): v
   }
 }
 
-function storageOf(ctx: Ctx): ImageStorage {
-  return (ctx.editor.storage as Record<string, unknown>)[ctx.name] as ImageStorage
-}
-
 export const image = definePlugin({
   name: 'image',
   node: { kind: 'block', atom: true },
@@ -255,7 +265,7 @@ export const image = definePlugin({
     alt: z.string().default(''),
     width: z.number().int().positive().optional(),
   }),
-  options: { upload: undefined as unknown as ImageOptions['upload'], onUploadError: undefined } as ImageOptions,
+  options: { upload: undefined as unknown as ImageOptions['upload'], onUploadError: undefined, HTMLAttributes: {} } as ImageOptions,
   state: {
     init: (): ImageState => ({ pending: new Set<string>() }),
     apply: (tr, prev: ImageState): ImageState => {
@@ -280,15 +290,16 @@ export const image = definePlugin({
       },
     },
   ],
-  renderHTML: (n) => {
+  renderHTML: (n, { options }) => {
     const { src, alt, width } = n.data
     return [
       'img',
-      {
+      // Data-driven attributes last: HTMLAttributes can never override (or bypass the policy of) src.
+      mergeAttrs(options.HTMLAttributes, {
         src: typeof src === 'string' ? (safeSrc(src) ?? undefined) : undefined,
         alt: typeof alt === 'string' ? alt : '',
         width: typeof width === 'number' ? width : undefined,
-      },
+      }),
     ]
   },
   commands: (ctx) => ({
@@ -331,7 +342,7 @@ export const image = definePlugin({
     if (!files.some(isImageFile) || typeof ctx.options.upload !== 'function') return false
     if (intent.inputType === 'insertFromDrop' && intent.range && !isNodeSelection(ctx.editor.state.selection))
       uploadFiles(ctx, files, intent.range)
-    else storageOf(ctx).upload(files)
+    else ctx.storage.upload(files)
     return true
   },
   destroy: (ctx) => {

@@ -21,3 +21,13 @@ describe('paragraph plugin', () => {
     )
   })
 })
+
+describe('paragraph HTMLAttributes', () => {
+  it('adds attributes to <p>', () => {
+    const ed = createTestEditor({
+      plugins: [paragraph.configure({ HTMLAttributes: { class: 'para' } })],
+      content: '<p>a</p>',
+    })
+    expect(ed.getHTML()).toBe('<p class="para">a</p>')
+  })
+})

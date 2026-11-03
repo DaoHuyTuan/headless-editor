@@ -1,3 +1,5 @@
+import { nodeText, type OptionsLookup } from './content/text'
+import { isOpaque } from './model/editable'
 import { createId } from './model/id'
 import { getNode, isElement, isText, nodeEntries, sameMarkSet } from './model/node'
 import { nextPath } from './model/path'
@@ -5,6 +7,7 @@ import type { ElementNode, Mark, Node, Path, Point, TextNode } from './model/typ
 import { transformPath } from './ops/transform'
 import type { Registry } from './plugin/registry'
 import type { AnyPlugin, PluginContext } from './plugin/types'
+import { splitBlockAt } from './transaction/text'
 import type { Transaction } from './transaction/transaction'
 
 const MAX_PASSES = 100
@@ -15,11 +18,12 @@ const MAX_CORE_FIXES_PER_PASS = 1_000_000
  * plugin's `normalize` hook on every node entry. Passes repeat until one adds no operations.
  */
 export function normalize(tr: Transaction, getContext: (plugin: AnyPlugin) => PluginContext<any, any>): void {
+  const options: OptionsLookup = (plugin) => getContext(plugin).options
   for (let pass = 0; ; pass++) {
     if (pass >= MAX_PASSES) throw new Error('Normalization did not converge')
     const before = tr.ops.length
     // Core rules always converge (each fix shrinks the work left); the cap is only a safety net.
-    for (let fixes = 0; fixOne(tr); fixes++) {
+    for (let fixes = 0; fixOne(tr, options); fixes++) {
       if (fixes >= MAX_CORE_FIXES_PER_PASS) throw new Error('Normalization did not converge')
     }
     runPluginHooks(tr, getContext)
@@ -49,7 +53,7 @@ function runPluginHooks(tr: Transaction, getContext: (plugin: AnyPlugin) => Plug
 }
 
 /** Applies the first core-rule fix found. Returns false when the doc is normal. */
-function fixOne(tr: Transaction): boolean {
+function fixOne(tr: Transaction, options: OptionsLookup): boolean {
   const { registry } = tr
   const root = tr.doc.children as Node[]
 
@@ -71,12 +75,12 @@ function fixOne(tr: Transaction): boolean {
 
   for (let i = 0; i < root.length; i++) {
     const n = root[i]!
-    if (isElement(n) && fixElement(tr, n, [i])) return true
+    if (isElement(n) && fixElement(tr, n, [i], options)) return true
   }
   return false
 }
 
-function fixElement(tr: Transaction, node: ElementNode, path: Path): boolean {
+function fixElement(tr: Transaction, node: ElementNode, path: Path, options: OptionsLookup): boolean {
   const { registry } = tr
   const spec = registry.node(node.type)
   // Rule 7: unknown types are left untouched, including their children.
@@ -106,7 +110,8 @@ function fixElement(tr: Transaction, node: ElementNode, path: Path): boolean {
     }
   }
 
-  // Rule 8: a `content: 'text'` block holds only unmarked text.
+  // Rule 8: a `content: 'text'` block holds only unmarked text. Inline elements are unwrapped, except
+  // an inline atom with `renderText`, which becomes that text (so a mention keeps its `@label`).
   if (spec.content === 'text') {
     for (let i = 0; i < children.length; i++) {
       const c = children[i]!
@@ -115,8 +120,24 @@ function fixElement(tr: Transaction, node: ElementNode, path: Path): boolean {
         for (const m of [...c.marks].reverse()) tr.apply({ type: 'remove_mark', path: [...path, i], mark: m })
         return true
       }
-      if (registry.node(c.type)?.kind !== 'inline') continue
-      unwrap(tr, c, [...path, i])
+      const childSpec = registry.node(c.type)
+      if (childSpec?.kind !== 'inline') continue
+      if (childSpec.atom && childSpec.plugin.spec.renderText) {
+        tr.insertNode([...path, i], { text: nodeText(c, registry, options), marks: [] })
+        tr.removeNode([...path, i + 1])
+      } else unwrap(tr, c, [...path, i])
+      return true
+    }
+  }
+
+  // Rule 11: `\n` is a line break only in `content: 'text'` blocks (HTML collapses it elsewhere, so it
+  // would not round-trip). A `content: 'inline'` block holding one (e.g. joined with a code block's
+  // text by Backspace, a range delete or a paste) is split there into a block of its type with a fresh
+  // id, and the `\n` removed. See `splitAtNewline`.
+  if (spec.kind === 'block' && spec.content === 'inline') {
+    const at = firstNewline(node, path, registry)
+    if (at) {
+      splitAtNewline(tr, node, path, at)
       return true
     }
   }
@@ -130,9 +151,10 @@ function fixElement(tr: Transaction, node: ElementNode, path: Path): boolean {
       tr.apply({ type: 'merge_node', path: [...path, i], position: prev.text.length, properties: { marks: c.marks } })
       return true
     }
-    // Rule 4: drop empty texts when the element has other children.
+    // Rule 4: drop empty texts when the element has other children, except one that rule 10 needs
+    // (beside an inline element, with no other text on that side).
     // Merging into a previous text keeps a caret inside it valid (it maps to the end of `prev`).
-    if (c.text === '' && children.length > 1) {
+    if (c.text === '' && children.length > 1 && !neededByRule10(children, i, registry)) {
       if (prev && isText(prev)) {
         tr.apply({ type: 'merge_node', path: [...path, i], position: prev.text.length, properties: { marks: c.marks } })
       } else {
@@ -145,11 +167,57 @@ function fixElement(tr: Transaction, node: ElementNode, path: Path): boolean {
     if (fixMarks(tr, c, [...path, i])) return true
   }
 
+  // Rule 10: in inline content, every inline element has a text sibling on each side (an empty one
+  // is added where needed), so a caret can always sit right before and right after it.
+  if (holdsInline(spec)) {
+    for (let i = 0; i < children.length; i++) {
+      if (!isInlineElement(children[i]!, registry)) continue
+      const prev = children[i - 1]
+      const next = children[i + 1]
+      if (!prev || !isText(prev)) {
+        tr.insertNode([...path, i], { text: '', marks: [] })
+        return true
+      }
+      if (!next || !isText(next)) {
+        tr.insertNode([...path, i + 1], { text: '', marks: [] })
+        return true
+      }
+    }
+  }
+
   for (let i = 0; i < children.length; i++) {
     const c = children[i]!
-    if (isElement(c) && fixElement(tr, c, [...path, i])) return true
+    if (isElement(c) && fixElement(tr, c, [...path, i], options)) return true
   }
   return false
+}
+
+/** The first `\n` in the editable texts of `node` (inside non-atom inline elements too, not in opaque ones). */
+function firstNewline(node: ElementNode, path: Path, registry: Registry): Point | null {
+  const kids = node.children ?? []
+  for (let i = 0; i < kids.length; i++) {
+    const c = kids[i]!
+    if (isText(c)) {
+      const offset = c.text.indexOf('\n')
+      if (offset !== -1) return { path: [...path, i], offset }
+    } else if (registry.node(c.type)?.kind === 'inline' && !isOpaque(c, registry)) {
+      const found = firstNewline(c, [...path, i], registry)
+      if (found) return found
+    }
+  }
+  return null
+}
+
+/**
+ * Splits the block at `path` right after the `\n` at `at` (through any inline ancestors, which get
+ * fresh ids; the new block gets a fresh id and the block's type and data, the first piece keeps the
+ * id), then removes the `\n`, now at the end of the first piece. Marks stay on each piece; a caret
+ * before the `\n` stays at the end of the first piece and one after it lands at the start of the new
+ * block (points map forward through the split).
+ */
+function splitAtNewline(tr: Transaction, block: ElementNode, path: Path, at: Point): void {
+  splitBlockAt(tr, { path: at.path, offset: at.offset + 1 }, path, { id: createId(), type: block.type, data: block.data })
+  tr.apply({ type: 'remove_text', path: at.path, offset: at.offset, text: '\n' })
 }
 
 /** Moves the children of the element at `at` out before it (selection points follow), then removes it. */
@@ -191,13 +259,14 @@ function fixMarks(tr: Transaction, text: TextNode, path: Path): boolean {
   return true
 }
 
-/** First (`last` = false) or last text inside `node` (itself if a text), with its path. */
-function edgeText(node: Node, path: Path, last: boolean): [TextNode, Path] | null {
+/** First (`last` = false) or last editable text inside `node` (itself if a text), with its path. */
+function edgeText(node: Node, path: Path, last: boolean, registry: Registry): [TextNode, Path] | null {
   if (isText(node)) return [node, path]
+  if (isOpaque(node, registry)) return null
   const kids = node.children ?? []
   for (let k = 0; k < kids.length; k++) {
     const idx = last ? kids.length - 1 - k : k
-    const found = edgeText(kids[idx]!, [...path, idx], last)
+    const found = edgeText(kids[idx]!, [...path, idx], last, registry)
     if (found) return found
   }
   return null
@@ -205,8 +274,8 @@ function edgeText(node: Node, path: Path, last: boolean): [TextNode, Path] | nul
 
 /**
  * Before removing the empty text at `[...parent, i]`, moves selection points inside it to the
- * end of the previous sibling's last text, or else the start of the next sibling's first text,
- * so the selection survives the removal.
+ * end of the closest editable text among the previous siblings, or else the start of the closest
+ * one among the next siblings (opaque elements are skipped), so the selection survives the removal.
  */
 function rehomeSelection(tr: Transaction, siblings: Node[], parent: Path, i: number): void {
   const sel = tr.selection
@@ -214,17 +283,40 @@ function rehomeSelection(tr: Transaction, siblings: Node[], parent: Path, i: num
   const at = [...parent, i]
   const inside = (p: Path) => p.length === at.length && p.every((v, k) => v === at[k])
   if (!inside(sel.anchor.path) && !inside(sel.focus.path)) return
-  const before = i > 0 ? edgeText(siblings[i - 1]!, [...parent, i - 1], true) : null
-  const after = before ? null : i + 1 < siblings.length ? edgeText(siblings[i + 1]!, [...parent, i + 1], false) : null
-  const target = before
-    ? { path: before[1], offset: before[0].text.length }
-    : after
-      ? { path: after[1], offset: 0 }
-      : null
+  let target: Point | null = null
+  for (let k = i - 1; k >= 0 && !target; k--) {
+    const found = edgeText(siblings[k]!, [...parent, k], true, tr.registry)
+    if (found) target = { path: found[1], offset: found[0].text.length }
+  }
+  for (let k = i + 1; k < siblings.length && !target; k++) {
+    const found = edgeText(siblings[k]!, [...parent, k], false, tr.registry)
+    if (found) target = { path: found[1], offset: 0 }
+  }
   if (!target) return
   const move = (pt: Point) => (inside(pt.path) ? target : pt)
   // Applied as an op directly so stored marks are kept (Transaction.setSelection clears them).
   tr.apply({ type: 'set_selection', selection: { ...sel, anchor: move(sel.anchor), focus: move(sel.focus) }, prevSelection: sel })
+}
+
+/** Whether an element of `spec` holds inline content: a `content: 'inline'` block or a (non-atom) inline element. */
+function holdsInline(spec: { kind: 'block' | 'inline'; content?: 'inline' | 'text' }): boolean {
+  return spec.kind === 'inline' || spec.content === 'inline'
+}
+
+/** A registered inline element (atom or not); unknown types are left alone (rule 7). */
+function isInlineElement(n: Node, registry: Registry): boolean {
+  return isElement(n) && registry.node(n.type)?.kind === 'inline'
+}
+
+/** Whether the empty text `children[i]` is the only text between an inline element and its other side. */
+function neededByRule10(children: Node[], i: number, registry: Registry): boolean {
+  const prev = children[i - 1]
+  const next = children[i + 1]
+  const notText = (n: Node | undefined) => !n || !isText(n)
+  return (
+    (!!prev && isInlineElement(prev, registry) && notText(next)) ||
+    (!!next && isInlineElement(next, registry) && notText(prev))
+  )
 }
 
 function isInlineContent(n: Node, registry: Registry): boolean {

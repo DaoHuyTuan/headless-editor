@@ -16,6 +16,7 @@ const ctx = (plugin: AnyPlugin): PluginContext<any, any> => ({
   name: plugin.name,
   options: plugin.spec.options ?? {},
   getState: () => undefined,
+  storage: undefined,
   commands: {},
 })
 

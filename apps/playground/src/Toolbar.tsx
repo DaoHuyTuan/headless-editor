@@ -6,6 +6,7 @@ import type { PlaygroundEditor } from './editor'
 const FONT_SIZES = ['12px', '16px', '24px', '32px'] as const
 
 const isBold = (_: unknown, editor: PlaygroundEditor) => editor.isActive('bold')
+const inCodeBlock = (_: unknown, editor: PlaygroundEditor) => editor.isActive('codeBlock')
 /** The size of the fontSize mark covering the selection, or `''` when there is none (or it is mixed). */
 const activeFontSize = (_: unknown, editor: PlaygroundEditor) =>
   FONT_SIZES.find((size) => editor.isActive('fontSize', { size })) ?? ''
@@ -13,6 +14,7 @@ const activeFontSize = (_: unknown, editor: PlaygroundEditor) =>
 export function Toolbar({ editor }: { editor: PlaygroundEditor }) {
   const bold = useEditorState(editor, isBold)
   const fontSize = useEditorState(editor, activeFontSize)
+  const code = useEditorState(editor, inCodeBlock)
   const fileInput = useRef<HTMLInputElement>(null)
   // mousedown is prevented so the editor keeps focus and its selection.
   const keepFocus = (e: MouseEvent) => e.preventDefault()
@@ -54,6 +56,17 @@ export function Toolbar({ editor }: { editor: PlaygroundEditor }) {
           </option>
         ))}
       </select>
+      <button
+        type="button"
+        data-testid="code-block"
+        data-active={code}
+        aria-pressed={code}
+        onMouseDown={keepFocus}
+        // In a code block: exit to a new paragraph after it; elsewhere: turn the block into a code block.
+        onClick={() => (code ? editor.commands.exitCodeBlock() : editor.commands.setCodeBlock())}
+      >
+        Code
+      </button>
       <button type="button" data-testid="image" onMouseDown={keepFocus} onClick={() => fileInput.current?.click()}>
         Image
       </button>
