@@ -2,8 +2,6 @@ import { expect, test, type Page } from '@playwright/test'
 import type { Doc, ElementNode, Node, TextNode } from '@hte/core'
 import { focusEnd, getDoc, getSelection, getText, openPlayground } from './helpers'
 
-test.use({ permissions: ['clipboard-read', 'clipboard-write'] })
-
 test.beforeEach(async ({ page }) => {
   await openPlayground(page)
   await focusEnd(page)

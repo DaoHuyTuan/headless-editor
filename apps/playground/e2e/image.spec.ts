@@ -41,8 +41,6 @@ const PNG = makePng()
 const PNG_BASE64 = PNG.toString('base64')
 const png = () => PNG
 
-test.use({ permissions: ['clipboard-read', 'clipboard-write'] })
-
 let errors: string[]
 
 function trackErrors(page: Page): void {
