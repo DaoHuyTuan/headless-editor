@@ -180,6 +180,11 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     return new Transaction(this._state, this.registry)
   }
 
+  /**
+   * Commands that answer whether they would apply (rejected trs and `filterTransaction` vetoes
+   * included) without dispatching. Not covered: while the pipeline is computing or after `destroy()`
+   * a real dispatch is dropped, yet `can()` still answers as if it would apply.
+   */
   can(): EditorCommands<P> {
     return this.bindCommands(this.commandFactories, false) as EditorCommands<P>
   }
@@ -587,7 +592,7 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
         const changes = tr.ops.length > 0 || tr.storedMarks !== this._state.storedMarks
         // can(): answers what the command would do, filters included, without dispatching (no
         // appendTransaction, normalize, state apply or events).
-        if (!dispatch) return ok && (!changes || this.passesFilters(tr))
+        if (!dispatch) return ok && (!changes || (tr.rejected === null && this.passesFilters(tr)))
         if (ok && changes) {
           const before = this._state
           this.dispatch(tr)

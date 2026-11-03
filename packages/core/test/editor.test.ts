@@ -237,6 +237,26 @@ describe('Editor', () => {
       expect(ed.commands.vetoedInsert()).toBe(false)
     })
 
+    it('can() answers false for a rejected command tr (non-dev), like the command itself', () => {
+      const rejecting = definePlugin({
+        name: 'rejecting',
+        commands: () => ({
+          badData:
+            (): Command =>
+            ({ tr }) => {
+              tr.apply({ type: 'insert_text', path: [0, 0], offset: 0, text: 'x' })
+              tr.setNodeData([0], { level: 'x' })
+              return true
+            },
+        }),
+      })
+      const prod = new Editor({ plugins: [testParagraph, heading, rejecting], content: doc(el('heading', { level: 1 }, txt('a'))) })
+      const before = prod.state
+      expect(prod.can().badData()).toBe(false)
+      expect(prod.commands.badData()).toBe(false)
+      expect(prod.state).toBe(before)
+    })
+
     it('can() still answers true for an allowed command', () => {
       const { ed, filter, events } = vetoSetup()
       const before = ed.state
