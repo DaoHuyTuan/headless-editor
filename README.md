@@ -235,6 +235,7 @@ packages/
 apps/
   playground/      demo app + Playwright e2e tests
 docs/
+  architecture.md      layers today, future code view, LSP, settings
   plugin-api.md        definePlugin reference
   plugin-authoring.md  writing and customizing plugins
   superpowers/         design spec, milestone plans, follow-up lists
@@ -249,6 +250,7 @@ The targets are desktop Chrome, Firefox and Safari. Mobile is best-effort. The c
 
 ## Documentation
 
+- [docs/architecture.md](docs/architecture.md): the current layers, plus the future direction (a VS Code-like code view, LSP integration, settings).
 - [docs/plugin-api.md](docs/plugin-api.md): reference for the `definePlugin` object.
 - [docs/plugin-authoring.md](docs/plugin-authoring.md): guide to customization levels and writing a plugin.
 - `docs/superpowers/specs/2026-10-27-headless-editor-design.md`: design spec.

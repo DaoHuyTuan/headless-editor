@@ -2,6 +2,8 @@
 
 Collected from the per-task reviews of M4 part 1 (branch `feat/m4`), from the SDD ledger. The open items of `m3-followups.md`, `m2-followups.md` and `m1-followups.md` still apply. Part 2 input: [`m4-cross-browser.md`](m4-cross-browser.md).
 
+Longer-term direction (View interface extraction, incremental normalize/decorations, a future code view, LSP, settings): [`../architecture.md`](../architecture.md), sections 4–6.
+
 ## Tooling / e2e
 - Plain `pnpm --filter playground e2e` now runs all 3 projects, so it fails on this machine (Firefox cannot launch, WebKit has 11 real failures). Until Part 2 the Chromium gate is `e2e:chromium`.
 - Re-run the e2e suite on port 5174 (still held by an unrelated `wslrelay.exe`; part 1 verified on a temporary 5175 config: 78 Chromium tests passed).
