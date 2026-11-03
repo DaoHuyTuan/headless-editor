@@ -108,6 +108,23 @@ interface Selection {
   - When all calls are done, it sets the selection to the collected results, normalized, with `main` preserved.
   - Core commands and plugin commands use it, and no command does its own offset bookkeeping.
 
+**[my call] The public `tr` editing methods act on every range by default.** This covers `insertText`, `deleteBackward`/`deleteForward`, `deleteRange`, `toggleMark`/`addMark`/`removeMark`, `splitBlock`, `insertFragment`, `insertBlockNode` and `insertInlineNode`.
+- Called with no explicit range, each method runs over every range itself, internally through `forEachRange`. So a plugin that calls `tr.toggleMark('bold')` is multi-range-correct without any change. This is what keeps "a silently ignored range" from happening.
+- Called with an **explicit** range or point, a method acts only there and maps the other ranges through its ops. It does not collapse them.
+- Inside a `forEachRange` callback, methods must be given the callback's range explicitly. A no-range call inside a callback throws in dev mode, because the edit would otherwise run twice.
+
+`forEachRange` is the lower-level tool, meant for commands with custom per-range logic, such as code-block Tab, mention accept and image insert.
+
+**Stored marks.** Moving the selection inside `forEachRange`, or through a multi-range method, does **not** clear the stored marks. The marks are cleared once, at the end, by the same rule as today: only when the selection really moved for a reason other than this edit.
+
+**[my call] Mapping a range that no longer exists, during live edits.** `transformSelection` maps each range **on its own**:
+- A range whose point falls in removed content is moved to the nearest editable point, by the same rule `rehomeSelection` uses today. It is dropped only if no editable point exists.
+- The whole selection becomes `null` only when **every** range is gone.
+- Duplicates created by moving a range are merged by normalization (§5.3).
+- The normalize code that cleans up empty texts (`normalize.ts`) is updated to map every range.
+
+The rebase rule in §5.7 is unchanged: drop the history entry if any range fails. That rule is stricter because history must restore exact states.
+
 ### 5.3 Normalization of a selection
 - Ranges are sorted by document position.
 - Ranges that overlap, **or touch**, are merged. Two carets at the same point become one. A caret inside another range is absorbed.
