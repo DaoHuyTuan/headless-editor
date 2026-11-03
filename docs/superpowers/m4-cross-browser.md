@@ -10,7 +10,7 @@ Run totals after M4 part 2 (85 test-runs per project, 2026-11-03, headless, sing
 | Firefox 157 (playwright firefox v1555) | not run | not run | never launched |
 | WebKit 27.2 (playwright webkit v2370) | 65 | 0 | 20 (15 CDP-only IME, 5 keyboard clipboard) |
 
-Part 1 (before the fixes) was Chromium 75/75 and WebKit 49 passed, 11 failed, 15 skipped. Part 2 added synthetic copy/paste tests (85 vs 75 runs). Unit tests: 1017 passed; 27 more type tests (1044 with `vitest --typecheck`). Real Safari on macOS was NOT tested; WebKit here means Playwright's WebKit build on Windows.
+Part 1 (before the fixes) was Chromium 75/75 and WebKit 49 passed, 11 failed, 15 skipped. Part 2 started at 78 test-runs (3 added by part 1's e2e task after that inventory) and added 7 synthetic copy/cut/paste tests, for 85. Unit tests: 1017 passed; 27 more type tests (1044 with `vitest --typecheck`). Real Safari on macOS was NOT tested; WebKit here means Playwright's WebKit build on Windows.
 
 Clipboard permissions (`clipboard-read`, `clipboard-write`) are now granted only on the Chromium project in `playwright.config.ts`; Firefox and WebKit reject them as unknown. The earlier 19 WebKit "Unknown permission" failures were config noise and are gone.
 
@@ -82,7 +82,7 @@ What changed:
 
 ### C. Selection API differences around an unknown (non-editable) block (2)
 
-**Part 2 result: fixed (commits fdcee36, 7f4c82a).** Root cause: when only an empty `contenteditable=false` block would be deleted, WebKit fires no `beforeinput` at all, so Backspace/Delete did nothing. A keydown fallback (`setTimeout`) performs the delete if no `beforeinput` arrived. It is guarded: cleared by cut, paste, composition, an ignored or defaultPrevented `beforeinput`, and any dispatch in between; it also handles Safari's keyCode 229 after `compositionend` (50 ms window). Both tests pass on WebKit.
+**Part 2 result: fixed.** `unknown-block.spec.ts:31` (Ctrl+A) was fixed by the platform-detection fix in ae4a8a0: `Mod-a` now matches Ctrl, so the editor's select-all runs instead of the native one. `unknown-block.spec.ts:51` (Backspace) was fixed in fdcee36 and 7f4c82a. Root cause for `:51`: when only an empty `contenteditable=false` block would be deleted, WebKit fires no `beforeinput` at all, so Backspace/Delete did nothing. A keydown fallback (`setTimeout`) performs the delete if no `beforeinput` arrived. It is guarded: cleared by cut, paste, composition, an ignored or defaultPrevented `beforeinput`, and any dispatch in between; it never arms for a keyCode 229 keydown (Safari sends one after `compositionend`), nor for any keydown within 50 ms after `compositionend`. Both tests pass on WebKit.
 
 (Original suspicion, now refined:)
 
