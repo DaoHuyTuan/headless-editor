@@ -1,7 +1,8 @@
 import { nearestEditablePoint } from '../model/editable'
+import { pointEquals } from '../model/path'
 import { createSelection } from '../model/selection'
 import type { Mark, Point, SelectionRange } from '../model/types'
-import { transformRange } from '../ops/transform'
+import { transformPoint, transformRange } from '../ops/transform'
 import type { Operation } from '../ops/types'
 import type { Transaction } from './transaction'
 
@@ -24,6 +25,24 @@ interface RangeRun {
    * callback's ops, and replaced by the result of each editing method called in it.
    */
   live: SelectionRange | null
+  /**
+   * Per slot still to run: whether a point of it fell strictly inside content an earlier step removed
+   * (not at the removal's edge). Such a slot that is now collapsed was swallowed: its step is skipped
+   * and it merges with the earlier result at normalization (its own step would delete past it).
+   */
+  swallowed: boolean[]
+}
+
+/** Whether `point` lies strictly inside the content `op` removes (its edges excluded). */
+function removedBy(point: Point, op: Operation): boolean {
+  if (op.type === 'remove_text')
+    return (
+      op.path.length === point.path.length &&
+      op.path.every((v, i) => v === point.path[i]) &&
+      op.offset < point.offset &&
+      point.offset < op.offset + op.text.length
+    )
+  return op.type === 'remove_node' && transformPoint(point, op) === null
 }
 
 const runs = new WeakMap<Transaction, RangeRun>()
@@ -64,6 +83,7 @@ export function mapRun(tr: Transaction, op: Operation): void {
   // In place: `forEachRange` holds the array while a callback runs.
   run.slots.forEach((range, i) => {
     if (!range || i === run.current) return
+    if (i > run.current && (removedBy(range.anchor, op) || removedBy(range.focus, op))) run.swallowed[i] = true
     const mapped = transformRange(range, op, i < run.current ? 'backward' : 'forward')
     if (mapped) {
       run.slots[i] = mapped
@@ -82,7 +102,9 @@ export function mapRun(tr: Transaction, op: Operation): void {
 /**
  * Runs `fn` once per selection range, in document order, on the same `tr` (spec §5.2). Before each
  * call the range is mapped through the ops added since the run started, and results already
- * collected are mapped through later ops too. Inside `fn`, the `tr` editing methods must be given the
+ * collected are mapped through later ops too. A range still to run that an earlier step's removal
+ * swallowed (a point strictly inside the removed content, and now collapsed) is not run: it stays
+ * where it was mapped and merges at normalization. Inside `fn`, the `tr` editing methods must be given the
  * range explicitly (a call without one throws in dev mode, and otherwise acts at the callback's
  * range): they then edit there without setting the selection, and a callback that returns nothing
  * keeps the range they leave. The selection then becomes the collected results,
@@ -107,7 +129,7 @@ export function forEachRange(tr: Transaction, fn: RangeStep): void {
   if (runs.has(tr)) throw new Error('forEachRange: nested calls are not supported')
   const sel = tr.selection
   if (!sel) return
-  const run: RangeRun = { slots: [...sel.ranges], current: -1, live: null }
+  const run: RangeRun = { slots: [...sel.ranges], current: -1, live: null, swallowed: sel.ranges.map(() => false) }
   const opsBefore = tr.ops.length
   const stored: Mark[] | null = tr.storedMarks
   let consumed = false
@@ -117,6 +139,8 @@ export function forEachRange(tr: Transaction, fn: RangeStep): void {
     for (let i = 0; i < run.slots.length; i++) {
       const range = run.slots[i]
       if (!range) continue
+      // Swallowed by an earlier step: kept as mapped (it merges with that step's result).
+      if (run.swallowed[i] && pointEquals(range.anchor, range.focus)) continue
       run.current = i
       run.live = range
       tr.setStoredMarks(stored)

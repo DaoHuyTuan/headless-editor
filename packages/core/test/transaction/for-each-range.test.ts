@@ -227,8 +227,9 @@ describe('forEachRange', () => {
     expect(tr.ops).toEqual([])
   })
 
-  it('a range whose text is removed by an earlier step is re-homed, not lost', () => {
-    // Range 1 removes the second paragraph; the caret that was in it moves to the nearest editable point.
+  it('a range whose text is removed by an earlier step is re-homed, not lost (and not run: it was swallowed)', () => {
+    // Range 1 removes the second paragraph; the caret that was in it moves to the nearest editable
+    // point. Its content is gone, so its own step is skipped (it would act past the removal).
     const tr = trOf(
       doc(el('paragraph', txt('ab')), el('paragraph', txt('cd')), el('paragraph', txt('ef'))),
       createSelection([caret([0, 0], 1), caret([1, 0], 1)]),
@@ -240,7 +241,8 @@ describe('forEachRange', () => {
       if (k++ === 0) t.removeNode([1])
       return range
     })
-    expect(seen).toEqual([caret([0, 0], 1), caret([0, 0], 2)])
+    expect(seen).toEqual([caret([0, 0], 1)])
+    expect(tr.selection).toEqual(createSelection([caret([0, 0], 1), caret([0, 0], 2)]))
   })
 
   describe('stored marks', () => {

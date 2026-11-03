@@ -205,7 +205,7 @@ export class Transaction {
    * Deletes `range` (default: every selection range), merging across blocks; the caret ends at its
    * start. With `range`, the other selection ranges are mapped (as for `insertText` with `at`).
    */
-  deleteRange(range?: Range): this {
+  deleteRange(range?: SelectionRange | Range): this {
     textEdit.deleteRange(this, range)
     return this
   }
@@ -228,7 +228,8 @@ export class Transaction {
 
   /**
    * Inserts the block-level `node` at every selection range (replacing a selected node or an empty
-   * block, else before/after/splitting the caret's block; copies after the first get fresh ids); each
+   * block, else before/after/splitting the caret's block); the first copy keeps the caller's ids, the
+   * copies at the other ranges get fresh ids. Each
    * caret ends in the editable text after its node. With `at`, only there. Invalid data leaves the tr
    * `rejected`.
    */

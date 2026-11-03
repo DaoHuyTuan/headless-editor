@@ -52,13 +52,17 @@ function mapSince(tr: Transaction, range: SelectionRange, from: number): Selecti
   return out
 }
 
-/** Index of the first range of `sel` that overlaps or touches `target`, else of the main range. */
+/** Whether two ranges overlap or touch. */
+function touches(a: SelectionRange, b: SelectionRange): boolean {
+  const r = toRange(a)
+  const t = toRange(b)
+  return comparePoint(r.start, t.end) <= 0 && comparePoint(t.start, r.end) <= 0
+}
+
+/** Index of the range of `sel` that overlaps or touches `target`: the main one if it does, else the first; else main. */
 function touchedRange(sel: Selection, target: SelectionRange): number {
-  const t = toRange(target)
-  const i = sel.ranges.findIndex((range) => {
-    const r = toRange(range)
-    return comparePoint(r.start, t.end) <= 0 && comparePoint(t.start, r.end) <= 0
-  })
+  if (touches(sel.ranges[sel.main]!, target)) return sel.main
+  const i = sel.ranges.findIndex((range) => touches(range, target))
   return i >= 0 ? i : sel.main
 }
 
@@ -97,8 +101,12 @@ function runStep(
       target = currentRange(tr) ?? undefined
       if (!target) return false
     }
-    const out = step(target, currentRange(tr) ?? target)
-    if (out !== false) setCurrentRange(tr, out)
+    // The result replaces the callback's range only when the edit is at it (overlaps or touches it);
+    // an edit elsewhere leaves that range mapped through the edit.
+    const live = currentRange(tr)
+    const own = !!live && touches(live, target)
+    const out = step(target, own ? live : target)
+    if (out !== false && own) setCurrentRange(tr, out)
     return out !== false
   }
   const sel = tr.selection
@@ -255,7 +263,7 @@ function nearestEditablePoint(tr: Transaction, at: Path): Point {
  * caret at its start; with `range`, the other selection ranges are mapped (see `runStep`). False
  * when nothing was deleted.
  */
-export function deleteRange(tr: Transaction, range?: Range): boolean {
+export function deleteRange(tr: Transaction, range?: SelectionRange | Range): boolean {
   return runStep(tr, range, (r) => {
     if (!range && isNodeRange(r)) return replaceNodeStep(tr, r, 'delete')
     const point = deleteRangeStep(tr, asRange(r))
@@ -377,8 +385,10 @@ function withFreshIds(node: ElementNode): ElementNode {
 }
 
 /**
- * Inserts the block-level `node` at every selection range (or only at `at`, see `runStep`); copies
- * after the first get fresh ids. At each range, it replaces a selected node or an empty block; at
+ * Inserts the block-level `node` at every selection range (or only at `at`, see `runStep`). The
+ * first copy keeps the caller's ids (as with one range); the copies at the other ranges get fresh
+ * ids throughout. (Inside a `forEachRange` callback each call is a first copy: pass a node with
+ * fresh ids per range.) At each range, it replaces a selected node or an empty block; at
  * offset 0 of a block it goes before it, at its end after it, else the block is split at the caret (a
  * non-empty range is deleted first). Each caret ends at the start of the editable text following its
  * node, in an empty default block added when none follows. False without a selection or when `node`
@@ -581,14 +591,15 @@ export function runAt(tr: Transaction, blockPath: Path, point: Point): Run {
 
 function deleteDirection(tr: Transaction, unit: DeleteUnit, backward: boolean, at?: SelectionRange | Range): boolean {
   const several = (tr.selection?.ranges.length ?? 0) > 1
-  return runStep(tr, at, (range) => deleteDirectionStep(tr, unit, backward, range, several))
+  return runStep(tr, at, (range) => deleteDirectionStep(tr, unit, backward, range, several, !!at))
 }
 
 /**
  * Backspace/Delete at one range: a selected node is removed, a non-empty range deleted, else one
  * `unit` before/after the caret. At a block edge next to an opaque block, with one range the block
  * is node-selected (a second press removes it); with `several` ranges this caret does nothing and
- * stays (spec §5.4: a node range would drop every other range).
+ * stays (spec §5.4: a node range would drop every other range); with an `explicit` range, that
+ * counts as doing nothing (false), so the selection range it touches is not collapsed onto it.
  */
 function deleteDirectionStep(
   tr: Transaction,
@@ -596,6 +607,7 @@ function deleteDirectionStep(
   backward: boolean,
   range: SelectionRange,
   several: boolean,
+  explicit: boolean,
 ): StepResult {
   if (isNodeRange(range)) return replaceNodeStep(tr, range, 'delete')
   const deleted = (r: Range): StepResult => {
@@ -629,7 +641,8 @@ function deleteDirectionStep(
     // An opaque neighbour is selected first (a second Backspace/Delete removes it); with several
     // ranges, this caret does nothing for this press (it counts as handled).
     const opaque = adjacentOpaque(tr, blockPath, backward)
-    if (opaque) return several ? range : nodeSelection(tr.doc, tr.registry, opaque).ranges[0]!
+    // With an explicit range, nothing is done (false): the range it touches must not collapse onto it.
+    if (opaque) return several ? !explicit && range : nodeSelection(tr.doc, tr.registry, opaque).ranges[0]!
     const other = adjacentBlock(tr, blockPath, backward)
     if (!other) return false
     const texts = blockTexts(tr, other)

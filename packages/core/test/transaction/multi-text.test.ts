@@ -215,6 +215,34 @@ describe('text editing on every range', () => {
       expect(tr.selection).toEqual(sel(caret([0, 0], 4), caret([0, 0], 6)))
     })
 
+    it('explicit at touching main and another range replaces main', () => {
+      const state: EditorState = {
+        doc: doc(p('hello world')),
+        selection: createSelection([caret([0, 0], 0), caret([0, 0], 5)], 1),
+        storedMarks: null,
+        pluginStates: new Map(),
+      }
+      const tr = new Transaction(state, registry)
+      tr.insertText('HELLO', span([0, 0], 0, 5))
+      expect(texts(tr)).toEqual(['HELLO world'])
+      // Both carets end at the insert's edges and merge into the main one, after the insert.
+      expect(tr.selection!.ranges[tr.selection!.main]).toEqual(caret([0, 0], 5))
+    })
+
+    it('explicit deleteBackward next to an opaque block with several ranges does nothing', () => {
+      const tr = trOf(doc(p('ab'), el('atom'), p('cd')), span([2, 0], 0, 1), caret([0, 0], 1))
+      const before = tr.selection
+      expect(deleteBackward(tr, 'character', caret([2, 0], 0))).toBe(false)
+      expect(tr.ops).toEqual([])
+      expect(tr.selection).toEqual(before)
+    })
+
+    it('deleteRange takes a selection range', () => {
+      const tr = trOf(doc(p('abcdef')), caret([0, 0], 1), caret([0, 0], 5))
+      tr.deleteRange(span([0, 0], 3, 1))
+      expect(texts(tr)).toEqual(['adef'])
+    })
+
     it('explicit splitBlock and deleteBackward act only there', () => {
       const tr = trOf(doc(p('abcdef')), caret([0, 0], 1), caret([0, 0], 5))
       tr.deleteBackward('character', caret([0, 0], 5))
@@ -222,6 +250,43 @@ describe('text editing on every range', () => {
       tr.splitBlock(caret([0, 0], 1))
       expect(texts(tr)).toEqual(['a', 'bcdf'])
       expect(tr.selection).toEqual(sel(caret([1, 0], 0), caret([1, 0], 3)))
+    })
+  })
+
+  describe('ranges swallowed by an earlier step', () => {
+    it('forward word delete: a later caret inside the deleted word is merged, not run', () => {
+      const tr = trOf(doc(p('abcd ef')), caret([0, 0], 0), caret([0, 0], 2))
+      tr.deleteForward('word')
+      expect(texts(tr)).toEqual([' ef'])
+      expect(tr.selection).toEqual(single(caret([0, 0], 0)))
+    })
+
+    it('forward word delete: a caret inside the next word is merged, not run', () => {
+      const tr = trOf(doc(p('foo bar baz')), caret([0, 0], 3), caret([0, 0], 5))
+      tr.deleteForward('word')
+      expect(texts(tr)).toEqual(['foo baz'])
+      expect(tr.selection).toEqual(single(caret([0, 0], 3)))
+    })
+
+    it('a caret exactly at the edge of the removal still runs its own step', () => {
+      const tr = trOf(doc(p('abcd')), caret([0, 0], 1), caret([0, 0], 2))
+      tr.deleteForward()
+      expect(texts(tr)).toEqual(['ad'])
+      expect(tr.selection).toEqual(single(caret([0, 0], 1)))
+    })
+
+    it('backward word delete at two carets in one word', () => {
+      const tr = trOf(doc(p('foo bar')), caret([0, 0], 5), caret([0, 0], 7))
+      tr.deleteBackward('word')
+      expect(texts(tr)).toEqual(['foo '])
+      expect(tr.selection).toEqual(single(caret([0, 0], 4)))
+    })
+
+    it('a range only partly swallowed still runs on what is left', () => {
+      // Caret 0 deletes "abcd"; the range 2-6 keeps its unremoved part " e" and deletes it.
+      const tr = trOf(doc(p('abcd efg')), caret([0, 0], 0), span([0, 0], 2, 6))
+      tr.deleteForward('word')
+      expect(texts(tr)).toEqual(['fg'])
     })
   })
 
@@ -245,6 +310,15 @@ describe('text editing on every range', () => {
         lengths.push(t.selection!.ranges.length)
       })
       expect(lengths).toEqual([2, 2])
+    })
+
+    it('an explicit edit away from the callback range leaves that range mapped', () => {
+      const tr = trOf(doc(p('abc def')), caret([0, 0], 2), caret([0, 0], 6))
+      tr.forEachRange((range, t) => {
+        t.insertText('>', caret(range.anchor.path, 0))
+      })
+      expect(texts(tr)).toEqual(['>>abc def'])
+      expect(tr.selection).toEqual(sel(caret([0, 0], 4), caret([0, 0], 8)))
     })
 
     it('no-range call inside forEachRange throws in dev', () => {
