@@ -1,5 +1,5 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
-import type { Data, DeepReadonly, ElementNode, Node, Path, Range, Selection } from '../model/types'
+import type { Data, DeepReadonly, ElementNode, Node, Path, Range, SelectionRange } from '../model/types'
 import type { Transaction } from '../transaction/transaction'
 import type { EditorState } from '../state'
 import type { Editor } from '../editor'
@@ -33,13 +33,13 @@ export interface ParseRule {
 /** What `transformPasted` gets besides the fragment. */
 export interface PasteInfo {
   /** Where the fragment will be inserted (a drop's drop point); null for the selection. */
-  at: Selection | null
+  at: SelectionRange | null
 }
 
 export interface InputIntent {
   inputType: string
   data: string | null
-  range: Selection | null
+  range: SelectionRange | null
   dataTransfer?: DataTransfer | null
 }
 

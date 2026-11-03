@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { mainRange } from '../src/model/selection'
 import { definePlugin, type PluginContext, type Transaction } from '../src/index'
 import { createTestEditor, doc, el, sel, txt } from '../src/testing/index'
 import { testBold, testParagraph } from './fixtures'
@@ -106,7 +107,7 @@ describe('lifecycle hooks: onUpdate / onSelectionUpdate', () => {
 
   it('run by priority right after the matching editor event, listeners first', () => {
     const { editor, log, trs } = setup()
-    const tr = editor.createTransaction().insertText('x', sel([0, 0], 1))
+    const tr = editor.createTransaction().insertText('x', mainRange(sel([0, 0], 1)))
     editor.dispatch(tr)
     expect(log).toEqual([
       'on:transaction',
@@ -139,7 +140,7 @@ describe('lifecycle hooks: onUpdate / onSelectionUpdate', () => {
       onUpdate: (ctx, { tr }) => {
         calls++
         if (tr.meta.followUp) return
-        const next = ctx.editor.createTransaction().insertText('!', sel([0, 0], 0))
+        const next = ctx.editor.createTransaction().insertText('!', mainRange(sel([0, 0], 0)))
         next.setMeta('followUp', true)
         ctx.editor.dispatch(next)
       },
@@ -176,7 +177,7 @@ describe('lifecycle hooks: onUpdate / onSelectionUpdate', () => {
       doc: content(),
       selection: sel([0, 0], 1),
     })
-    expect(() => editor.dispatch(editor.createTransaction().insertText('x', sel([0, 0], 1)))).toThrow(boom)
+    expect(() => editor.dispatch(editor.createTransaction().insertText('x', mainRange(sel([0, 0], 1))))).toThrow(boom)
     expect(calls).toEqual(['thrower:update', 'other:update', 'thrower:selection', 'other:selection'])
     expect(editor.getHTML()).toBe('<p>axbcd</p>')
   })

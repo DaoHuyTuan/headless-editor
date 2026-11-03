@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { mainRange, single } from '../src/model/selection'
 import { definePlugin } from '../src/plugin/define'
 import type { Doc, ElementNode, Node, Selection } from '../src/model/types'
 import { createTestEditor, doc, el, sel, stripIds, txt } from '../src/testing/index'
@@ -338,7 +339,7 @@ describe('onBeforeInput defaults', () => {
   it('insertText inserts into intent.range or the selection', () => {
     const ed = setup(doc(p('abcd')), caret([0, 0], 0))
     const trs = lastTr(ed)
-    ed.handleIntent({ inputType: 'insertText', data: 'X', range: sel([0, 0], 1, [0, 0], 3) })
+    ed.handleIntent({ inputType: 'insertText', data: 'X', range: mainRange(sel([0, 0], 1, [0, 0], 3)) })
     expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p('aXd'))))
     ed.handleIntent({ inputType: 'insertReplacementText', data: 'Y', range: null })
     expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p('aXYd'))))
@@ -349,7 +350,7 @@ describe('onBeforeInput defaults', () => {
     const ed = setup(doc(p('a teh b')), caret([0, 0], 0))
     const dataTransfer = { getData: (type: string) => (type === 'text/plain' ? 'the' : '') } as DataTransfer
     expect(
-      ed.handleIntent({ inputType: 'insertReplacementText', data: null, range: sel([0, 0], 2, [0, 0], 5), dataTransfer }),
+      ed.handleIntent({ inputType: 'insertReplacementText', data: null, range: mainRange(sel([0, 0], 2, [0, 0], 5)), dataTransfer }),
     ).toBe(true)
     expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p('a the b'))))
     expect(ed.state.selection).toEqual(caret([0, 0], 5))
@@ -362,7 +363,7 @@ describe('onBeforeInput defaults', () => {
   ])('%s without any text is unhandled and deletes nothing', (inputType, dataTransfer) => {
     const ed = setup(doc(p('a teh b')), caret([0, 0], 0))
     const before = ed.state.doc
-    expect(ed.handleIntent({ inputType, data: null, range: sel([0, 0], 2, [0, 0], 5), dataTransfer })).toBe(false)
+    expect(ed.handleIntent({ inputType, data: null, range: mainRange(sel([0, 0], 2, [0, 0], 5)), dataTransfer })).toBe(false)
     expect(ed.state.doc).toBe(before)
   })
 
@@ -432,7 +433,7 @@ describe('opaque elements (unknown types and atoms)', () => {
     const before = ed.state.doc
     expect(ed.commands.deleteBackward()).toBe(true)
     expect(ed.state.doc).toBe(before)
-    expect(ed.state.selection).toEqual({ ...caret([1, 0], 0), node: [0] })
+    expect(ed.state.selection).toEqual(single({ ...mainRange(caret([1, 0], 0)), node: [0] }))
   })
 
   it('Delete at the end of a block before an unknown block selects it (doc unchanged)', () => {
@@ -440,16 +441,16 @@ describe('opaque elements (unknown types and atoms)', () => {
     const before = ed.state.doc
     expect(ed.commands.deleteForward()).toBe(true)
     expect(ed.state.doc).toBe(before)
-    expect(ed.state.selection).toEqual({ ...caret([0, 0], 4), node: [1] })
+    expect(ed.state.selection).toEqual(single({ ...mainRange(caret([0, 0], 4)), node: [1] }))
   })
 
   it('Backspace / Delete next to an atom block select it', () => {
     const after = setupOpaque(doc(el('image'), p('body')), caret([1, 0], 0))
     expect(after.commands.deleteBackward()).toBe(true)
-    expect(after.state.selection).toEqual({ ...caret([1, 0], 0), node: [0] })
+    expect(after.state.selection).toEqual(single({ ...mainRange(caret([1, 0], 0)), node: [0] }))
     const before = setupOpaque(doc(p('body'), el('image')), caret([0, 0], 4))
     expect(before.commands.deleteForward()).toBe(true)
-    expect(before.state.selection).toEqual({ ...caret([0, 0], 4), node: [1] })
+    expect(before.state.selection).toEqual(single({ ...mainRange(caret([0, 0], 4)), node: [1] }))
   })
 
   describe('deleteRange with an opaque edge block', () => {

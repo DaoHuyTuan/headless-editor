@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it } from 'vitest'
+import { mainRange, single } from '../../src/model/selection'
 import {
   definePlugin,
   findPathById,
@@ -355,7 +356,7 @@ describe('node views: click to select', () => {
     })
     container(root).querySelector('.label')!.dispatchEvent(e)
     expect(e.defaultPrevented).toBe(true)
-    expect(editor.state.selection).toEqual({ ...caret([0, 0], 1), node: [1] })
+    expect(editor.state.selection).toEqual(single({ ...mainRange(caret([0, 0], 1)), node: [1] }))
     expect(document.activeElement).toBe(root)
     expect(container(root).hasAttribute('data-hte-selected')).toBe(true)
   })
@@ -389,7 +390,7 @@ describe('node views: click to select', () => {
     })
     inline.dispatchEvent(e1)
     expect(e1.defaultPrevented).toBe(false)
-    expect(editor.state.selection?.node).toBeUndefined()
+    expect(editor.state.selection?.ranges[0]?.node).toBeUndefined()
     const e2 = new MouseEvent('mousedown', {
       bubbles: true,
       cancelable: true,
@@ -397,7 +398,7 @@ describe('node views: click to select', () => {
     })
     root.querySelector('[data-hte-unknown]')!.dispatchEvent(e2)
     expect(e2.defaultPrevented).toBe(true)
-    expect(editor.state.selection?.node).toEqual([1])
+    expect(editor.state.selection?.ranges[0]?.node).toEqual([1])
   })
 })
 

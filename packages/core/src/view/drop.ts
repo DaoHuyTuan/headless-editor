@@ -1,4 +1,5 @@
-import type { Point, Selection } from '../model/types'
+import { mainRange, single } from '../model/selection'
+import type { Point, SelectionRange } from '../model/types'
 import { FRAGMENT_MIME } from '../content/clipboard'
 import { domToModel } from './dom-selection'
 import { isIgnoredEvent } from './ignore'
@@ -36,10 +37,10 @@ function onDrop(view: EditorView, e: DragEvent): void {
   const point = pointAt(view, e.clientX, e.clientY)
   if (point) {
     const tr = editor.createTransaction()
-    tr.setSelection({ anchor: point, focus: point }).setMeta('origin', 'selection').setMeta('addToHistory', false)
+    tr.setSelection(single({ anchor: point, focus: point })).setMeta('origin', 'selection').setMeta('addToHistory', false)
     editor.dispatch(tr)
   }
-  const range: Selection | null = editor.state.selection
+  const range: SelectionRange | null = editor.state.selection && mainRange(editor.state.selection)
   view.focus()
   editor.handleIntent({ inputType: 'insertFromDrop', data: null, dataTransfer: e.dataTransfer, range })
 }

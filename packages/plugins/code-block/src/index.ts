@@ -18,12 +18,15 @@ import {
   definePlugin,
   getNode,
   isElement,
+  isNodeRange,
   isNodeSelection,
   isText,
+  mainRange,
   mergeAttrs,
   nextPath,
   nodeEntries,
   nodeText,
+  single,
   type Command,
   type Decoration,
   type DeepReadonly,
@@ -106,19 +109,20 @@ interface CodeAt {
 function codeAt(tr: Transaction): CodeAt | null {
   const sel = tr.selection
   if (!sel || isNodeSelection(sel)) return null
-  const blockPath = blockPathOf(tr.doc, tr.registry, sel.anchor.path)
+  const range = mainRange(sel)
+  const blockPath = blockPathOf(tr.doc, tr.registry, range.anchor.path)
   if (!blockPath) return null
   const block = getNode(tr.doc, blockPath) as ElementNode
   const kids = block.children ?? []
   const textPath = [...blockPath, 0]
   const same = (p: Point) => p.path.length === textPath.length && p.path.every((n, i) => n === textPath[i])
-  if (block.type !== NAME || kids.length !== 1 || !isText(kids[0]!) || !same(sel.anchor) || !same(sel.focus)) return null
-  const { offset: anchor } = sel.anchor
-  const { offset: focus } = sel.focus
+  if (block.type !== NAME || kids.length !== 1 || !isText(kids[0]!) || !same(range.anchor) || !same(range.focus)) return null
+  const { offset: anchor } = range.anchor
+  const { offset: focus } = range.focus
   return { blockPath, textPath, text: kids[0].text, from: Math.min(anchor, focus), to: Math.max(anchor, focus), anchor, focus }
 }
 
-const caret = (path: Path, offset: number): Selection => ({ anchor: { path, offset }, focus: { path, offset } })
+const caret = (path: Path, offset: number): Selection => single({ anchor: { path, offset }, focus: { path, offset } })
 
 function emptyDefaultBlock(registry: Registry): ElementNode {
   return { id: createId(), type: registry.defaultBlock, data: {}, children: [{ text: '', marks: [] }] }
@@ -227,8 +231,9 @@ const editorOptions =
 function toCodeBlock(tr: Transaction, editor: Editor, language: string | undefined): boolean {
   const sel = tr.selection
   if (!sel || isNodeSelection(sel)) return false
-  const blockPath = blockPathOf(tr.doc, tr.registry, sel.anchor.path)
-  const focusBlock = blockPathOf(tr.doc, tr.registry, sel.focus.path)
+  const range = mainRange(sel)
+  const blockPath = blockPathOf(tr.doc, tr.registry, range.anchor.path)
+  const focusBlock = blockPathOf(tr.doc, tr.registry, range.focus.path)
   if (!blockPath || !focusBlock || blockPath.join() !== focusBlock.join()) return false
   const block = getNode(tr.doc, blockPath) as ElementNode
   if (tr.registry.node(block.type)?.content !== 'inline') return false
@@ -248,11 +253,13 @@ function toCodeBlock(tr: Transaction, editor: Editor, language: string | undefin
     data: language === undefined ? {} : { language },
     children: [{ text: texts.map((t) => t.text).join(''), marks: [] }],
   }
-  const [anchor, focus] = [offsetOf(sel.anchor), offsetOf(sel.focus)]
-  return replaceBlock(tr, blockPath, node, (p) => ({
-    anchor: { path: [...p, 0], offset: anchor },
-    focus: { path: [...p, 0], offset: focus },
-  }))
+  const [anchor, focus] = [offsetOf(range.anchor), offsetOf(range.focus)]
+  return replaceBlock(tr, blockPath, node, (p) =>
+    single({
+      anchor: { path: [...p, 0], offset: anchor },
+      focus: { path: [...p, 0], offset: focus },
+    }),
+  )
 }
 
 /**
@@ -286,7 +293,7 @@ function addsFormatting(tr: Transaction): boolean {
     tr.storedMarks &&
     tr.storedMarks.length > 0 &&
     tr.storedMarks !== tr.before.storedMarks &&
-    inCodeBlock(tr.doc, registry, sel.focus.path)
+    inCodeBlock(tr.doc, registry, mainRange(sel).focus.path)
   )
     return true
   // Plain typing has neither: no replay.
@@ -425,8 +432,8 @@ export const codeBlock = definePlugin({
   // Decided by where the fragment goes: the drop point of a drop, else the selection.
   transformPasted: (fragment, ctx, { at }) => {
     const { state, registry } = ctx.editor
-    const target = at ?? state.selection
-    if (target && !isNodeSelection(target) && inCodeBlock(state.doc, registry, target.anchor.path)) {
+    const target = at ?? (state.selection && mainRange(state.selection))
+    if (target && !isNodeRange(target) && inCodeBlock(state.doc, registry, target.anchor.path)) {
       const options = editorOptions(ctx.editor)
       const text = fragment.map((n) => nodeText(n, registry, options)).join(isBlockFragment(fragment, registry) ? '\n' : '')
       return text ? [{ text, marks: [] }] : []

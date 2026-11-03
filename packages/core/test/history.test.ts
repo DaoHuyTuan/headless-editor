@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { mainRange } from '../src/model/selection'
 import { historyPlugin } from '../src/history'
 import { clearHistory, definePlugin, findPathById, getNode, rewriteHistoryData, Transaction } from '../src/index'
 import type { AnyPlugin } from '../src/plugin/types'
@@ -426,14 +427,15 @@ describe('appendTransaction trs join the triggering history entry', () => {
     name: 'upper',
     appendTransaction: (trs, _old, state) => {
       if (!trs.some((t) => t.meta.origin === 'input' && t.meta.inputType === 'insertText')) return null
-      const s = state.selection
+      const cur = state.selection
+      const s = cur && mainRange(cur)
       if (!s || s.anchor.offset === 0) return null
       const ch = (getNode(state.doc, s.anchor.path) as { text: string }).text[s.anchor.offset - 1]!
       if (ch === ch.toUpperCase()) return null
       const t = new Transaction(state, trs[0]!.registry)
       t.apply({ type: 'remove_text', path: s.anchor.path, offset: s.anchor.offset - 1, text: ch })
       t.apply({ type: 'insert_text', path: s.anchor.path, offset: s.anchor.offset - 1, text: ch.toUpperCase() })
-      t.setSelection(s)
+      t.setSelection(cur)
       return t
     },
   })
@@ -621,7 +623,7 @@ describe('history maps its stacks through structural changes made outside histor
     const { ed, type, text } = setup(doc(p('one'), p('')), sel([1, 0], 0))
     type('a')
     outside(ed, (tr) => {
-      tr.insertText('!', sel([0, 0], 3))
+      tr.insertText('!', mainRange(sel([0, 0], 3)))
       tr.insertNode([1], p('mid'))
     })
     expect(text()).toEqual(stripIds(doc(p('one!'), p('mid'), p('a'))))

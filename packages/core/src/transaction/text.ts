@@ -2,7 +2,8 @@ import { createId } from '../model/id'
 import { editableTextEntries, isNodeSelection, isOpaque, nodeSelection } from '../model/editable'
 import { getNode, isElement, isText, sameMarkSet } from '../model/node'
 import { comparePath, comparePoint, isAncestorPath, nextPath, parentPath, pointEquals, toRange } from '../model/path'
-import type { ElementNode, Mark, Node, Path, Point, Range, Selection, TextNode } from '../model/types'
+import { mainRange, single } from '../model/selection'
+import type { ElementNode, Mark, Node, Path, Point, Range, Selection, SelectionRange, TextNode } from '../model/types'
 import { marksAtTr, marksOfRange } from './marks'
 import type { Transaction } from './transaction'
 
@@ -15,12 +16,12 @@ function pathEquals(a: Path, b: Path): boolean {
 }
 
 /** Orders the points: callers may pass a backward selection or an unordered range. */
-function asRange(at: Selection | Range): Range {
+function asRange(at: SelectionRange | Range): Range {
   return toRange('anchor' in at ? at : { anchor: at.start, focus: at.end })
 }
 
 function caret(point: Point): Selection {
-  return { anchor: point, focus: point }
+  return single({ anchor: point, focus: point })
 }
 
 function textAt(tr: Transaction, path: Path): TextNode {
@@ -228,13 +229,13 @@ export type NodeSelectionEdit = 'delete' | 'split' | { text: string } | { node: 
  */
 export function replaceSelectedNode(tr: Transaction, mode: NodeSelectionEdit): boolean {
   const sel = tr.selection
-  if (!isNodeSelection(sel)) return false
-  const path = sel.node
+  if (!sel || !isNodeSelection(sel)) return false
+  const path = mainRange(sel).node!
   if (mode === 'delete') {
     tr.removeNode(path)
     // The removal mapped the selection (dropping `node`); collapse it explicitly.
     const mapped = tr.selection
-    tr.setSelection(mapped && caret(mapped.anchor))
+    tr.setSelection(mapped && caret(mainRange(mapped).anchor))
     return true
   }
   if (mode === 'split') {
@@ -262,8 +263,8 @@ export function insertBlockNode(tr: Transaction, node: ElementNode): boolean {
   if (isNodeSelection(tr.selection)) return replaceSelectedNode(tr, { node })
   const sel = tr.selection
   if (!sel) return false
-  const range = toRange(sel)
-  const point = deleteRange(tr, range) ? tr.selection!.anchor : range.start
+  const range = toRange(mainRange(sel))
+  const point = deleteRange(tr, range) ? mainRange(tr.selection!).anchor : range.start
   const blockPath = blockPathOf(tr, point.path)
   const blockNode = getNode(tr.doc, blockPath) as ElementNode
   const block = readBlock(tr, blockPath)
@@ -292,16 +293,16 @@ export function insertBlockNode(tr: Transaction, node: ElementNode): boolean {
 }
 
 /** Deletes the selection (or `at`), then inserts `text` with the insertion marks; the caret ends after it. */
-export function insertText(tr: Transaction, text: string, at?: Selection | Range): boolean {
+export function insertText(tr: Transaction, text: string, at?: SelectionRange | Range): boolean {
   if (!at && isNodeSelection(tr.selection)) return replaceSelectedNode(tr, text === '' ? 'delete' : { text })
-  const target = at ?? tr.selection
+  const target = at ?? (tr.selection && mainRange(tr.selection))
   if (!target) return false
   const range = asRange(target)
   // Deleting moves the selection, which clears stored marks; keep them for the insertion.
   const stored = tr.storedMarks
   // Typing over a range keeps the marks of its first covered character (read before deleting).
   const replaced = stored ? null : marksOfRange(tr.doc, range, tr.registry)
-  const point = deleteRange(tr, range) ? tr.selection!.anchor : range.start
+  const point = deleteRange(tr, range) ? mainRange(tr.selection!).anchor : range.start
   tr.setStoredMarks(stored)
   const marks = replaced ?? insertionMarks(tr, point)
   tr.setStoredMarks(null)
@@ -455,8 +456,9 @@ function deleteDirection(tr: Transaction, unit: DeleteUnit, backward: boolean): 
   if (isNodeSelection(tr.selection)) return replaceSelectedNode(tr, 'delete')
   const sel = tr.selection
   if (!sel) return false
-  if (!pointEquals(sel.anchor, sel.focus)) return deleteRange(tr, toRange(sel))
-  const point = sel.anchor
+  const range = mainRange(sel)
+  if (!pointEquals(range.anchor, range.focus)) return deleteRange(tr, toRange(range))
+  const point = range.anchor
   const blockPath = blockPathOf(tr, point.path)
   // Characters and words stay within the run: an inline atom next to the caret is removed whole
   // (its neighbour texts keep the caret; the selection maps through the removal).
@@ -512,8 +514,8 @@ export function splitBlock(tr: Transaction): boolean {
   if (isNodeSelection(tr.selection)) return replaceSelectedNode(tr, 'split')
   const sel = tr.selection
   if (!sel) return false
-  const range = toRange(sel)
-  const point = deleteRange(tr, range) ? tr.selection!.anchor : range.start
+  const range = toRange(mainRange(sel))
+  const point = deleteRange(tr, range) ? mainRange(tr.selection!).anchor : range.start
   const blockPath = blockPathOf(tr, point.path)
   const blockNode = getNode(tr.doc, blockPath) as ElementNode
   const block = readBlock(tr, blockPath)
@@ -553,6 +555,6 @@ export function selectAll(tr: Transaction): boolean {
   const anchor = firstPoint(texts)
   const focus = lastPoint(texts)
   if (!anchor || !focus) return false
-  tr.setSelection({ anchor, focus })
+  tr.setSelection(single({ anchor, focus }))
   return true
 }

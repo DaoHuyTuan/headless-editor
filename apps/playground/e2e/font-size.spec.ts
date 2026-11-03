@@ -25,7 +25,7 @@ test('choosing 24px on a selection adds the fontSize mark to it', async ({ page 
   await page.evaluate(() => {
     const editor = window.editor
     const tr = editor.createTransaction()
-    tr.setSelection({ anchor: { path: [0, 0], offset: 6 }, focus: { path: [0, 0], offset: 11 } })
+    tr.setSelection({ ranges: [{ anchor: { path: [0, 0], offset: 6 }, focus: { path: [0, 0], offset: 11 } }], main: 0 })
     tr.setMeta('addToHistory', false)
     editor.dispatch(tr)
   })
@@ -79,7 +79,7 @@ test('the fontSizes scenario loads sizes as marks, and the select follows the ca
         if (!('text' in child) || !child.marks.some((m) => m.data.size === '32px')) continue
         const point = { path: [b, t], offset: 1 }
         const tr = editor.createTransaction()
-        tr.setSelection({ anchor: point, focus: point }).setMeta('addToHistory', false)
+        tr.setSelection({ ranges: [{ anchor: point, focus: point }], main: 0 }).setMeta('addToHistory', false)
         editor.dispatch(tr)
         return
       }

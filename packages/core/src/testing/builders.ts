@@ -1,4 +1,5 @@
 import { createId } from '../model/id'
+import { single } from '../model/selection'
 import type { Data, Doc, ElementNode, Mark, Node, Path, Selection, TextNode } from '../model/types'
 
 export function doc(...blocks: ElementNode[]): Doc {
@@ -26,10 +27,10 @@ export function txt(text: string, ...marks: (string | Mark)[]): TextNode {
 }
 
 export function sel(path: Path, offset: number, focusPath?: Path, focusOffset?: number): Selection {
-  return {
+  return single({
     anchor: { path, offset },
     focus: { path: focusPath ?? path, offset: focusOffset ?? offset },
-  }
+  })
 }
 
 /** Deep copy of `value` with every element `id` removed (for structural comparisons in tests). */

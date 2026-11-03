@@ -1,6 +1,7 @@
 import type { Editor } from './editor'
 import { isNodeSelection } from './model/editable'
 import { pointEquals } from './model/path'
+import { mainRange } from './model/selection'
 import type { Range } from './model/types'
 import type { AnyPlugin, PluginContext } from './plugin/types'
 import { blockPathOf, fromBlockOffset, runAt, toBlockOffset, type Run } from './transaction/text'
@@ -20,8 +21,10 @@ export function runInputRules(
   contextOf: (plugin: AnyPlugin) => PluginContext<any, any, any, any>,
 ): boolean {
   const sel = editor.state.selection
-  if (!sel || isNodeSelection(sel) || !pointEquals(sel.anchor, sel.focus)) return false
-  const caret = sel.focus
+  if (!sel || isNodeSelection(sel)) return false
+  const range = mainRange(sel)
+  if (!pointEquals(range.anchor, range.focus)) return false
+  const caret = range.focus
   let run: Run
   try {
     const probe = editor.createTransaction()

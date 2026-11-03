@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { mainRange, single } from '../../src/model/selection'
 import {
   definePlugin,
   findPathById,
@@ -33,7 +34,7 @@ const p = (...children: (Node | string)[]): ElementNode =>
   el('paragraph', ...children.map((c) => (typeof c === 'string' ? txt(c) : c)))
 const atom = (): ElementNode => el('atom')
 const caret = (path: number[], offset: number): Selection => sel(path, offset)
-const nodeSel = (node: number[], path: number[], offset: number): Selection => ({ ...caret(path, offset), node })
+const nodeSel = (node: number[], path: number[], offset: number): Selection => single({ ...mainRange(caret(path, offset)), node })
 
 function setup(content: Doc, selection?: Selection) {
   return createTestEditor({ plugins: [testParagraph, testBold, atomPlugin, strictAtom], doc: content, selection })
@@ -108,7 +109,7 @@ describe('editing with a node selection', () => {
 
   it('typing through an input intent replaces the node too', () => {
     const ed = selected()
-    expect(ed.handleIntent({ inputType: 'insertText', data: 'x', range: caret([0, 0], 1) })).toBe(true)
+    expect(ed.handleIntent({ inputType: 'insertText', data: 'x', range: mainRange(caret([0, 0], 1)) })).toBe(true)
     expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p('a'), p('x'), p('b'))))
     expect(ed.state.selection).toEqual(caret([1, 0], 1))
   })
@@ -229,7 +230,7 @@ describe('editing with a node selection', () => {
 
   it('getFragment with a node copies the node', () => {
     const ed = selected()
-    const s = ed.state.selection!
+    const s = mainRange(ed.state.selection!)
     const frag = getFragment(ed.state.doc, { start: s.anchor, end: s.focus }, s.node)
     expect(frag).toEqual([ed.state.doc.children[1]])
     expect(frag[0]).not.toBe(ed.state.doc.children[1])

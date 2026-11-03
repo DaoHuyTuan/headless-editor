@@ -2,7 +2,8 @@ import { isNodeSelection, isOpaque, type NodeTypes } from '../model/editable'
 import { createId } from '../model/id'
 import { getNode, isElement, isText, nodeEntries } from '../model/node'
 import { comparePoint, parentPath } from '../model/path'
-import type { DeepReadonly, Doc, ElementNode, Json, Node, Path, Point, Range, Selection, TextNode } from '../model/types'
+import { mainRange, single } from '../model/selection'
+import type { DeepReadonly, Doc, ElementNode, Json, Node, Path, Point, Range, SelectionRange, TextNode } from '../model/types'
 import { blockPathOf, deleteRange, insertBlockNode, isInlineOpaque, replaceSelectedNode, splitBlockAt } from './text'
 import type { Transaction } from './transaction'
 
@@ -22,7 +23,7 @@ function cloneText(node: TextNode, text: string): TextNode {
   return { text, marks: node.marks.map((m) => ({ type: m.type, data: cloneJson(m.data) })) }
 }
 
-function ordered(at: Range | Selection): Range {
+function ordered(at: Range | SelectionRange): Range {
   const [a, b] = 'anchor' in at ? [at.anchor, at.focus] : [at.start, at.end]
   return comparePoint(a, b) <= 0 ? { start: a, end: b } : { start: b, end: a }
 }
@@ -65,7 +66,7 @@ function sliceNode(node: Node, from: Edge, to: Edge): Node {
  * block, or a list of blocks whose partial edge blocks are trimmed but keep their type and data.
  */
 export function getFragment(doc: DeepReadonly<Doc>, range: Range, node?: Path): Fragment {
-  // A node selection copies the selected node whole (pass `selection.node`).
+  // A node selection copies the selected node whole (pass the node range's `node`).
   if (node) return [sliceNode(getNode(doc, node), null, null)]
   const { start, end } = ordered(range)
   if (comparePoint(start, end) === 0) return []
@@ -175,10 +176,10 @@ export function insertInlineNode(tr: Transaction, node: ElementNode): boolean {
   if (isNodeSelection(tr.selection)) replaceSelectedNode(tr, { text: '' })
   const sel = tr.selection
   if (!sel) return false
-  const range = ordered(sel)
+  const range = ordered(mainRange(sel))
   const block = getNode(tr.doc, blockPathOf(tr, range.start.path)) as ElementNode
   if (tr.registry.node(block.type)?.content === 'text') return false
-  const point = deleteRange(tr, range) ? tr.selection!.anchor : range.start
+  const point = deleteRange(tr, range) ? mainRange(tr.selection!).anchor : range.start
   const used = new Set<string>()
   for (const [n] of nodeEntries(tr.doc)) if (isElement(n)) used.add(n.id)
   const end = insertInline(tr, point, withUniqueIds([node], used), true)
@@ -245,24 +246,24 @@ function replaceSelectedNodeWithBlocks(tr: Transaction, path: Path, nodes: Node[
  * doc or repeat within the fragment. Pasted texts keep their own marks. Returns false without a
  * target; an empty fragment only deletes (true when something was deleted).
  */
-export function insertFragment(tr: Transaction, fragment: Fragment, at?: Range | Selection): boolean {
+export function insertFragment(tr: Transaction, fragment: Fragment, at?: Range | SelectionRange): boolean {
   // A selected node is replaced in place, as typing does. Blocks with an opaque edge go in whole at
   // the node's index (merging them into a placeholder would leave it behind as a stray empty block);
   // other content goes into the start of an empty default block put in the node's place, with the
   // same split / merge rules as at any caret. An empty fragment only removes the node.
   const selected = tr.selection
-  if (!at && isNodeSelection(selected)) {
+  if (!at && selected && isNodeSelection(selected)) {
     if (fragment.length === 0) return replaceSelectedNode(tr, 'delete')
     const block = (n: Node): n is ElementNode => isElement(n) && tr.registry.node(n.type)?.kind !== 'inline'
     const opaqueBlock = (n: Node): boolean => block(n) && isOpaque(n, tr.registry)
     if (block(fragment[0]!) && (opaqueBlock(fragment[0]!) || opaqueBlock(fragment[fragment.length - 1]!))) {
       const used = new Set<string>()
       for (const [n] of nodeEntries(tr.doc)) if (isElement(n)) used.add(n.id)
-      return replaceSelectedNodeWithBlocks(tr, selected.node, withUniqueIds(fragment, used))
+      return replaceSelectedNodeWithBlocks(tr, mainRange(selected).node!, withUniqueIds(fragment, used))
     }
     if (!replaceSelectedNode(tr, { text: '' })) return false
   }
-  const target = at ?? tr.selection
+  const target = at ?? (tr.selection && mainRange(tr.selection))
   if (!target) return false
   const range = ordered(target)
   const deleted = deleteRange(tr, range)
@@ -280,7 +281,7 @@ export function insertFragment(tr: Transaction, fragment: Fragment, at?: Range |
   if (nodes.length === 1) {
     // A lone opaque block (e.g. a copied node selection) goes in whole, as a block of its own.
     if (!opaque(first)) return caretAt(tr, insertInline(tr, point, (first as ElementNode).children ?? []))
-    tr.setSelection({ anchor: point, focus: point })
+    tr.setSelection(single({ anchor: point, focus: point }))
     return insertBlockNode(tr, first as ElementNode)
   }
   // Opaque edge blocks have no children to merge into the split halves: pad the fragment with a
@@ -292,6 +293,6 @@ export function insertFragment(tr: Transaction, fragment: Fragment, at?: Range |
 }
 
 function caretAt(tr: Transaction, end: Point): true {
-  tr.setSelection({ anchor: end, focus: end })
+  tr.setSelection(single({ anchor: end, focus: end }))
   return true
 }

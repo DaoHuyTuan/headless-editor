@@ -1,4 +1,5 @@
 import { comparePath } from './path'
+import { isNodeRange, mainRange, single } from './selection'
 import { getNode, isText, type ReadableRoot } from './node'
 import type { Doc, ElementNode, Node, Path, Point, Range, Selection, TextNode } from './types'
 
@@ -55,8 +56,9 @@ export function isEditablePoint(doc: ReadableRoot, types: NodeTypes, point: Poin
   return true
 }
 
-export function isNodeSelection(sel: Selection | null | undefined): sel is Selection & { node: Path } {
-  return !!sel && sel.node !== undefined
+/** Whether `sel` is a node selection: its single range is a node range. */
+export function isNodeSelection(sel: Selection | null | undefined): boolean {
+  return !!sel && isNodeRange(mainRange(sel))
 }
 
 /** Whether `path` addresses an opaque element (atom or unknown type) of `doc`. */
@@ -88,13 +90,13 @@ export function nodeSelection(doc: ReadableRoot, types: NodeTypes, path: Path): 
     }
   }
   if (!point) throw new Error(`No editable text to anchor a node selection of [${path}]`)
-  return { anchor: point, focus: point, node: [...path] }
+  return single({ anchor: point, focus: point, node: [...path] })
 }
 
 /** A caret at the start of the first editable text of `doc`, or null when it has none. */
 export function firstEditableCaret(doc: ReadableRoot, types: NodeTypes): Selection | null {
   for (const [, path] of editableTextEntries(doc, types)) {
-    return { anchor: { path, offset: 0 }, focus: { path, offset: 0 } }
+    return single({ anchor: { path, offset: 0 }, focus: { path, offset: 0 } })
   }
   return null
 }

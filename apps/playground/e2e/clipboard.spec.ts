@@ -46,7 +46,7 @@ async function select(page: Page, anchor: [number[], number], focus: [number[], 
     ([a, f]) => {
       const editor = window.editor
       const tr = editor.createTransaction()
-      tr.setSelection({ anchor: { path: a[0], offset: a[1] }, focus: { path: f[0], offset: f[1] } })
+      tr.setSelection({ ranges: [{ anchor: { path: a[0], offset: a[1] }, focus: { path: f[0], offset: f[1] } }], main: 0 })
       tr.setMeta('addToHistory', false)
       editor.dispatch(tr)
       editor.view!.focus()

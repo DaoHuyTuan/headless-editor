@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { single } from '../../src/model/selection'
 import {
   definePlugin,
   modelToDom,
@@ -284,7 +285,7 @@ describe('non-atom node views: selection', () => {
     const domSel = document.getSelection()!
     expect(contentOf(root).contains(domSel.anchorNode)).toBe(true)
     expect(readDomSelection(editor.view!.renderer, domSel)).toEqual(sel([1, 0], 3))
-    const range: Selection = { anchor: { path: [0, 0], offset: 0 }, focus: { path: [1, 0], offset: 4 } }
+    const range: Selection = single({ anchor: { path: [0, 0], offset: 0 }, focus: { path: [1, 0], offset: 4 } })
     writeDomSelection(editor.view!.renderer, range, domSel)
     expect(readDomSelection(editor.view!.renderer, domSel)).toEqual(range)
   })
@@ -407,6 +408,6 @@ describe('non-atom node views: selection', () => {
     const domSel = document.getSelection()!
     domSel.setBaseAndExtent(text, 1, text, 1)
     const read = readDomSelection(point, domSel)
-    expect(read?.anchor.path).toEqual([1, 0])
+    expect(read?.ranges[0]?.anchor.path).toEqual([1, 0])
   })
 })

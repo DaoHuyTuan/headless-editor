@@ -1,5 +1,6 @@
 import { isNodeSelection } from '../model/editable'
 import { isCollapsed, toRange } from '../model/path'
+import { mainRange } from '../model/selection'
 import type { Path, Range } from '../model/types'
 import { replaceSelectedNode } from '../transaction/text'
 import { FRAGMENT_MIME, serializeForClipboard } from '../content/clipboard'
@@ -13,9 +14,11 @@ function copyRange(view: EditorView): { range: Range; node?: Path } | null {
   const inside = (n: globalThis.Node | null | undefined) => !!n && view.root.contains(n)
   if (!domSel || !inside(domSel.anchorNode) || !inside(domSel.focusNode)) return null
   const sel = view.editor.state.selection
+  if (!sel) return null
+  const range = mainRange(sel)
   // A node selection copies its node, although its caret is collapsed.
-  if (isNodeSelection(sel)) return { range: toRange(sel), node: sel.node }
-  return sel && !isCollapsed(sel) ? { range: toRange(sel) } : null
+  if (isNodeSelection(sel)) return { range: toRange(range), node: range.node }
+  return !isCollapsed(range) ? { range: toRange(range) } : null
 }
 
 function onCopy(view: EditorView, e: ClipboardEvent, cut: boolean): void {
@@ -50,7 +53,7 @@ function onPaste(view: EditorView, e: ClipboardEvent): void {
     inputType: 'insertFromPaste',
     data: null,
     dataTransfer: e.clipboardData,
-    range: editor.state.selection,
+    range: editor.state.selection && mainRange(editor.state.selection),
   })
 }
 

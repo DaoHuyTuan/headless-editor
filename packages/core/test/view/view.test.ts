@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { mainRange, single } from '../../src/model/selection'
 import type { ElementNode, Selection } from '../../src/model/types'
 import { EditorView, Renderer, modelToDom } from '../../src/index'
 import { definePlugin } from '../../src/plugin/define'
@@ -7,7 +8,7 @@ import { createTestEditor, doc, txt } from '../../src/testing/index'
 import { testBold, testParagraph } from '../fixtures'
 
 const p = (id: string, text: string): ElementNode => ({ id, type: 'paragraph', data: {}, children: [txt(text)] })
-const caret = (path: number[], offset: number): Selection => ({ anchor: { path, offset }, focus: { path, offset } })
+const caret = (path: number[], offset: number): Selection => single({ anchor: { path, offset }, focus: { path, offset } })
 
 function setup(text = 'ab', selection: Selection = caret([0, 0], 0)) {
   const editor = createTestEditor({ plugins: [testParagraph, testBold], doc: doc(p('p1', text)), selection })
@@ -68,8 +69,8 @@ describe('EditorView with an unknown block', () => {
     const seen: unknown[] = []
     editor.on('transaction', ({ tr }) => seen.push(tr.selection))
     expect(() => editor.runKeymap('Mod-a')).not.toThrow()
-    const path = (start as Selection).anchor.path
-    expect(editor.state.selection).toEqual({ anchor: { path, offset: 0 }, focus: { path, offset: 4 } })
+    const path = mainRange(start as Selection).anchor.path
+    expect(editor.state.selection).toEqual(single({ anchor: { path, offset: 0 }, focus: { path, offset: 4 } }))
     expect(seen).toHaveLength(1)
   })
 
@@ -77,7 +78,7 @@ describe('EditorView with an unknown block', () => {
     const { editor, root, view } = setupUnknown([widget('w', 'Title'), p('p1', 'body')])
     view.focus()
     const before = editor.state.doc
-    expect(editor.handleIntent({ inputType: 'deleteContentBackward', data: null, range: caret([1, 0], 0) })).toBe(true)
+    expect(editor.handleIntent({ inputType: 'deleteContentBackward', data: null, range: mainRange(caret([1, 0], 0)) })).toBe(true)
     expect(editor.state.doc).toBe(before)
     expect(root.textContent).toBe('body')
     expect(editor.getHTML()).toContain('body')

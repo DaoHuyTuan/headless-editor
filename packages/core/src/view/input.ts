@@ -1,5 +1,6 @@
 import { eventToKeyName } from '../keymap'
-import type { Selection } from '../model/types'
+import { mainRange } from '../model/selection'
+import type { SelectionRange } from '../model/types'
 import type { InputIntent } from '../plugin/types'
 import type { EditorState } from '../state'
 import { domToModel } from './dom-selection'
@@ -10,7 +11,7 @@ import type { EditorView, ViewModule } from './view'
 const CLIPBOARD_INPUT = new Set(['insertFromPaste', 'deleteByCut'])
 
 /** The model selection of the event's first target range, or null when there is none (or it is outside). */
-function targetRange(view: EditorView, e: InputEvent): Selection | null {
+function targetRange(view: EditorView, e: InputEvent): SelectionRange | null {
   if (typeof e.getTargetRanges !== 'function') return null
   const range = e.getTargetRanges()[0]
   if (!range) return null
@@ -63,7 +64,8 @@ function runPendingDelete(view: EditorView, m: InputModuleState, entry: PendingD
   const { editor } = view
   if (editor.state !== entry.state || entry.event.defaultPrevented || view.composing || !view.hasFocus()) return
   view.syncSelection()
-  editor.handleIntent({ inputType: entry.inputType, data: null, dataTransfer: null, range: editor.state.selection })
+  const sel = editor.state.selection
+  editor.handleIntent({ inputType: entry.inputType, data: null, dataTransfer: null, range: sel && mainRange(sel) })
 }
 
 /** Arms the deletion-key fallback for an unhandled, unprevented plain Backspace/Delete keydown. */
@@ -119,7 +121,7 @@ function onBeforeInput(view: EditorView, e: InputEvent, m: InputModuleState): vo
     inputType: e.inputType,
     data: e.data,
     dataTransfer: e.dataTransfer,
-    range: targetRange(view, e) ?? editor.state.selection,
+    range: targetRange(view, e) ?? (editor.state.selection && mainRange(editor.state.selection)),
   }
   const handled = editor.handleIntent(intent)
   // Even unhandled input is prevented when possible, so the DOM never drifts from the model.

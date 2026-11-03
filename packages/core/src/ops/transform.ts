@@ -1,5 +1,6 @@
 import { isAncestorPath } from '../model/path'
-import type { Path, Point, Selection } from '../model/types'
+import { mainRange, single } from '../model/selection'
+import type { Path, Point, Selection, SelectionRange } from '../model/types'
 import { movedPath } from './invert'
 import type { Operation } from './types'
 
@@ -121,12 +122,13 @@ export function transformPoint(point: Point, op: Operation, affinity: Affinity =
 }
 
 export function transformSelection(sel: Selection, op: Operation, affinity: Affinity = 'forward'): Selection | null {
-  const anchor = transformPoint(sel.anchor, op, affinity)
-  const focus = transformPoint(sel.focus, op, affinity)
+  const range = mainRange(sel)
+  const anchor = transformPoint(range.anchor, op, affinity)
+  const focus = transformPoint(range.focus, op, affinity)
   if (!anchor || !focus) return null
-  const out: Selection = { anchor, focus }
+  const out: SelectionRange = { anchor, focus }
   // A removed selected node drops `node`: the mapped caret remains.
-  const node = sel.node && transformPath(sel.node, op)
+  const node = range.node && transformPath(range.node, op)
   if (node) out.node = node
-  return out
+  return single(out)
 }

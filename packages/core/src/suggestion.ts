@@ -1,6 +1,7 @@
 import { isNodeSelection } from './model/editable'
 import { getNode, isText } from './model/node'
 import { parentPath, pointEquals } from './model/path'
+import { mainRange } from './model/selection'
 import type { Node, Path, Point, Range } from './model/types'
 import type { EditorState } from './state'
 
@@ -29,8 +30,10 @@ const isSpace = (ch: string) => /\s/.test(ch)
  */
 export function findTrigger(state: EditorState, { char, allowSpaces = false }: FindTriggerOptions): TriggerMatch | null {
   const sel = state.selection
-  if (!char || !sel || isNodeSelection(sel) || !pointEquals(sel.anchor, sel.focus)) return null
-  const caret = sel.focus
+  if (!char || !sel || isNodeSelection(sel)) return null
+  const range = mainRange(sel)
+  if (!pointEquals(range.anchor, range.focus)) return null
+  const caret = range.focus
   if (caret.path.length < 2) return null
   let siblings: readonly Node[]
   try {

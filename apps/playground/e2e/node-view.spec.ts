@@ -89,7 +89,7 @@ test('typing in the alt input reaches the input and commits through updateData',
 test('clicking the node view outside the input node-selects it', async ({ page }) => {
   await page.getByTestId('nv-label').click()
   const { selection } = await nvState(page)
-  expect(selection?.node).toEqual([1])
+  expect(selection?.ranges[0]?.node).toEqual([1])
   await expect(page.locator('[data-testid=nv-editor] [data-hte-node-view]')).toHaveAttribute('data-hte-selected', '')
   await page.keyboard.press('Backspace')
   const { doc } = await nvState(page)

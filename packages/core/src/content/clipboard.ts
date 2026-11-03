@@ -3,7 +3,7 @@ import { serializeHTML } from '../html/serialize'
 import { parseHTML } from '../html/parse'
 import { defaultBlock, isBlock, sanitizeFragment } from './sanitize'
 import { nodeText } from './text'
-import type { Doc, ElementNode, Node, Path, Range, Selection } from '../model/types'
+import type { Doc, ElementNode, Node, Path, Range, SelectionRange } from '../model/types'
 import type { Registry } from '../plugin/registry'
 import { getFragment, type Fragment } from '../transaction/fragment'
 
@@ -14,7 +14,7 @@ export const FRAGMENT_MIME = 'application/x-hte-fragment'
  * The three clipboard flavors of `range`: `json` is the fragment itself, `html` the fragment
  * serialized as a doc (inline content is wrapped into a default block first), `text` the text of
  * each block (inline elements included, through their `renderText` when they have one) joined by
- * `\n`. With `node` (a node selection's `selection.node`), the fragment is that node alone.
+ * `\n`. With `node` (the `node` of a node selection's range), the fragment is that node alone.
  */
 export function serializeForClipboard(
   editor: Editor,
@@ -63,7 +63,7 @@ function fromText(text: string, registry: Registry): Fragment {
 export function parseFromClipboard(
   editor: Editor,
   data: { json?: string; html?: string; text?: string },
-  options: { at?: Selection | null } = {},
+  options: { at?: SelectionRange | null } = {},
 ): Fragment {
   const { registry } = editor
   let fragment: Fragment = []

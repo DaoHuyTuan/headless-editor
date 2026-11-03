@@ -18,6 +18,7 @@ import {
   mergeAttrs,
   nodeEntries,
   rewriteHistoryData,
+  single,
   clearHistory,
   type Command,
   type Data,
@@ -27,7 +28,7 @@ import {
   type Editor,
   type HTMLAttributes,
   type PluginContext,
-  type Selection,
+  type SelectionRange,
 } from '@hte/core'
 import { safeSrc } from './src-policy'
 
@@ -195,7 +196,7 @@ function onFailed(ctx: Ctx, ids: ReadonlySet<string>, blob: string, file: File, 
 }
 
 /** Inserts the preview of each image file and starts its upload. `at` (first file only) overrides the selection. */
-function uploadFiles(ctx: Ctx, files: readonly File[], at?: Selection | null): void {
+function uploadFiles(ctx: Ctx, files: readonly File[], at?: SelectionRange | null): void {
   const images = files.filter(isImageFile)
   if (images.length === 0) return
   const rt = runtimeOf(ctx.editor)
@@ -212,7 +213,7 @@ function uploadFiles(ctx: Ctx, files: readonly File[], at?: Selection | null): v
     const tr = editor.createTransaction()
     tr.meta.origin = 'command'
     tr.setMeta('imageUpload', { start: id } satisfies ImageUploadMeta)
-    if (i === 0 && at) tr.setSelection(at)
+    if (i === 0 && at) tr.setSelection(single(at))
     tr.insertBlockNode({ id, type: ctx.name, data: { src: blob, alt: '' } })
     if (tr.rejected === null && tr.docChanged) editor.dispatch(tr)
     // Not inserted (no selection, rejected or filtered out): nothing to upload into.

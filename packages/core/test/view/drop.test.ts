@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it } from 'vitest'
+import { mainRange } from '../../src/model/selection'
 import { definePlugin, type AnyPlugin, type Editor, type InputIntent, type Selection } from '../../src/index'
 import { createTestEditor, doc, el, sel, txt } from '../../src/testing/index'
 import { testBold, testParagraph } from '../fixtures'
@@ -120,7 +121,7 @@ describe('drop module', () => {
     stubCaretRange(textNodeOf(root, 'cdef'), 3)
     root.dispatchEvent(dragEvent('drop', transfer({ 'text/plain': 'Z' }, [new File(['x'], 'a.png')])))
     expect(intents).toHaveLength(1)
-    expect(intents[0]!.range).toEqual(sel([1, 0], 3))
+    expect(intents[0]!.range).toEqual(mainRange(sel([1, 0], 3)))
     expect(intents[0]!.data).toBeNull()
     expect(editor.getJSON().children.map((b) => (b.children![0] as { text: string }).text)).toEqual(['ab', 'cdef'])
   })

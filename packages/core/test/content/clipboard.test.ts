@@ -1,12 +1,13 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { mainRange, single } from '../../src/model/selection'
 import type { Doc, ElementNode, Node, Selection } from '../../src/model/types'
 import { definePlugin, isText, parseFromClipboard, serializeForClipboard, type AnyPlugin, type Fragment } from '../../src/index'
 import { createTestEditor, doc, stripIds, txt } from '../../src/testing/index'
 import { testBold, testParagraph } from '../fixtures'
 
 const p = (id: string, ...children: ReturnType<typeof txt>[]): ElementNode => ({ id, type: 'paragraph', data: {}, children })
-const range = (path: number[], offset: number, focusPath: number[], focusOffset: number): Selection => ({
+const range = (path: number[], offset: number, focusPath: number[], focusOffset: number): Selection => single({
   anchor: { path, offset },
   focus: { path: focusPath, offset: focusOffset },
 })
@@ -123,13 +124,13 @@ describe('serializeForClipboard / parseFromClipboard', () => {
     })
     const editor = setup(doc(p('p1', txt('abcd'))), caret([0, 0], 1), [testParagraph, testBold, spy])
     const transfer = { getData: (t: string) => (t === 'text/plain' ? 'x' : '') } as unknown as DataTransfer
-    const dropAt = caret([0, 0], 3)
+    const dropAt = mainRange(caret([0, 0], 3))
     editor.handleIntent({ inputType: 'insertFromDrop', data: null, range: dropAt, dataTransfer: transfer })
     expect(seen).toEqual([dropAt])
     expect(parseFromClipboard(editor, { text: 'y' })).toEqual([txt('y')])
     expect(seen[1]).toBeNull()
-    expect(parseFromClipboard(editor, { text: 'y' }, { at: caret([0, 0], 2) })).toEqual([txt('y')])
-    expect(seen[2]).toEqual(caret([0, 0], 2))
+    expect(parseFromClipboard(editor, { text: 'y' }, { at: mainRange(caret([0, 0], 2)) })).toEqual([txt('y')])
+    expect(seen[2]).toEqual(mainRange(caret([0, 0], 2)))
   })
 
   it('validates pasted json data: invalid data is repaired by onInvalidData or the node is dropped', () => {

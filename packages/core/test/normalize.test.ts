@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { mainRange } from '../src/model/selection'
 import { normalize } from '../src/normalize'
 import { definePlugin } from '../src/plugin/define'
 import { Registry } from '../src/plugin/registry'
@@ -338,7 +339,7 @@ describe('normalize: rule 11 on the editing paths that join text with newlines',
   it('Backspace at the start of a content:"text" block after a paragraph: one paragraph per line, one undo', () => {
     const before = doc(el('paragraph', txt('p')), el('code', txt('a\nb')))
     const e = ed(before, sel([1, 0], 0))
-    e.handleIntent({ inputType: 'deleteContentBackward', data: null, range: e.state.selection })
+    e.handleIntent({ inputType: 'deleteContentBackward', data: null, range: e.state.selection && mainRange(e.state.selection) })
     expect(shape(e)).toEqual(stripIds(doc(el('paragraph', txt('pa')), el('paragraph', txt('b')))))
     expect(e.state.selection).toEqual(sel([0, 0], 1))
     expect(e.getHTML()).toBe('<p>pa</p><p>b</p>')
@@ -349,7 +350,7 @@ describe('normalize: rule 11 on the editing paths that join text with newlines',
 
   it('a range delete from mid-paragraph into a content:"text" block', () => {
     const e = ed(doc(el('paragraph', txt('pq')), el('code', txt('a\nb'))), sel([0, 0], 1, [1, 0], 1))
-    e.handleIntent({ inputType: 'deleteContentBackward', data: null, range: e.state.selection })
+    e.handleIntent({ inputType: 'deleteContentBackward', data: null, range: e.state.selection && mainRange(e.state.selection) })
     expect(shape(e)).toEqual(stripIds(doc(el('paragraph', txt('p')), el('paragraph', txt('b')))))
     expect(e.state.selection).toEqual(sel([0, 0], 1))
     expect(e.getHTML()).toBe('<p>p</p><p>b</p>')
@@ -359,7 +360,7 @@ describe('normalize: rule 11 on the editing paths that join text with newlines',
     const e = ed(doc(el('paragraph', txt('pq'))), sel([0, 0], 0))
     const json = JSON.stringify([txt('xy\nz')])
     const dataTransfer = { getData: (t: string) => (t === 'application/x-hte-fragment' ? json : '') } as unknown as DataTransfer
-    e.handleIntent({ inputType: 'insertFromDrop', data: null, range: sel([0, 0], 1), dataTransfer })
+    e.handleIntent({ inputType: 'insertFromDrop', data: null, range: mainRange(sel([0, 0], 1)), dataTransfer })
     expect(shape(e)).toEqual(stripIds(doc(el('paragraph', txt('pxy')), el('paragraph', txt('zq')))))
     expect(e.state.selection).toEqual(sel([1, 0], 1))
     expect(e.getHTML()).toBe('<p>pxy</p><p>zq</p>')

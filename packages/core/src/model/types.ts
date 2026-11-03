@@ -39,15 +39,24 @@ export interface Point {
   offset: number
 }
 
-export interface Selection {
+export interface SelectionRange {
   anchor: Point
   focus: Point
   /**
-   * Node selection: the opaque element (atom or unknown type) at this path is selected. `anchor`
+   * Node range: the opaque element (atom or unknown type) at this path is selected. `anchor`
    * and `focus` are then a collapsed caret at the nearest editable point before it (the end of the
-   * previous editable text), or after it when there is none before. Absent for a text selection.
+   * previous editable text), or after it when there is none before. Absent for a text range.
    */
   node?: Path
+}
+
+/**
+ * The selection: a non-empty list of ranges, sorted and non-overlapping, and the index of the main
+ * range. A node range is always the only range. Build one with `single` or `createSelection`.
+ */
+export interface Selection {
+  ranges: SelectionRange[]
+  main: number
 }
 
 /** Ordered: start <= end. */

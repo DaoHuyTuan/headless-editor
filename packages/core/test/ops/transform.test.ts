@@ -11,24 +11,27 @@ import {
   type Path,
   type TextNode,
 } from '../../src/index'
+import { single } from '../../src/model/selection'
 import { doc, el, txt } from '../../src/testing/builders'
 
 const P = (path: Path, offset: number) => ({ path, offset })
 const anyNode: Node = el('paragraph', txt(''))
 
 describe('transformSelection with a node selection', () => {
-  const s = { anchor: P([0, 0], 1), focus: P([0, 0], 1), node: [1] }
+  const s = single({ anchor: P([0, 0], 1), focus: P([0, 0], 1), node: [1] })
   it('maps node through transformPath', () => {
-    expect(transformSelection(s, { type: 'insert_node', path: [0], node: anyNode })).toEqual({
-      anchor: P([1, 0], 1),
-      focus: P([1, 0], 1),
-      node: [2],
-    })
+    expect(transformSelection(s, { type: 'insert_node', path: [0], node: anyNode })).toEqual(
+      single({
+        anchor: P([1, 0], 1),
+        focus: P([1, 0], 1),
+        node: [2],
+      }),
+    )
   })
   it('drops node when it is removed, keeping the mapped caret', () => {
     const out = transformSelection(s, { type: 'remove_node', path: [1], node: anyNode })
-    expect(out).toEqual({ anchor: P([0, 0], 1), focus: P([0, 0], 1) })
-    expect(out).not.toHaveProperty('node')
+    expect(out).toEqual(single({ anchor: P([0, 0], 1), focus: P([0, 0], 1) }))
+    expect(out!.ranges[0]).not.toHaveProperty('node')
   })
 })
 
@@ -89,11 +92,13 @@ describe('transformPoint', () => {
 
 describe('transformSelection', () => {
   it('maps both ends, null when either is removed', () => {
-    const s = { anchor: P([0, 0], 1), focus: P([1, 0], 2) }
-    expect(transformSelection(s, { type: 'insert_node', path: [0], node: anyNode })).toEqual({
-      anchor: P([1, 0], 1),
-      focus: P([2, 0], 2),
-    })
+    const s = single({ anchor: P([0, 0], 1), focus: P([1, 0], 2) })
+    expect(transformSelection(s, { type: 'insert_node', path: [0], node: anyNode })).toEqual(
+      single({
+        anchor: P([1, 0], 1),
+        focus: P([2, 0], 2),
+      }),
+    )
     expect(transformSelection(s, { type: 'remove_node', path: [1], node: anyNode })).toBeNull()
   })
 })

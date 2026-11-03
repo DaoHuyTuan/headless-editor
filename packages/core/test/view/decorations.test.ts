@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it } from 'vitest'
+import { mainRange, single } from '../../src/model/selection'
 import type { ElementNode, Node, Point, Selection } from '../../src/model/types'
 import type { Decoration } from '../../src/index'
 import { domToModel, modelToDom } from '../../src/index'
@@ -9,7 +10,7 @@ import { definePlugin } from '../../src/plugin/define'
 import { groupDecorations, leafParts } from '../../src/view/decorations'
 
 const p = (id: string, ...children: Node[]): ElementNode => ({ id, type: 'paragraph', data: {}, children })
-const caret = (path: number[], offset: number): Selection => ({ anchor: { path, offset }, focus: { path, offset } })
+const caret = (path: number[], offset: number): Selection => single({ anchor: { path, offset }, focus: { path, offset } })
 const pt = (path: number[], offset: number): Point => ({ path, offset })
 const inline = (from: Point, to: Point, attrs: Record<string, string>): Decoration => ({ type: 'inline', from, to, attrs })
 
@@ -153,7 +154,7 @@ describe('widget decorations', () => {
     made = 0
     const { editor, view } = mount([p('p1', txt('abcd'))], [widget(pt([0, 0], 2), 'k1')])
     const w = view.renderer.leafAt([0, 0])!.querySelector('.w')
-    editor.dispatch(editor.createTransaction().insertText('X', caret([0, 0], 0)))
+    editor.dispatch(editor.createTransaction().insertText('X', mainRange(caret([0, 0], 0))))
     redecorate(view, [widget(pt([0, 0], 3), 'k1')])
     const leaf = view.renderer.leafAt([0, 0])!
     expect(leaf.querySelector('.w')).toBe(w)

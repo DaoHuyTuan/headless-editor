@@ -1,7 +1,8 @@
 import { editableTextEntries, type NodeTypes } from '../model/editable'
 import { deepEqualJson, getNode, isText, textEntries } from '../model/node'
 import { comparePoint, nextPath, parentPath } from '../model/path'
-import type { Data, DeepReadonly, Doc, Json, Mark, Path, Point, Range, Selection, TextNode } from '../model/types'
+import { mainRange, single } from '../model/selection'
+import type { Data, DeepReadonly, Doc, Json, Mark, Path, Point, Range, SelectionRange, TextNode } from '../model/types'
 import type { Registry } from '../plugin/registry'
 import type { EditorState } from '../state'
 import type { Transaction } from './transaction'
@@ -16,7 +17,7 @@ function pathEquals(a: Path, b: Path): boolean {
 }
 
 /** Orders the two points (callers may pass an unordered range or a backward selection). */
-function ordered(at: Range | Selection): Range {
+function ordered(at: Range | SelectionRange): Range {
   const [a, b] = 'anchor' in at ? [at.anchor, at.focus] : [at.start, at.end]
   return comparePoint(a, b) <= 0 ? { start: a, end: b } : { start: b, end: a }
 }
@@ -58,12 +59,12 @@ function marksAtPoint(doc: DeepReadonly<Doc>, point: Point): Mark[] {
 export function marksAt(state: MarkStateView): Mark[] {
   if (state.storedMarks) return state.storedMarks
   if (!state.selection) return []
-  return marksAtPoint(state.doc, ordered(state.selection).start)
+  return marksAtPoint(state.doc, ordered(mainRange(state.selection)).start)
 }
 
 /** Marks for text inserted at `point` in `tr`: stored marks, else `marksAt` that caret. */
 export function marksAtTr(tr: Transaction, point: Point): Mark[] {
-  return marksAt({ doc: tr.doc, selection: { anchor: point, focus: point }, storedMarks: tr.storedMarks })
+  return marksAt({ doc: tr.doc, selection: single({ anchor: point, focus: point }), storedMarks: tr.storedMarks })
 }
 
 interface Covered {
@@ -92,7 +93,7 @@ function coveredTexts(doc: DeepReadonly<Doc>, range: Range, types?: NodeTypes): 
  * Marks of the first character `range` covers (what typing over the range keeps), or null when it
  * covers no characters. Unlike the caret rule, a range replacement keeps the replaced content's marks.
  */
-export function marksOfRange(doc: DeepReadonly<Doc>, range: Range | Selection, types?: NodeTypes): Mark[] | null {
+export function marksOfRange(doc: DeepReadonly<Doc>, range: Range | SelectionRange, types?: NodeTypes): Mark[] | null {
   return coveredTexts(doc, ordered(range), types)[0]?.node.marks ?? null
 }
 
@@ -104,7 +105,7 @@ export function marksOfRange(doc: DeepReadonly<Doc>, range: Range | Selection, t
 export function isMarkActive(state: MarkStateView, type: string, data?: Partial<Data>, registry?: NodeTypes): boolean {
   const sel = state.selection
   if (!sel) return false
-  const covered = coveredTexts(state.doc, ordered(sel), registry)
+  const covered = coveredTexts(state.doc, ordered(mainRange(sel)), registry)
   if (covered.length === 0) return marksAt(state).some((m) => matches(m, type, data))
   return covered.every((c) => c.node.marks.some((m) => matches(m, type, data)))
 }
@@ -155,7 +156,7 @@ function validated(tr: Transaction, type: string, data: unknown): Mark | null {
 /** The range to act on: `range` (ordered), else the selection. Null without either. */
 function targetRange(tr: Transaction, range?: Range): Range | null {
   if (range) return ordered(range)
-  return tr.selection ? ordered(tr.selection) : null
+  return tr.selection ? ordered(mainRange(tr.selection)) : null
 }
 
 /** Updates stored marks at the caret, starting from `marksAt`. */

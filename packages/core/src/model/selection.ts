@@ -1,13 +1,9 @@
 import { comparePoint, pointEquals } from './path'
-import type { Path, Point } from './types'
+import type { Path, Point, Selection, SelectionRange } from './types'
 
-/** One selection range. A node range selects the opaque element at `node`. */
-export type SelectionRange = { anchor: Point; focus: Point; node?: Path }
+export type { Selection, SelectionRange }
 
-/** Temporary name; Task 2 renames this to `Selection`. */
-export type MultiSelection = { ranges: SelectionRange[]; main: number }
-
-export function single(range: SelectionRange): MultiSelection {
+export function single(range: SelectionRange): Selection {
   return { ranges: [range], main: 0 }
 }
 
@@ -15,7 +11,7 @@ export function isNodeRange(r: SelectionRange): r is SelectionRange & { node: Pa
   return r.node !== undefined
 }
 
-export function mainRange(sel: MultiSelection): SelectionRange {
+export function mainRange(sel: Selection): SelectionRange {
   return sel.ranges[sel.main]!
 }
 
@@ -29,7 +25,7 @@ export function rangeEquals(a: SelectionRange, b: SelectionRange): boolean {
   return pointEquals(a.anchor, b.anchor) && pointEquals(a.focus, b.focus)
 }
 
-export function selectionEquals(a: MultiSelection | null, b: MultiSelection | null): boolean {
+export function selectionEquals(a: Selection | null, b: Selection | null): boolean {
   if (a === b) return true
   if (!a || !b) return false
   return a.main === b.main && a.ranges.length === b.ranges.length && a.ranges.every((r, i) => rangeEquals(r, b.ranges[i]!))
@@ -48,7 +44,7 @@ function bounds(range: SelectionRange): { start: Point; end: Point } {
  * `main` following the merged range that contains it. A node range is always alone.
  * `main` defaults to 0 and is clamped into range. Throws on an empty list.
  */
-export function createSelection(ranges: SelectionRange[], main = 0): MultiSelection {
+export function createSelection(ranges: SelectionRange[], main = 0): Selection {
   if (ranges.length === 0) throw new Error('A selection needs at least one range')
   const mainIdx = Math.min(Math.max(main, 0), ranges.length - 1)
 

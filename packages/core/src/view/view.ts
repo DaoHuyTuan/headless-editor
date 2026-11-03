@@ -1,6 +1,7 @@
 import type { Editor } from '../editor'
 import { nextPath, pointEquals } from '../model/path'
-import type { Path, Point, Selection } from '../model/types'
+import { mainRange } from '../model/selection'
+import type { Path, Point, Selection, SelectionRange } from '../model/types'
 import { transformPath } from '../ops/transform'
 import type { Operation } from '../ops/types'
 import type { EditorState } from '../state'
@@ -94,6 +95,10 @@ function sameSnapshot(a: DomSelectionSnapshot, b: DomSelectionSnapshot): boolean
 
 function sameSelection(a: Selection | null, b: Selection | null): boolean {
   if (a === null || b === null) return a === b
+  return sameRange(mainRange(a), mainRange(b))
+}
+
+function sameRange(a: SelectionRange, b: SelectionRange): boolean {
   if (pointEquals(a.anchor, b.anchor) && pointEquals(a.focus, b.focus)) {
     return a.node === undefined || b.node === undefined ? a.node === b.node : samePath(a.node, b.node)
   }
@@ -192,7 +197,7 @@ export class EditorView {
   update(state: EditorState): void {
     if (this.destroyed) return
     const target = this.composing ? this.composition : null
-    const selectedNode = state.selection?.node
+    const selectedNode = state.selection ? mainRange(state.selection).node : undefined
     const decorations = this.editor.getDecorations(state)
     this.renderer.render(
       state.doc,
@@ -313,7 +318,8 @@ export class EditorView {
   private selectionDetached(): boolean {
     const sel = this.editor.state.selection
     if (!sel) return false
-    return this.renderer.isLeafDetached(sel.anchor.path) || this.renderer.isLeafDetached(sel.focus.path)
+    const range = mainRange(sel)
+    return this.renderer.isLeafDetached(range.anchor.path) || this.renderer.isLeafDetached(range.focus.path)
   }
 
   /** Whether `node` is inside a rendered leaf of the root. */

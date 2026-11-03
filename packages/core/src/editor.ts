@@ -8,7 +8,8 @@ import { coerceDoc } from './load'
 import { firstEditableCaret, isEditablePoint, isOpaqueAt } from './model/editable'
 import { deepEqualJson, getNode, isElement } from './model/node'
 import { comparePoint } from './model/path'
-import type { Data, Doc, ElementNode, Json, Point, Selection } from './model/types'
+import { mainRange, selectionEquals } from './model/selection'
+import type { Data, Doc, ElementNode, Point, Selection, SelectionRange } from './model/types'
 import { normalize } from './normalize'
 import { Registry } from './plugin/registry'
 import type {
@@ -91,11 +92,6 @@ function detectPlatform(): Platform {
 /** Rethrows the first collected error, if any. */
 function throwFirst(errors: unknown[]): void {
   if (errors.length > 0) throw errors[0]
-}
-
-function selectionEquals(a: Selection | null, b: Selection | null): boolean {
-  if (a === null || b === null) return a === b
-  return deepEqualJson(a as unknown as Json, b as unknown as Json)
 }
 
 export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
@@ -356,7 +352,7 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
    * Runs each plugin's `transformPasted` on `fragment`, by priority, with `at`: where the fragment
    * will be inserted (a drop's drop point); omitted or null, at the selection.
    */
-  transformPasted(fragment: Fragment, at: Selection | null = null): Fragment {
+  transformPasted(fragment: Fragment, at: SelectionRange | null = null): Fragment {
     const info = { at }
     for (const plugin of this.registry.plugins) {
       const transform = plugin.spec.transformPasted
@@ -397,7 +393,8 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     if (this.registry.mark(type)) return isMarkActive(this._state, type, data, this.registry)
     const sel = this._state.selection
     if (!sel) return false
-    const start = comparePoint(sel.anchor, sel.focus) <= 0 ? sel.anchor : sel.focus
+    const range = mainRange(sel)
+    const start = comparePoint(range.anchor, range.focus) <= 0 ? range.anchor : range.focus
     const block = this.blockAt(start.path)
     if (!block || block.type !== type) return false
     if (!data) return true
@@ -537,12 +534,12 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     if (selection) tr.setSelection(selection)
     normalize(tr, this.contextFn)
     // A missing selection, or one that does not resolve to editable text, starts at the first editable text.
-    const sel = tr.selection
+    const range = tr.selection && mainRange(tr.selection)
     const valid =
-      sel &&
-      isEditablePoint(tr.doc, this.registry, sel.anchor) &&
-      isEditablePoint(tr.doc, this.registry, sel.focus) &&
-      (!sel.node || isOpaqueAt(tr.doc, this.registry, sel.node))
+      range &&
+      isEditablePoint(tr.doc, this.registry, range.anchor) &&
+      isEditablePoint(tr.doc, this.registry, range.focus) &&
+      (!range.node || isOpaqueAt(tr.doc, this.registry, range.node))
     if (!valid) tr.setSelection(firstEditableCaret(tr.doc, this.registry))
     return tr
   }

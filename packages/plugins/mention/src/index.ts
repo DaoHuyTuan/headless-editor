@@ -23,6 +23,7 @@ import {
   isText,
   mergeAttrs,
   pointEquals,
+  single,
   transformPoint,
   type Command,
   type Decoration,
@@ -263,7 +264,7 @@ const isUser = (u: unknown): u is User =>
 function insertUser(ctx: Ctx, tr: Transaction, user: User): boolean {
   if (!isUser(user)) return false
   const st = ctx.getState()
-  if (st.open && st.range) tr.setSelection({ anchor: st.range.start, focus: st.range.end })
+  if (st.open && st.range) tr.setSelection(single({ anchor: st.range.start, focus: st.range.end }))
   tr.insertInlineNode({
     id: createId(),
     type: ctx.name,

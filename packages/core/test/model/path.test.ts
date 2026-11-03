@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { mainRange } from '../../src/model/selection'
 import { sel } from '../../src/testing/builders'
 import {
   comparePath,
@@ -31,9 +32,9 @@ describe('path helpers', () => {
     expect(comparePoint({ path: [0, 0], offset: 2 }, { path: [0, 1], offset: 0 })).toBe(-1)
     expect(comparePoint({ path: [0, 0], offset: 2 }, { path: [0, 0], offset: 1 })).toBe(1)
     expect(pointEquals({ path: [0, 0], offset: 2 }, { path: [0, 0], offset: 2 })).toBe(true)
-    expect(isCollapsed(sel([0, 0], 1))).toBe(true)
-    expect(isCollapsed(sel([0, 0], 1, [0, 0], 2))).toBe(false)
-    expect(toRange(sel([0, 1], 0, [0, 0], 1))).toEqual({
+    expect(isCollapsed(mainRange(sel([0, 0], 1)))).toBe(true)
+    expect(isCollapsed(mainRange(sel([0, 0], 1, [0, 0], 2)))).toBe(false)
+    expect(toRange(mainRange(sel([0, 1], 0, [0, 0], 1)))).toEqual({
       start: { path: [0, 0], offset: 1 },
       end: { path: [0, 1], offset: 0 },
     })

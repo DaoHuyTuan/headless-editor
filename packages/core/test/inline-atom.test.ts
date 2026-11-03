@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it } from 'vitest'
+import { single } from '../src/model/selection'
 import { definePlugin } from '../src/plugin/define'
 import type { DeepReadonly, Doc, ElementNode, Node, Selection } from '../src/model/types'
 import { getFragment, isElement, nodeEntries } from '../src/index'
@@ -176,7 +177,7 @@ describe('tr.insertInlineNode', () => {
 })
 
 describe('inline atoms: composition', () => {
-  const caret = (path: number[], offset: number): Selection => ({ anchor: { path, offset }, focus: { path, offset } })
+  const caret = (path: number[], offset: number): Selection => single({ anchor: { path, offset }, focus: { path, offset } })
   const fire = (root: HTMLElement, type: string) => root.dispatchEvent(new Event(type, { bubbles: true }))
 
   function mount(content: Doc, selection: Selection) {

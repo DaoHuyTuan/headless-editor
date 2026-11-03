@@ -1,4 +1,4 @@
-import type { Path, Point, Range, Selection } from './types'
+import type { Path, Point, Range, SelectionRange } from './types'
 
 /** Document-order comparison. An ancestor and its descendant compare as 0. */
 export function comparePath(a: Path, b: Path): -1 | 0 | 1 {
@@ -40,11 +40,11 @@ export function pointEquals(a: Point, b: Point): boolean {
   return a.offset === b.offset && a.path.length === b.path.length && a.path.every((v, i) => v === b.path[i])
 }
 
-export function isCollapsed(sel: Selection): boolean {
+export function isCollapsed(sel: SelectionRange): boolean {
   return pointEquals(sel.anchor, sel.focus)
 }
 
-export function toRange(sel: Selection): Range {
+export function toRange(sel: SelectionRange): Range {
   return comparePoint(sel.anchor, sel.focus) <= 0
     ? { start: sel.anchor, end: sel.focus }
     : { start: sel.focus, end: sel.anchor }

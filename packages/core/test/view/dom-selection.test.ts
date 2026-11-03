@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { mainRange, single } from '../../src/model/selection'
 import { definePlugin } from '../../src/plugin/define'
 import type { ElementNode, Node, Selection } from '../../src/model/types'
 import { Renderer, domToModel, modelToDom, readDomSelection, writeDomSelection } from '../../src/index'
@@ -67,7 +68,7 @@ describe('modelToDom', () => {
     const domSel = document.getSelection()!
     const leaf = ctx.renderer.leafAt([1, 0])!
     domSel.collapse(textIn(leaf), 1)
-    const unrendered: Selection = { anchor: { path: [0, 0], offset: 0 }, focus: { path: [0, 0], offset: 0 } }
+    const unrendered: Selection = single({ anchor: { path: [0, 0], offset: 0 }, focus: { path: [0, 0], offset: 0 } })
     expect(() => writeDomSelection(ctx.renderer, unrendered, domSel)).not.toThrow()
     expect(domSel.anchorNode).toBe(textIn(leaf))
     expect(domSel.anchorOffset).toBe(1)
@@ -158,21 +159,21 @@ describe('read/writeDomSelection', () => {
 
   it('round-trips a cross-block selection', () => {
     ctx.renderer.render(doc(p('p1', txt('a'), txt('b', 'bold')), p('p2', 'cde')))
-    const sel: Selection = { anchor: { path: [0, 1], offset: 1 }, focus: { path: [1, 0], offset: 2 } }
+    const sel: Selection = single({ anchor: { path: [0, 1], offset: 1 }, focus: { path: [1, 0], offset: 2 } })
     writeDomSelection(ctx.renderer, sel, domSel())
     expect(readDomSelection(ctx.renderer, domSel())).toEqual(sel)
   })
 
   it('preserves a backward direction', () => {
     ctx.renderer.render(doc(p('p1', 'ab'), p('p2', 'cd')))
-    const sel: Selection = { anchor: { path: [1, 0], offset: 1 }, focus: { path: [0, 0], offset: 1 } }
+    const sel: Selection = single({ anchor: { path: [1, 0], offset: 1 }, focus: { path: [0, 0], offset: 1 } })
     writeDomSelection(ctx.renderer, sel, domSel())
     expect(readDomSelection(ctx.renderer, domSel())).toEqual(sel)
   })
 
   it('does nothing when the DOM already matches', () => {
     ctx.renderer.render(doc(p('p1', 'ab')))
-    const sel: Selection = { anchor: { path: [0, 0], offset: 1 }, focus: { path: [0, 0], offset: 1 } }
+    const sel: Selection = single({ anchor: { path: [0, 0], offset: 1 }, focus: { path: [0, 0], offset: 1 } })
     writeDomSelection(ctx.renderer, sel, domSel())
     const spy = vi.spyOn(domSel(), 'setBaseAndExtent')
     writeDomSelection(ctx.renderer, sel, domSel())
@@ -183,7 +184,7 @@ describe('read/writeDomSelection', () => {
     // E.g. the browser collapsed the caret into the root after its leaf was replaced.
     ctx.renderer.render(doc(p('p1', '')))
     domSel().setBaseAndExtent(ctx.root, 0, ctx.root, 0)
-    const sel: Selection = { anchor: { path: [0, 0], offset: 0 }, focus: { path: [0, 0], offset: 0 } }
+    const sel: Selection = single({ anchor: { path: [0, 0], offset: 0 }, focus: { path: [0, 0], offset: 0 } })
     expect(readDomSelection(ctx.renderer, domSel())).toEqual(sel)
     writeDomSelection(ctx.renderer, sel, domSel())
     const leaf = ctx.renderer.leafAt([0, 0])!
@@ -218,7 +219,7 @@ describe('read/writeDomSelection', () => {
 
   it('clears a DOM selection inside the root for a null selection, but not one outside', () => {
     ctx.renderer.render(doc(p('p1', 'ab')))
-    writeDomSelection(ctx.renderer, { anchor: { path: [0, 0], offset: 0 }, focus: { path: [0, 0], offset: 1 } }, domSel())
+    writeDomSelection(ctx.renderer, single({ anchor: { path: [0, 0], offset: 0 }, focus: { path: [0, 0], offset: 1 } }), domSel())
     writeDomSelection(ctx.renderer, null, domSel())
     expect(domSel().rangeCount).toBe(0)
 
@@ -247,7 +248,7 @@ describe('read/writeDomSelection: node selections', () => {
 
   it('writes a node selection around the element root and reads it back', () => {
     const { root, renderer } = setupAtoms()
-    const sel: Selection = { anchor: { path: [0, 0], offset: 2 }, focus: { path: [0, 0], offset: 2 }, node: [1] }
+    const sel: Selection = single({ anchor: { path: [0, 0], offset: 2 }, focus: { path: [0, 0], offset: 2 }, node: [1] })
     writeDomSelection(renderer, sel, domSel())
     expect(domSel().anchorNode).toBe(root)
     expect(domSel().anchorOffset).toBe(1)
@@ -258,8 +259,8 @@ describe('read/writeDomSelection: node selections', () => {
 
   it('writing a caret over a node selection with the same caret replaces the DOM range', () => {
     const { renderer } = setupAtoms()
-    const caretSel: Selection = { anchor: { path: [0, 0], offset: 2 }, focus: { path: [0, 0], offset: 2 } }
-    writeDomSelection(renderer, { ...caretSel, node: [1] }, domSel())
+    const caretSel: Selection = single({ anchor: { path: [0, 0], offset: 2 }, focus: { path: [0, 0], offset: 2 } })
+    writeDomSelection(renderer, single({ ...mainRange(caretSel), node: [1] }), domSel())
     writeDomSelection(renderer, caretSel, domSel())
     expect(readDomSelection(renderer, domSel())).toEqual(caretSel)
   })
@@ -270,7 +271,7 @@ describe('read/writeDomSelection: node selections', () => {
     const parent = chip.parentNode!
     const i = Array.prototype.indexOf.call(parent.childNodes, chip) as number
     domSel().setBaseAndExtent(parent, i, parent, i + 1)
-    expect(readDomSelection(renderer, domSel())?.node).toBeUndefined()
+    expect(readDomSelection(renderer, domSel())?.ranges[0]?.node).toBeUndefined()
   })
 })
 
@@ -356,7 +357,7 @@ describe('inline atoms: DOM <-> model mapping', () => {
       [chipDom, 1],
     ] as const) {
       domSel().setBaseAndExtent(leafX, 0, focusNode, focusOffset)
-      const sel: Selection = { anchor: { path: [0, 0], offset: 0 }, focus: { path: [0, 2], offset: 0 } }
+      const sel: Selection = single({ anchor: { path: [0, 0], offset: 0 }, focus: { path: [0, 2], offset: 0 } })
       expect(readDomSelection(renderer, domSel())).toEqual(sel)
       const spy = vi.spyOn(domSel(), 'setBaseAndExtent')
       writeDomSelection(renderer, sel, domSel())
@@ -368,7 +369,7 @@ describe('inline atoms: DOM <-> model mapping', () => {
 
   it('writeDomSelection places the caret in the text leaves beside the chip', () => {
     const { renderer } = setupChip(txt(''), node('c1', 'viewChip'), txt(''))
-    const sel: Selection = { anchor: { path: [0, 0], offset: 0 }, focus: { path: [0, 2], offset: 0 } }
+    const sel: Selection = single({ anchor: { path: [0, 0], offset: 0 }, focus: { path: [0, 2], offset: 0 } })
     writeDomSelection(renderer, sel, domSel())
     expect(renderer.leafAt([0, 0])!.contains(domSel().anchorNode)).toBe(true)
     expect(renderer.leafAt([0, 2])!.contains(domSel().focusNode)).toBe(true)

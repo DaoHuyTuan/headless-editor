@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test'
-import type { Doc, ElementNode, Node, Selection } from '@hte/core'
+import type { Doc, ElementNode, Node, SelectionRange } from '@hte/core'
 
 /** Opens the playground (at `path`, e.g. `/?uploadFail=1`) and waits for the dev `window.editor` to be mounted. */
 export async function openPlayground(page: Page, path = '/'): Promise<void> {
@@ -21,8 +21,12 @@ export async function getText(page: Page): Promise<string> {
   return doc.children.map(textOf).join('\n')
 }
 
-export function getSelection(page: Page): Promise<Selection | null> {
-  return page.evaluate(() => window.editor.state.selection)
+/** The main range of the model selection, or null without a selection. */
+export function getSelection(page: Page): Promise<SelectionRange | null> {
+  return page.evaluate(() => {
+    const sel = window.editor.state.selection
+    return sel && sel.ranges[sel.main]!
+  })
 }
 
 /** Focuses the editor with the caret at the end of the document (through the editor API, not clicks). */
@@ -38,7 +42,7 @@ export async function focusEnd(page: Page): Promise<void> {
     const offset = 'text' in node ? node.text.length : 0
     const point = { path, offset }
     const tr = editor.createTransaction()
-    tr.setSelection({ anchor: point, focus: point }).setMeta('addToHistory', false)
+    tr.setSelection({ ranges: [{ anchor: point, focus: point }], main: 0 }).setMeta('addToHistory', false)
     editor.dispatch(tr)
     editor.view!.focus()
   })
@@ -51,7 +55,7 @@ export async function setCaret(page: Page, path: number[], offset: number): Prom
       const editor = window.editor
       const point = { path, offset }
       const tr = editor.createTransaction()
-      tr.setSelection({ anchor: point, focus: point }).setMeta('addToHistory', false)
+      tr.setSelection({ ranges: [{ anchor: point, focus: point }], main: 0 }).setMeta('addToHistory', false)
       editor.dispatch(tr)
       editor.view!.focus()
     },

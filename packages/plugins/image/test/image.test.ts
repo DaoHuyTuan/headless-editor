@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { mainRange } from '@hte/core'
 import {
   FRAGMENT_MIME,
   nodeSelection,
@@ -387,7 +388,7 @@ describe('Review Focus 4: paste / drop', () => {
 
   it('a drop inserts the image at the drop range', () => {
     const { editor } = setup()
-    editor.handleIntent({ ...intent('insertFromDrop', transfer([png()], {})), range: sel([0, 0], 0) })
+    editor.handleIntent({ ...intent('insertFromDrop', transfer([png()], {})), range: mainRange(sel([0, 0], 0)) })
     expect((editor.state.doc as Doc).children[0]!.type).toBe('image')
   })
 
@@ -486,7 +487,7 @@ function copyPasteImage(editor: ReturnType<typeof setup>['editor'], path: number
   select.setSelection(nodeSelection(editor.state.doc, editor.registry, path))
   editor.dispatch(select)
   const selected = editor.state.selection!
-  const { json, html, text } = serializeForClipboard(editor, toRange(selected), path)
+  const { json, html, text } = serializeForClipboard(editor, toRange(mainRange(selected)), path)
   const end = editor.createTransaction()
   end.setSelection(sel([0, 0], 2))
   editor.dispatch(end)
@@ -504,7 +505,7 @@ describe('copy / paste without the JSON flavour', () => {
     const select = editor.createTransaction()
     select.setSelection(nodeSelection(editor.state.doc, editor.registry, [1]))
     editor.dispatch(select)
-    const { html, text } = serializeForClipboard(editor, toRange(editor.state.selection!), [1])
+    const { html, text } = serializeForClipboard(editor, toRange(mainRange(editor.state.selection!)), [1])
     const end = editor.createTransaction()
     end.setSelection(sel([2, 0], 2))
     editor.dispatch(end)

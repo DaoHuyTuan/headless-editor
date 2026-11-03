@@ -1,6 +1,7 @@
 import { createId } from '../model/id'
-import { deepEqualJson, getNode, isElement, isText } from '../model/node'
-import type { Data, Doc, ElementNode, Json, Mark, Node, Path, Range, Selection, TextNode } from '../model/types'
+import { getNode, isElement, isText } from '../model/node'
+import { selectionEquals } from '../model/selection'
+import type { Data, Doc, ElementNode, Mark, Node, Path, Range, Selection, SelectionRange, TextNode } from '../model/types'
 import { applyOp } from '../ops/apply'
 import { transformSelection } from '../ops/transform'
 import type { Operation } from '../ops/types'
@@ -22,11 +23,6 @@ export interface TransactionMeta {
    */
   appendedTo?: 'history' | 'record'
   [k: string]: unknown
-}
-
-function selectionEquals(a: Selection | null, b: Selection | null): boolean {
-  if (a === null || b === null) return a === b
-  return deepEqualJson(a as unknown as Json, b as unknown as Json)
 }
 
 /** Fills in missing id/data/marks, recursively. */
@@ -81,7 +77,7 @@ export class Transaction {
     return this
   }
 
-  /** No-op when equal to the current selection (anchor, focus and `node` compared). */
+  /** No-op when equal to the current selection (every range's anchor, focus and `node`, and `main` compared). */
   setSelection(sel: Selection | null): this {
     if (selectionEquals(sel, this._selection)) return this
     this.apply({ type: 'set_selection', selection: sel, prevSelection: this._selection })
@@ -138,7 +134,7 @@ export class Transaction {
   }
 
   /** Deletes the selection (or `at`) and inserts `text`; the caret ends after it. */
-  insertText(text: string, at?: Selection | Range): this {
+  insertText(text: string, at?: SelectionRange | Range): this {
     textEdit.insertText(this, text, at)
     return this
   }

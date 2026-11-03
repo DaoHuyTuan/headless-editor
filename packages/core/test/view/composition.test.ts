@@ -1,13 +1,14 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it } from 'vitest'
+import { mainRange, single } from '../../src/model/selection'
 import type { ElementNode, Node, Selection, TextNode } from '../../src/model/types'
 import { modelToDom } from '../../src/index'
 import { createTestEditor, doc, txt } from '../../src/testing/index'
 import { testBold, testParagraph } from '../fixtures'
 
 const p = (id: string, ...children: Node[]): ElementNode => ({ id, type: 'paragraph', data: {}, children })
-const caret = (path: number[], offset: number): Selection => ({ anchor: { path, offset }, focus: { path, offset } })
-const range = (path: number[], from: number, to: number): Selection => ({
+const caret = (path: number[], offset: number): Selection => single({ anchor: { path, offset }, focus: { path, offset } })
+const range = (path: number[], from: number, to: number): Selection => single({
   anchor: { path, offset: from },
   focus: { path, offset: to },
 })
@@ -188,7 +189,7 @@ describe('composition', () => {
     const { editor, root, view } = mount([p('p1', txt('abc'))], caret([0, 0], 3))
     fire(root, 'compositionstart')
     imeWrite(view, [0, 0], 'abcê')
-    editor.dispatch(editor.createTransaction().insertText('Z', caret([0, 0], 0)))
+    editor.dispatch(editor.createTransaction().insertText('Z', mainRange(caret([0, 0], 0))))
     expect(view.composition).toBeNull()
     expect(view.composing).toBe(false)
     expect(root.textContent).toBe('Zabc')
@@ -200,7 +201,7 @@ describe('composition', () => {
     const { editor, root, view } = mount([p('p1', txt('ab')), p('p2', txt('cd'))], caret([1, 0], 2))
     fire(root, 'compositionstart')
     imeWrite(view, [1, 0], 'cdê')
-    editor.dispatch(editor.createTransaction().insertText('Z', caret([0, 0], 0)))
+    editor.dispatch(editor.createTransaction().insertText('Z', mainRange(caret([0, 0], 0))))
     expect(view.composing).toBe(true)
     expect(view.composition?.path).toEqual([1, 0])
     fire(root, 'compositionend')
@@ -249,7 +250,7 @@ describe('composition', () => {
     fire(root, 'compositionend')
     expect(texts(editor)).toEqual(['abc'])
     expect(leaf.innerHTML).toBe('abc')
-    expect(modelToDom(view.renderer, editor.state.selection!.focus)).toEqual({ node: leaf.firstChild, offset: 3 })
+    expect(modelToDom(view.renderer, mainRange(editor.state.selection!).focus)).toEqual({ node: leaf.firstChild, offset: 3 })
   })
 
   it('forwards input events to plugin handleDOMEvents.input', () => {

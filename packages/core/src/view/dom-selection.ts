@@ -1,5 +1,6 @@
 import { nodeSelection } from '../model/editable'
 import { pointEquals } from '../model/path'
+import { mainRange, single } from '../model/selection'
 import type { Path, Point, Selection } from '../model/types'
 import { textsOutsideWidgets, widgetAround } from './decorations'
 import type { Renderer } from './renderer'
@@ -76,11 +77,11 @@ export function readDomSelection(r: Renderer, domSel: globalThis.Selection): Sel
   }
   const anchor = domToModel(r, domSel.anchorNode, domSel.anchorOffset)
   const focus = domToModel(r, domSel.focusNode, domSel.focusOffset)
-  return anchor && focus ? { anchor, focus } : null
+  return anchor && focus ? single({ anchor, focus }) : null
 }
 
 /**
- * Makes the DOM selection show `sel`, keeping its direction. Does nothing when the DOM selection
+ * Makes the DOM selection show the main range of `sel`, keeping its direction. Does nothing when the DOM selection
  * already maps to `sel` and none of its ends is stray (see `isStrayPosition`). A null `sel` clears
  * the DOM selection only when it is inside the root.
  * Does nothing when a point has no rendered leaf (e.g. a text inside an unknown element).
@@ -90,11 +91,13 @@ export function writeDomSelection(r: Renderer, sel: Selection | null, domSel: gl
     if (domSel.rangeCount > 0 && domSel.anchorNode && r.root.contains(domSel.anchorNode)) domSel.removeAllRanges()
     return
   }
-  const current = readDomSelection(r, domSel)
-  if (sel.node) {
-    const el = r.elementAt(sel.node)
+  const read = readDomSelection(r, domSel)
+  const current = read && mainRange(read)
+  const range = mainRange(sel)
+  if (range.node) {
+    const el = r.elementAt(range.node)
     if (el?.parentNode) {
-      if (current?.node && samePath(current.node, sel.node)) return
+      if (current?.node && samePath(current.node, range.node)) return
       const i = indexOf(el)
       domSel.setBaseAndExtent(el.parentNode, i, el.parentNode, i + 1)
       return
@@ -102,22 +105,22 @@ export function writeDomSelection(r: Renderer, sel: Selection | null, domSel: gl
     // Not rendered: show its caret.
   }
   // `leafAt` is null for a leaf not in the root (e.g. in a contentDOM its view has not placed yet).
-  if (!r.leafAt(sel.anchor.path) || !r.leafAt(sel.focus.path)) return
+  if (!r.leafAt(range.anchor.path) || !r.leafAt(range.focus.path)) return
   // Kept unless an end is stray (see `isStrayPosition`): e.g. a caret the browser collapsed into the
   // root after its leaf was removed maps to the same point while no caret shows there, and typing at
   // it never reaches the model.
   if (
     current &&
     !current.node &&
-    pointEquals(current.anchor, sel.anchor) &&
-    pointEquals(current.focus, sel.focus) &&
+    pointEquals(current.anchor, range.anchor) &&
+    pointEquals(current.focus, range.focus) &&
     !isStrayPosition(r, domSel.anchorNode!) &&
     !isStrayPosition(r, domSel.focusNode!)
   ) {
     return
   }
-  const anchor = modelToDom(r, sel.anchor)
-  const focus = modelToDom(r, sel.focus)
+  const anchor = modelToDom(r, range.anchor)
+  const focus = modelToDom(r, range.focus)
   domSel.setBaseAndExtent(anchor.node, anchor.offset, focus.node, focus.offset)
 }
 

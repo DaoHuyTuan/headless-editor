@@ -83,7 +83,7 @@ async function caret(page: Page, path: number[], offset: number): Promise<void> 
       const editor = window.editor
       const point = { path, offset }
       const tr = editor.createTransaction()
-      tr.setSelection({ anchor: point, focus: point }).setMeta('addToHistory', false)
+      tr.setSelection({ ranges: [{ anchor: point, focus: point }], main: 0 }).setMeta('addToHistory', false)
       editor.dispatch(tr)
       editor.view!.focus()
     },

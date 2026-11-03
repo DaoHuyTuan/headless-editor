@@ -1,12 +1,13 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it } from 'vitest'
+import { single } from '../../src/model/selection'
 import type { ElementNode, Selection } from '../../src/model/types'
 import { definePlugin, modelToDom, type AnyPlugin, type Editor } from '../../src/index'
 import { createTestEditor, doc, txt } from '../../src/testing/index'
 import { testBold, testParagraph } from '../fixtures'
 
 const p = (id: string, ...children: ReturnType<typeof txt>[]): ElementNode => ({ id, type: 'paragraph', data: {}, children })
-const caret = (path: number[], offset: number): Selection => ({ anchor: { path, offset }, focus: { path, offset } })
+const caret = (path: number[], offset: number): Selection => single({ anchor: { path, offset }, focus: { path, offset } })
 
 const boldWithKeymap = testBold.extend({
   keymap: (ctx) => ({ 'Mod-b': () => (ctx.editor.commands as unknown as { toggleMark(t: string): boolean }).toggleMark('bold') }),
@@ -104,7 +105,7 @@ describe('input module', () => {
   })
 
   it('a keydown Ctrl+b toggles bold through runKeymap and is prevented', () => {
-    const { editor, root } = setup('ab', { anchor: { path: [0, 0], offset: 0 }, focus: { path: [0, 0], offset: 2 } })
+    const { editor, root } = setup('ab', single({ anchor: { path: [0, 0], offset: 0 }, focus: { path: [0, 0], offset: 2 } }))
     const e = keydown(root, { key: 'b', code: 'KeyB', ctrlKey: true })
     expect(e.defaultPrevented).toBe(true)
     expect(editor.getJSON().children[0]).toMatchObject({ children: [{ text: 'ab', marks: [{ type: 'bold' }] }] })
@@ -176,7 +177,7 @@ describe('input module: deletion keys without a beforeinput (WebKit)', () => {
     const { editor, root, block } = setupUnknown()
     keydown(root, { key: 'Backspace', code: 'Backspace' })
     await tick()
-    expect(editor.state.selection?.node).toEqual([0])
+    expect(editor.state.selection?.ranges[0]?.node).toEqual([0])
     expect(block()!.hasAttribute('data-hte-selected')).toBe(true)
     expect(editor.getJSON().children[0]).toMatchObject({ type: 'mystery', children: [{ text: 'Title' }] })
 
@@ -198,7 +199,7 @@ describe('input module: deletion keys without a beforeinput (WebKit)', () => {
     editor.view!.focus()
     keydown(root, { key: 'Delete', code: 'Delete' })
     await tick()
-    expect(editor.state.selection?.node).toEqual([1])
+    expect(editor.state.selection?.ranges[0]?.node).toEqual([1])
   })
 
   it('the deletion runs once when the browser does fire beforeinput after the keydown (Chromium)', async () => {
@@ -231,7 +232,7 @@ describe('input module: deletion keys without a beforeinput (WebKit)', () => {
     keydown(root, { key: 'Backspace', code: 'Backspace' })
     editor.unmount()
     await tick()
-    expect(editor.state.selection?.node).toBeUndefined()
+    expect(editor.state.selection?.ranges[0]?.node).toBeUndefined()
   })
 })
 
@@ -241,7 +242,7 @@ describe('input module: deletion-key fallback guards', () => {
   const textOf = (editor: Editor): unknown => editor.getJSON().children[0]
 
   it('Shift+Delete with a selection is a cut: only the selection is removed', async () => {
-    const { editor, root } = setup('abcd', { anchor: { path: [0, 0], offset: 1 }, focus: { path: [0, 0], offset: 2 } })
+    const { editor, root } = setup('abcd', single({ anchor: { path: [0, 0], offset: 1 }, focus: { path: [0, 0], offset: 2 } }))
     keydown(root, { key: 'Delete', code: 'Delete', shiftKey: true })
     root.dispatchEvent(new ClipboardEvent('cut', { bubbles: true, cancelable: true, clipboardData: new DataTransfer() }))
     await tick()

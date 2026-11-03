@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { mainRange, single } from '../../src/model/selection'
 import type { Doc, ElementNode, Selection } from '../../src/model/types'
 import {
   definePlugin,
@@ -15,7 +16,7 @@ import { createTestEditor, doc, stripIds, txt } from '../../src/testing/index'
 import { testBold, testParagraph } from '../fixtures'
 
 const p = (id: string, ...children: ReturnType<typeof txt>[]): ElementNode => ({ id, type: 'paragraph', data: {}, children })
-const range = (path: number[], offset: number, focusPath: number[], focusOffset: number): Selection => ({
+const range = (path: number[], offset: number, focusPath: number[], focusOffset: number): Selection => single({
   anchor: { path, offset },
   focus: { path: focusPath, offset: focusOffset },
 })
@@ -237,7 +238,7 @@ describe('paste through the intent pipeline', () => {
     expect(intents).toHaveLength(1)
     expect(intents[0]!.data).toBeNull()
     expect(intents[0]!.dataTransfer!.files[0]!.name).toBe('a.png')
-    expect(intents[0]!.range).toEqual(caret([0, 0], 1))
+    expect(intents[0]!.range).toEqual(mainRange(caret([0, 0], 1)))
     expect(editor.getJSON().children[0]!.children).toEqual([txt('ab')])
   })
 

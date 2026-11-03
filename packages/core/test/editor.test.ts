@@ -6,6 +6,7 @@ import { Transaction } from '../src/transaction/transaction'
 import type { Command } from '../src/plugin/types'
 import type { Doc, ElementNode } from '../src/model/types'
 import { nodeEntries } from '../src/model/node'
+import { mainRange } from '../src/model/selection'
 import type { EditorState } from '../src/state'
 import { createTestEditor, doc, el, sel, stripIds, txt } from '../src/testing/index'
 import { testBold, testParagraph } from './fixtures'
@@ -22,7 +23,8 @@ const counter = definePlugin({
       (text: string): Command =>
       ({ tr }) => {
         if (!tr.selection) return false
-        tr.apply({ type: 'insert_text', path: tr.selection.anchor.path, offset: tr.selection.anchor.offset, text })
+        const { anchor } = mainRange(tr.selection)
+        tr.apply({ type: 'insert_text', path: anchor.path, offset: anchor.offset, text })
         return true
       },
     noop: (): Command => () => true,
@@ -592,7 +594,8 @@ describe('plugin storage', () => {
         (): Command =>
         ({ tr }) => {
           if (!tr.selection) return false
-          tr.apply({ type: 'insert_text', path: tr.selection.anchor.path, offset: tr.selection.anchor.offset, text: 'x' })
+          const { anchor } = mainRange(tr.selection)
+          tr.apply({ type: 'insert_text', path: anchor.path, offset: anchor.offset, text: 'x' })
           return true
         },
     }),

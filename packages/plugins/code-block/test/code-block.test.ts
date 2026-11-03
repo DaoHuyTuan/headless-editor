@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it } from 'vitest'
+import { mainRange } from '@hte/core'
 import { definePlugin, serializeForClipboard, type Doc, type ElementNode, type Node, type Selection, type TextNode } from '@hte/core'
 import { createTestEditor, doc, el, sel, stripIds, txt } from '@hte/core/testing'
 import { bold } from '@hte/bold'
@@ -36,13 +37,13 @@ const blocks = (ed: Ed) =>
 /** Pastes clipboard flavors at the current selection through the paste intent. */
 function paste(ed: Ed, data: Record<string, string>) {
   const dataTransfer = { getData: (type: string) => data[type] ?? '' } as unknown as DataTransfer
-  return ed.handleIntent({ inputType: 'insertFromPaste', data: null, range: ed.state.selection, dataTransfer })
+  return ed.handleIntent({ inputType: 'insertFromPaste', data: null, range: ed.state.selection && mainRange(ed.state.selection), dataTransfer })
 }
 
 /** Drops HTML at `at` (the drop point) through the drop intent; the selection stays where it is. */
 function drop(ed: Ed, at: Selection, html: string) {
   const dataTransfer = { getData: (type: string) => (type === 'text/html' ? html : '') } as unknown as DataTransfer
-  return ed.handleIntent({ inputType: 'insertFromDrop', data: null, range: at, dataTransfer })
+  return ed.handleIntent({ inputType: 'insertFromDrop', data: null, range: mainRange(at), dataTransfer })
 }
 
 describe('code block keymap', () => {
@@ -132,7 +133,7 @@ describe('code block keymap', () => {
 
   it('Backspace at the start of a code block after a paragraph joins it as one paragraph per line', () => {
     const ed = setup(doc(p(txt('p')), code('a\nb')), caret([1, 0], 0))
-    ed.handleIntent({ inputType: 'deleteContentBackward', data: null, range: ed.state.selection })
+    ed.handleIntent({ inputType: 'deleteContentBackward', data: null, range: ed.state.selection && mainRange(ed.state.selection) })
     expect(blocks(ed)).toEqual([
       { type: 'paragraph', text: 'pa' },
       { type: 'paragraph', text: 'b' },
@@ -142,7 +143,7 @@ describe('code block keymap', () => {
 
   it('a range delete from a paragraph into a code block keeps the remaining lines as paragraphs', () => {
     const ed = setup(doc(p(txt('pq')), code('a\nb')), sel([0, 0], 1, [1, 0], 1))
-    ed.handleIntent({ inputType: 'deleteContentBackward', data: null, range: ed.state.selection })
+    ed.handleIntent({ inputType: 'deleteContentBackward', data: null, range: ed.state.selection && mainRange(ed.state.selection) })
     expect(ed.getHTML()).toBe('<p>p</p><p>b</p>')
   })
 
@@ -164,7 +165,7 @@ describe('code block keymap', () => {
 })
 
 describe('code block line-break intents (beforeinput without keydown)', () => {
-  const intent = (ed: Ed, inputType: string) => ed.handleIntent({ inputType, data: null, range: ed.state.selection })
+  const intent = (ed: Ed, inputType: string) => ed.handleIntent({ inputType, data: null, range: ed.state.selection && mainRange(ed.state.selection) })
 
   for (const inputType of ['insertParagraph', 'insertLineBreak']) {
     it(`${inputType} inserts a newline instead of splitting the block`, () => {
@@ -316,7 +317,7 @@ describe('undo after normalizing into a code block', () => {
     const before = stripIds(ed.getJSON())
     // Backspace at the paragraph start: the keymap passes (not in a code block), the intent joins.
     expect(ed.runKeymap('Backspace')).toBe(false)
-    expect(ed.handleIntent({ inputType: 'deleteContentBackward', data: null, range: ed.state.selection })).toBe(true)
+    expect(ed.handleIntent({ inputType: 'deleteContentBackward', data: null, range: ed.state.selection && mainRange(ed.state.selection) })).toBe(true)
     expect(ed.state.doc.children).toHaveLength(1)
     return { ed, before }
   }
@@ -362,7 +363,7 @@ describe('code block paste', () => {
 
   it('Backspace joining a paragraph with a mention into a code block keeps the mention as text', () => {
     const ed = setup(doc(code('x'), p(txt('hi '), mentionNode(), txt(' yo'))), caret([1, 0], 0))
-    ed.handleIntent({ inputType: 'deleteContentBackward', data: null, range: ed.state.selection })
+    ed.handleIntent({ inputType: 'deleteContentBackward', data: null, range: ed.state.selection && mainRange(ed.state.selection) })
     expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(code('xhi @Ann yo'))))
     expect(ed.state.selection).toEqual(caret([0, 0], 1))
   })

@@ -1,5 +1,6 @@
 import { getNode, isText, sameMarkSet } from '../model/node'
 import { isCollapsed, toRange } from '../model/path'
+import { mainRange, single } from '../model/selection'
 import type { Mark, Path } from '../model/types'
 import { marksAt, marksOfRange } from '../transaction/marks'
 import { isNodeSelection } from '../model/editable'
@@ -62,7 +63,7 @@ function onCompositionStart(view: EditorView): void {
       editor.dispatch(tr)
     }
   }
-  const sel = editor.state.selection
+  const sel = editor.state.selection && mainRange(editor.state.selection)
   if (sel) {
     const state = editor.state
     const marks = state.storedMarks ?? (isCollapsed(sel) ? null : marksOfRange(state.doc, sel, editor.registry))
@@ -77,7 +78,7 @@ function onCompositionStart(view: EditorView): void {
     editor.dispatch(tr)
   }
   view.composing = true
-  const focus = editor.state.selection?.focus
+  const focus = editor.state.selection && mainRange(editor.state.selection).focus
   const leaf = focus && renderer.leafAt(focus.path)
   if (!focus || !leaf) return
   view.composition = { leaf, path: [...focus.path] }
@@ -129,7 +130,7 @@ function commit(view: EditorView, leaf: HTMLElement, path: Path): void {
     if (removed) tr.apply({ type: 'remove_text', path, offset: prefix, text: removed })
     if (inserted) tr.apply({ type: 'insert_text', path, offset: prefix, text: inserted })
     const caret = { path, offset: prefix + inserted.length }
-    tr.setSelection({ anchor: caret, focus: caret })
+    tr.setSelection(single({ anchor: caret, focus: caret }))
   }
   tr.setMeta('origin', 'input').setMeta('inputType', INPUT_TYPE)
   editor.dispatch(tr)

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { applyOp, getNode, invertOp, type Doc, type ElementNode, type Operation, type Path, type TextNode } from '../../src/index'
+import { single } from '../../src/model/selection'
 import { rebaseBoth, rebaseOps } from '../../src/ops/rebase'
 import { doc, el, txt } from '../../src/testing/builders'
 
@@ -115,11 +116,11 @@ describe('rebaseOps', () => {
   })
 
   it('maps set_selection through the ops', () => {
-    const s = { anchor: { path: [0, 0], offset: 1 }, focus: { path: [0, 0], offset: 1 } }
+    const s = single({ anchor: { path: [0, 0], offset: 1 }, focus: { path: [0, 0], offset: 1 } })
     expect(
       rebaseOps([{ type: 'set_selection', selection: s, prevSelection: null }], [{ type: 'insert_node', path: [0], node: para('x') }]),
     ).toEqual([
-      { type: 'set_selection', selection: { anchor: { path: [1, 0], offset: 1 }, focus: { path: [1, 0], offset: 1 } }, prevSelection: null },
+      { type: 'set_selection', selection: single({ anchor: { path: [1, 0], offset: 1 }, focus: { path: [1, 0], offset: 1 } }), prevSelection: null },
     ])
   })
 

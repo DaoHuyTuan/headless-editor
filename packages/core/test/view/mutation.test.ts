@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it } from 'vitest'
+import { mainRange, single } from '../../src/model/selection'
 import type { ElementNode, Node, Selection } from '../../src/model/types'
 import { createTestEditor, doc, txt } from '../../src/testing/index'
 import { testBold, testParagraph } from '../fixtures'
@@ -11,7 +12,7 @@ const p = (id: string, ...children: Node[]): ElementNode => ({
   data: {},
   children,
 })
-const caret = (path: number[], offset: number): Selection => ({ anchor: { path, offset }, focus: { path, offset } })
+const caret = (path: number[], offset: number): Selection => single({ anchor: { path, offset }, focus: { path, offset } })
 
 function mount(children: ElementNode[], selection: Selection = caret([0, 0], 0)) {
   const editor = createTestEditor({ plugins: [testParagraph, testBold], doc: doc(...children), selection })
@@ -66,7 +67,7 @@ describe('mutation safety net', () => {
       renders++
       original(...args)
     }
-    editor.dispatch(editor.createTransaction().insertText('x', caret([0, 0], 2)))
+    editor.dispatch(editor.createTransaction().insertText('x', mainRange(caret([0, 0], 2))))
     expect(renders).toBe(1)
     await flush()
     expect(renders).toBe(1)
