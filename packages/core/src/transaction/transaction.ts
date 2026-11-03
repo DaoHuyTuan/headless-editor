@@ -279,7 +279,11 @@ export class Transaction {
     return this
   }
 
-  /** Removes the mark if active on the whole selection, else adds it; a caret toggles stored marks. */
+  /**
+   * Removes the mark if active on every selection range, else adds it at every range; carets toggle
+   * the stored marks. It takes no range: inside a `forEachRange` callback, use `addMark`/`removeMark`
+   * with the callback's range instead (a `toggleMark` there throws in dev mode).
+   */
   toggleMark(type: string, data?: Data): this {
     markEdit.toggleMark(this, type, data)
     return this

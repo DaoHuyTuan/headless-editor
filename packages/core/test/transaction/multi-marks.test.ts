@@ -162,6 +162,34 @@ describe('marks on every range', () => {
     expect(both.isActive('heading', { level: 2 })).toBe(false)
   })
 
+  it('a range covering no characters (block boundary) does not decide the toggle direction', () => {
+    const ed = editor(doc(p('abcd'), p('efgh')), span([0, 0], 1, 2), rng([0, 0], 4, [1, 0], 0))
+    ed.commands.toggleMark('bold')
+    expect(stripIds(ed.state.doc as Doc)).toEqual(stripIds(doc(p('a', t('b', bold), 'cd'), p('efgh'))))
+    expect(ed.isActive('bold')).toBe(true)
+    ed.commands.toggleMark('bold')
+    expect(stripIds(ed.state.doc as Doc)).toEqual(stripIds(doc(p('abcd'), p('efgh'))))
+    expect(ed.isActive('bold')).toBe(false)
+  })
+
+  it('a range covering only an atom does not decide the toggle direction', () => {
+    const ed = editor(doc(p('abcd'), el('atom'), p('efgh')), span([0, 0], 1, 2), rng([0, 0], 4, [2, 0], 0))
+    ed.commands.toggleMark('bold')
+    expect(stripIds(ed.state.doc as Doc)).toEqual(stripIds(doc(p('a', t('b', bold), 'cd'), el('atom'), p('efgh'))))
+    expect(ed.isActive('bold')).toBe(true)
+    ed.commands.toggleMark('bold')
+    expect(stripIds(ed.state.doc as Doc)).toEqual(stripIds(doc(p('abcd'), el('atom'), p('efgh'))))
+    expect(ed.isActive('bold')).toBe(false)
+  })
+
+  it('ranges that all cover no characters read their start carets, as one such range does', () => {
+    const tr = trOf(doc(p('ab', t('cd', bold)), p('ef'), p(t('gh', bold)), p('ij')), [
+      rng([0, 1], 2, [1, 0], 0),
+      rng([2, 0], 2, [3, 0], 0),
+    ])
+    expect(isMarkActive(view(tr), 'bold')).toBe(true)
+  })
+
   it('setMark/unsetMark commands act on every range', () => {
     const ed = editor(doc(p('abcdef')), span([0, 0], 1, 2), span([0, 0], 4, 5))
     expect(ed.commands.setMark('italic')).toBe(true)

@@ -122,26 +122,43 @@ export function marksOfRange(doc: DeepReadonly<Doc>, range: Range | SelectionRan
  * the stored marks, else the marks of the text at its start (`marksAtPoint`); otherwise every text
  * with at least one covered character has a matching mark. Pass the editor's `registry` to ignore
  * texts inside unknown elements and atoms (which are not editable).
+ *
+ * A non-collapsed range covering no characters (a block boundary, only an atom) is left out when
+ * another range covers characters or is a caret: a mark edit can't change it (see `allHaveMark`).
  */
 export function isMarkActive(state: MarkStateView, type: string, data?: Partial<Data>, registry?: NodeTypes): boolean {
   const sel = state.selection
   if (!sel) return false
-  return sel.ranges.every((range) => rangeHasMark(state, range, type, data, registry))
+  return allHaveMark(state, sel.ranges, type, data, registry)
 }
 
-function rangeHasMark(
+/**
+ * Whether every range in `ranges` has the mark (`isMarkActive`, `toggleMark`'s direction). Ranges a
+ * mark edit can't change (non-collapsed, covering no characters: the edit is a no-op there) don't
+ * count when some range can be changed (covers characters, or is a caret: the stored marks);
+ * otherwise toggling would add forever. When every range is such a range, each reads its start
+ * caret, as a lone one always has.
+ */
+function allHaveMark(
   state: MarkStateView,
-  range: SelectionRange,
+  ranges: readonly SelectionRange[],
   type: string,
   data: Partial<Data> | undefined,
   registry: NodeTypes | undefined,
 ): boolean {
-  const covered = coveredTexts(state.doc, ordered(range), registry)
-  if (covered.length === 0) {
-    const marks = state.storedMarks ?? marksAtPoint(state.doc, ordered(range).start)
-    return marks.some((m) => matches(m, type, data))
-  }
-  return covered.every((c) => c.node.marks.some((m) => matches(m, type, data)))
+  const has = (m: Mark) => matches(m, type, data)
+  const checks = ranges.map((range) => {
+    const r = ordered(range)
+    const covered = coveredTexts(state.doc, r, registry)
+    const inert = covered.length === 0 && !isCollapsedRange(r)
+    const active =
+      covered.length === 0
+        ? (state.storedMarks ?? marksAtPoint(state.doc, r.start)).some(has)
+        : covered.every((c) => c.node.marks.some(has))
+    return { inert, active }
+  })
+  const deciding = checks.some((c) => !c.inert) ? checks.filter((c) => !c.inert) : checks
+  return deciding.every((c) => c.active)
 }
 
 function trView(tr: Transaction): MarkStateView {
@@ -301,16 +318,19 @@ export function removeMark(tr: Transaction, type: string, range?: Range): boolea
 
 /**
  * Removes the mark when it is active on every selection range (`isMarkActive`), else adds
- * `{ type, data }` at every range. The direction is decided once, over all ranges, before any edit;
- * collapsed ranges toggle it in the stored marks. Inside a `forEachRange` callback it throws in dev
- * mode (use `addMark`/`removeMark` with the callback's range); otherwise it toggles at that range.
+ * `{ type, data }` at every range. The direction is decided once, over all ranges, before any edit
+ * (ranges covering no characters don't count when another range can change: see `allHaveMark`);
+ * collapsed ranges toggle it in the stored marks.
+ *
+ * `toggleMark` takes no range: it always acts on the whole selection. Inside a `forEachRange`
+ * callback, use `addMark`/`removeMark` with the callback's range instead (a `toggleMark` there throws
+ * in dev mode; otherwise it toggles at the callback's range).
  */
 export function toggleMark(tr: Transaction, type: string, data?: Data): boolean {
   const valid = validated(tr, type, data ?? {})
   if (!valid) return false
   const ranges = selectionTargets(tr)
   if (!ranges) return false
-  const view = trView(tr)
-  const active = ranges.every((range) => rangeHasMark(view, range, type, data, tr.registry))
+  const active = allHaveMark(trView(tr), ranges, type, data, tr.registry)
   return active ? removeMark(tr, type) : addMark(tr, valid)
 }
