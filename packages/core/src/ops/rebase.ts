@@ -1,6 +1,6 @@
 import { isAncestorPath } from '../model/path'
 import type { Path, Selection } from '../model/types'
-import { transformPath, transformSelection } from './transform'
+import { transformPath, transformSelectionStrict } from './transform'
 import type { Operation } from './types'
 
 /**
@@ -100,7 +100,7 @@ function transformText(a: TextOp, b: TextOp): TextOp | null {
 
 function mapSelection(sel: Selection | null, op: Operation): Selection | null | undefined {
   if (sel === null) return null
-  return transformSelection(sel, op) ?? undefined
+  return transformSelectionStrict(sel, op) ?? undefined
 }
 
 /** `a` rewritten to apply after `b`, where both apply to the same doc; `null` when not covered. */

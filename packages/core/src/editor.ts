@@ -5,7 +5,7 @@ import { parseHTML } from './html/parse'
 import { serializeHTML } from './html/serialize'
 import { runInputRules } from './input-rules'
 import { coerceDoc } from './load'
-import { firstEditableCaret, isEditablePoint, isOpaqueAt } from './model/editable'
+import { firstEditableCaret, isEditableRange, rehomeRanges } from './model/editable'
 import { deepEqualJson, getNode, isElement } from './model/node'
 import { comparePoint } from './model/path'
 import { mainRange, selectionEquals } from './model/selection'
@@ -533,14 +533,16 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     doc.children.forEach((node, i) => tr.insertNode([i], node))
     if (selection) tr.setSelection(selection)
     normalize(tr, this.contextFn)
-    // A missing selection, or one that does not resolve to editable text, starts at the first editable text.
-    const range = tr.selection && mainRange(tr.selection)
-    const valid =
-      range &&
-      isEditablePoint(tr.doc, this.registry, range.anchor) &&
-      isEditablePoint(tr.doc, this.registry, range.focus) &&
-      (!range.node || isOpaqueAt(tr.doc, this.registry, range.node))
-    if (!valid) tr.setSelection(firstEditableCaret(tr.doc, this.registry))
+    // A missing selection, or a single range that does not resolve to editable text, starts at the
+    // first editable text. With several ranges, each bad range moves to its nearest editable point
+    // (`rehomeRanges`); the first editable text only when none is left.
+    const sel = tr.selection
+    if (sel && sel.ranges.length > 1) {
+      const next = rehomeRanges(tr.doc, this.registry, sel) ?? firstEditableCaret(tr.doc, this.registry)
+      if (next !== sel) tr.setSelection(next)
+    } else if (!sel || !isEditableRange(tr.doc, this.registry, mainRange(sel))) {
+      tr.setSelection(firstEditableCaret(tr.doc, this.registry))
+    }
     return tr
   }
 
@@ -556,6 +558,13 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     }
     if (!this.passesFilters(tr)) return null
     if (tr.docChanged) normalize(tr, this.contextFn)
+    // Several ranges: each one not at an editable point moves to its nearest one (dropped only when
+    // there is none). Applied as an op so stored marks are kept. A single range is left as it was.
+    const sel = tr.selection
+    if (sel && sel.ranges.length > 1) {
+      const next = rehomeRanges(tr.doc, this.registry, sel)
+      if (next && next !== sel) tr.apply({ type: 'set_selection', selection: next, prevSelection: sel })
+    }
 
     const prev = this._state
     const pluginStates = new Map(prev.pluginStates)

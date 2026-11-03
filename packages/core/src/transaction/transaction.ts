@@ -1,9 +1,10 @@
 import { createId } from '../model/id'
 import { getNode, isElement, isText } from '../model/node'
-import { selectionEquals } from '../model/selection'
-import type { Data, Doc, ElementNode, Mark, Node, Path, Range, Selection, SelectionRange, TextNode } from '../model/types'
+import { nearestEditablePoint } from '../model/editable'
+import { createSelection, selectionEquals } from '../model/selection'
+import type { Data, Doc, ElementNode, Mark, Node, Path, Point, Range, Selection, SelectionRange, TextNode } from '../model/types'
 import { applyOp } from '../ops/apply'
-import { transformSelection } from '../ops/transform'
+import { transformPoint, transformRange, transformSelection } from '../ops/transform'
 import type { Operation } from '../ops/types'
 import type { Registry } from '../plugin/registry'
 import type { EditorState } from '../state'
@@ -71,14 +72,51 @@ export class Transaction {
       this._selection = op.selection
     } else {
       this._doc = applyOp(this._doc, op)
-      if (this._selection) this._selection = transformSelection(this._selection, op)
+      if (this._selection) this._selection = this.mapSelection(this._selection, op)
     }
     this.ops.push(op)
     return this
   }
 
-  /** No-op when equal to the current selection (every range's anchor, focus and `node`, and `main` compared). */
+  /**
+   * `sel` mapped through `op` (just applied), every range on its own. With several ranges, a point
+   * that can't be mapped (its text was removed) moves to the nearest editable point of the new doc
+   * (`nearestEditablePoint` at the removed path); its range is dropped only if there is none. When
+   * every range fails to map, the selection is null (no re-homing), as with a single range, which
+   * keeps the plain rule: null when it can't be mapped. (Several ranges never hold a node range.)
+   */
+  private mapSelection(sel: Selection, op: Operation): Selection | null {
+    if (sel.ranges.length === 1) return transformSelection(sel, op)
+    const mapped = sel.ranges.map((range) => transformRange(range, op))
+    if (mapped.every((r) => r === null)) return null
+    let target: Point | null | undefined
+    const rehome = () => {
+      if (target === undefined)
+        target = op.type === 'remove_node' ? nearestEditablePoint(this._doc, this.registry, op.path) : null
+      return target
+    }
+    const out: SelectionRange[] = []
+    let main = 0
+    sel.ranges.forEach((range, i) => {
+      let next = mapped[i]
+      if (!next) {
+        const anchor = transformPoint(range.anchor, op) ?? rehome()
+        const focus = transformPoint(range.focus, op) ?? rehome()
+        if (!anchor || !focus) return
+        next = { anchor, focus }
+      }
+      if (i <= sel.main) main = out.length
+      out.push(next)
+    })
+    return createSelection(out, main)
+  }
+
+  /**
+   * Normalizes `sel` (`createSelection`: sorted, colliding ranges merged, `main` kept on its range).
+   * No-op when equal to the current selection (every range's anchor, focus and `node`, and `main` compared).
+   */
   setSelection(sel: Selection | null): this {
+    if (sel) sel = createSelection(sel.ranges, sel.main)
     if (selectionEquals(sel, this._selection)) return this
     this.apply({ type: 'set_selection', selection: sel, prevSelection: this._selection })
     this._storedMarks = null

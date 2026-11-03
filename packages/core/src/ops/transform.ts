@@ -1,5 +1,5 @@
 import { isAncestorPath } from '../model/path'
-import { mainRange, single } from '../model/selection'
+import { createSelection } from '../model/selection'
 import type { Path, Point, Selection, SelectionRange } from '../model/types'
 import { movedPath } from './invert'
 import type { Operation } from './types'
@@ -121,8 +121,8 @@ export function transformPoint(point: Point, op: Operation, affinity: Affinity =
   return next && { path: next, offset }
 }
 
-export function transformSelection(sel: Selection, op: Operation, affinity: Affinity = 'forward'): Selection | null {
-  const range = mainRange(sel)
+/** One range mapped through `op`; null when one of its points can't be (its text node was removed). */
+export function transformRange(range: SelectionRange, op: Operation, affinity: Affinity = 'forward'): SelectionRange | null {
   const anchor = transformPoint(range.anchor, op, affinity)
   const focus = transformPoint(range.focus, op, affinity)
   if (!anchor || !focus) return null
@@ -130,5 +130,39 @@ export function transformSelection(sel: Selection, op: Operation, affinity: Affi
   // A removed selected node drops `node`: the mapped caret remains.
   const node = range.node && transformPath(range.node, op)
   if (node) out.node = node
-  return single(out)
+  return out
+}
+
+/**
+ * `sel` with every range mapped through `op` on its own, then normalized (`createSelection`): ranges
+ * that collide are merged and `main` follows its range. A range that can't be mapped is dropped (if it
+ * was the main one, `main` moves to the closest surviving range before it, else the first one); null
+ * only when every range is gone. Live edits (`Transaction.apply`) re-home such ranges instead of
+ * dropping them; history and rebase use `transformSelectionStrict`.
+ */
+export function transformSelection(sel: Selection, op: Operation, affinity: Affinity = 'forward'): Selection | null {
+  const out: SelectionRange[] = []
+  let main = 0
+  sel.ranges.forEach((range, i) => {
+    const mapped = transformRange(range, op, affinity)
+    if (!mapped) return
+    if (i <= sel.main) main = out.length
+    out.push(mapped)
+  })
+  return out.length === 0 ? null : createSelection(out, main)
+}
+
+/**
+ * `sel` with every range mapped through `op`, normalized; null as soon as **any** range can't be
+ * mapped. History and rebase use it: an entry must restore an exact selection, so one lost range
+ * drops the entry (spec §5.7). With one range it equals `transformSelection`.
+ */
+export function transformSelectionStrict(sel: Selection, op: Operation, affinity: Affinity = 'forward'): Selection | null {
+  const out: SelectionRange[] = []
+  for (const range of sel.ranges) {
+    const mapped = transformRange(range, op, affinity)
+    if (!mapped) return null
+    out.push(mapped)
+  }
+  return createSelection(out, sel.main)
 }

@@ -41,7 +41,7 @@ export { findPathById } from './model/find'
 export type { Operation } from './ops/types'
 export { applyOp } from './ops/apply'
 export { invertOp } from './ops/invert'
-export { transformPath, transformPoint, transformSelection } from './ops/transform'
+export { transformPath, transformPoint, transformSelection, transformSelectionStrict } from './ops/transform'
 export type {
   AnyPlugin,
   AnyPluginSpec,

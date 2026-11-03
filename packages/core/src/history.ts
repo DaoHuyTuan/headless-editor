@@ -5,7 +5,7 @@ import type { Data, Doc, ElementNode, Node, Selection } from './model/types'
 import { applyOp } from './ops/apply'
 import { invertOp } from './ops/invert'
 import { rebaseBoth } from './ops/rebase'
-import { transformSelection } from './ops/transform'
+import { transformSelectionStrict } from './ops/transform'
 import type { Operation } from './ops/types'
 import { definePlugin } from './plugin/define'
 import type { Command, PluginContext } from './plugin/types'
@@ -180,7 +180,7 @@ function mapSelection(sel: Selection | null, ops: Operation[]): Selection | null
   let out = sel
   for (const op of ops) {
     if (out === null) return null
-    const next = transformSelection(out, op)
+    const next = transformSelectionStrict(out, op)
     if (!next) return undefined
     out = next
   }

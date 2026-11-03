@@ -3,7 +3,7 @@ import { isOpaque } from './model/editable'
 import { createId } from './model/id'
 import { getNode, isElement, isText, nodeEntries, sameMarkSet } from './model/node'
 import { nextPath } from './model/path'
-import { mainRange, single } from './model/selection'
+import { createSelection } from './model/selection'
 import type { ElementNode, Mark, Node, Path, Point, TextNode } from './model/types'
 import { transformPath } from './ops/transform'
 import type { Registry } from './plugin/registry'
@@ -283,14 +283,14 @@ function edgeText(node: Node, path: Path, last: boolean, registry: Registry): [T
  * Before removing the empty text at `[...parent, i]`, moves selection points inside it to the
  * end of the closest editable text among the previous siblings, or else the start of the closest
  * one among the next siblings (opaque elements are skipped), so the selection survives the removal.
+ * Every range is moved; the result is normalized (moved ranges may merge), `main` following its range.
  */
 function rehomeSelection(tr: Transaction, siblings: Node[], parent: Path, i: number): void {
   const sel = tr.selection
   if (!sel) return
-  const range = mainRange(sel)
   const at = [...parent, i]
   const inside = (p: Path) => p.length === at.length && p.every((v, k) => v === at[k])
-  if (!inside(range.anchor.path) && !inside(range.focus.path)) return
+  if (!sel.ranges.some((r) => inside(r.anchor.path) || inside(r.focus.path))) return
   let target: Point | null = null
   for (let k = i - 1; k >= 0 && !target; k--) {
     const found = edgeText(siblings[k]!, [...parent, k], true, tr.registry)
@@ -303,8 +303,8 @@ function rehomeSelection(tr: Transaction, siblings: Node[], parent: Path, i: num
   if (!target) return
   const move = (pt: Point) => (inside(pt.path) ? target : pt)
   // Applied as an op directly so stored marks are kept (Transaction.setSelection clears them).
-  const moved = { ...range, anchor: move(range.anchor), focus: move(range.focus) }
-  tr.apply({ type: 'set_selection', selection: single(moved), prevSelection: sel })
+  const moved = sel.ranges.map((range) => ({ ...range, anchor: move(range.anchor), focus: move(range.focus) }))
+  tr.apply({ type: 'set_selection', selection: createSelection(moved, sel.main), prevSelection: sel })
 }
 
 /** Whether an element of `spec` holds inline content: a `content: 'inline'` block or a (non-atom) inline element. */

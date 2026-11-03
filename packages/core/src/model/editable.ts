@@ -1,7 +1,7 @@
 import { comparePath } from './path'
-import { isNodeRange, mainRange, single } from './selection'
+import { createSelection, isNodeRange, mainRange, single } from './selection'
 import { getNode, isText, type ReadableRoot } from './node'
-import type { Doc, ElementNode, Node, Path, Point, Range, Selection, TextNode } from './types'
+import type { Doc, ElementNode, Node, Path, Point, Range, Selection, SelectionRange, TextNode } from './types'
 
 /** What the editable-text helpers need from a `Registry`. */
 export interface NodeTypes {
@@ -91,6 +91,53 @@ export function nodeSelection(doc: ReadableRoot, types: NodeTypes, path: Path): 
   }
   if (!point) throw new Error(`No editable text to anchor a node selection of [${path}]`)
   return single({ anchor: point, focus: point, node: [...path] })
+}
+
+/**
+ * The editable point nearest to `path` in document order: the end of the last editable text before
+ * it, else the start of the first one at or after it (a text that now sits at `path`, after a node
+ * there was removed, counts as after). Null when `doc` has no editable text. The rule that
+ * `nodeSelection` and normalize's empty-text cleanup use, over the whole doc.
+ */
+export function nearestEditablePoint(doc: ReadableRoot, types: NodeTypes, path: Path): Point | null {
+  let point: Point | null = null
+  for (const [t, p] of editableTextEntries(doc, types)) {
+    if (comparePath(p, path) < 0) point = { path: p, offset: t.text.length }
+    else return point ?? { path: p, offset: 0 }
+  }
+  return point
+}
+
+/** Whether both points of `range` are editable and its `node`, if any, is an opaque element. */
+export function isEditableRange(doc: ReadableRoot, types: NodeTypes, range: SelectionRange): boolean {
+  return (
+    isEditablePoint(doc, types, range.anchor) &&
+    isEditablePoint(doc, types, range.focus) &&
+    (!range.node || isOpaqueAt(doc, types, range.node))
+  )
+}
+
+/**
+ * `sel` with every range that is not at an editable point moved there: each bad point goes to
+ * `nearestEditablePoint`, and a `node` that is not an opaque element is dropped. A range is dropped
+ * only when the doc has no editable point; null when every range is. Normalized (moved ranges may
+ * merge, `main` follows its range); `sel` itself when every range is already valid.
+ */
+export function rehomeRanges(doc: ReadableRoot, types: NodeTypes, sel: Selection): Selection | null {
+  if (sel.ranges.every((r) => isEditableRange(doc, types, r))) return sel
+  const out: SelectionRange[] = []
+  let main = 0
+  sel.ranges.forEach((range, i) => {
+    const fix = (pt: Point) => (isEditablePoint(doc, types, pt) ? pt : nearestEditablePoint(doc, types, pt.path))
+    const anchor = fix(range.anchor)
+    const focus = fix(range.focus)
+    if (!anchor || !focus) return
+    const moved: SelectionRange = { anchor, focus }
+    if (range.node && isOpaqueAt(doc, types, range.node)) moved.node = range.node
+    if (i <= sel.main) main = out.length
+    out.push(moved)
+  })
+  return out.length === 0 ? null : createSelection(out, main)
 }
 
 /** A caret at the start of the first editable text of `doc`, or null when it has none. */
