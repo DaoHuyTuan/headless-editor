@@ -65,7 +65,7 @@ new Editor({ plugins, view: 'code' })     // future
 | Viewport renderer | large | Track scroll, measure line heights, add spacers. The hard parts are a selection that extends off-screen and IME near the edges of the viewport. |
 | Line schema | small | `doc > line*` of text-only lines, enforced by a plugin and normalize. |
 | Incremental normalize and decorations | medium | Only touch changed nodes. This also benefits the document view. |
-| Multi-selection | large, API-breaking | `Selection` becomes a list. Commands, transactions and history must handle it. Follow CodeMirror: the primary caret is native, extra carets are drawn in an overlay. |
+| Multi-selection | large, API-breaking | **Decided: model-level** (see §4a). `Selection` becomes a list of ranges with a primary one. Commands, transactions and history handle every range. The view draws the extra carets: the primary caret is native, the others are drawn in an overlay, as in CodeMirror. |
 | Self-drawn selection and caret overlay | medium | Needed for multi-cursor and column selection. |
 | Gutter, folding, minimap | medium | Parts of the code view, or plugins that target it. |
 
@@ -89,7 +89,20 @@ Steps 1–4 are worth doing even if the code view never happens.
 4. **Make normalize and decorations incremental.** This is open in the follow-ups: code-block decorations walk the whole doc, and normalize rule 11 used to be super-linear.
 5. **Spike a code view.** Build a minimal viewport-rendered, single-caret, line-schema view to test the `View` interface. Only then fix the API.
 6. **Split packages** once the spike holds: `@hte/core` (model only), `@hte/view-dom`, `@hte/view-code`.
-7. **Multi-selection** as its own milestone, with an API migration.
+7. **Multi-selection** as its own milestone, with an API migration (see §4a).
+
+### 4a. Decision: multi-selection lives in the model
+
+Decided 2026-11-03. Multi-cursor is implemented in the **core model**, not as a view-only overlay.
+
+- **Shape.** The selection holds one or more ranges, one of them primary. A single-range selection stays the common case. The document view uses the primary range only and behaves as it does today.
+- **Commands and transactions** apply to every range: typing, delete, toggling a mark and paste. Overlapping ranges are merged after each change.
+- **History.** One undo step restores every range. `selectionBefore` and `selectionAfter` hold the whole list.
+- **Ops and rebase.** Mapping a selection maps each range: `transformSelection` per range. Collaboration can later show remote carets with the same type.
+- **View.** The primary caret stays the browser's native one. Extra carets and ranges are drawn by the view in an overlay layer.
+- **Rejected alternative:** a view-only overlay that replays commands at each extra caret. It leaves extra carets second-class: commands that don't know about them act on the primary only, and undo does not group the edits.
+- **Why decide early:** this changes the core `Selection` API that plugins use. Doing it before many external plugins depend on the current single-range shape keeps the migration small.
+- **Migration sketch.** Keep a `selection.main`-style accessor, or helpers, so that plugins written for a single range keep working. Add multi-range-aware helpers, such as "for each range", for commands that should act everywhere.
 
 Do not split into packages before the spike. An interface designed against a single implementation tends to be wrong in the hard places: selection, IME and measurement.
 
@@ -136,5 +149,4 @@ Likely candidates once the mechanism exists: i18n strings (for example the hard-
 ## 7. Open questions
 
 - Should `nodeViews` become updatable at runtime (re-register the factories and invalidate), or be documented as read-once? The playground works around it with React context (`apps/playground/src/image-views.tsx`).
-- Multi-selection: model-level (true ranges in `Selection`) or view-level (extra carets as decorations, with commands mapped per range)?
 - Decide whether `@experimental` levels 3–4 (parts, hooks) graduate before a second view arrives.
