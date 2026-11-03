@@ -413,3 +413,20 @@ describe('docs: plugin-api', () => {
     void [pink, withAlt]
   })
 })
+
+// doc: README — the plugin sample of README.md.
+const italic = definePlugin({
+  name: 'italic',
+  mark: { render: () => ({ tag: 'em' }) },
+  parseHTML: [{ tag: 'em' }, { tag: 'i' }],
+  commands: () => ({
+    toggleItalic: (): Command => ({ tr }) => tr.toggleMark('italic').rejected === null,
+  }),
+  keymap: (ctx) => ({ 'Mod-i': () => ctx.commands.toggleItalic() }),
+})
+
+describe('docs: README', () => {
+  it('types the plugin commands on the editor', () => {
+    expectTypeOf<CommandsOfPlugin<typeof italic>>().toHaveProperty('toggleItalic')
+  })
+})
