@@ -275,7 +275,8 @@ const isInlineInsert = (op: Operation, registry: Registry): op is Extract<Operat
 /**
  * Whether `tr` must be vetoed: it inserts an inline element into a code block, its marks all land in
  * code blocks (a mark only partly inside one is let through: normalization strips that part), or it
- * stores marks at a caret in a code block (e.g. toggling bold at the caret).
+ * stores marks at a caret in a code block (e.g. toggling bold at the caret). Never asked for history
+ * trs (`meta.origin === 'history'`): the filter lets every undo/redo through.
  */
 function addsFormatting(tr: Transaction): boolean {
   const { registry } = tr
@@ -417,7 +418,10 @@ export const codeBlock = definePlugin({
     (intent.inputType === 'insertParagraph' || intent.inputType === 'insertLineBreak') && run(ctx, newline),
   // Loaded content with an invalid (e.g. unsafe) language keeps its code, as plaintext.
   onInvalidData: () => ({ language: 'plaintext' }),
-  filterTransaction: (tr) => !addsFormatting(tr),
+  // History is never vetoed: an undo/redo tr is the inverse of states the pipeline already accepted,
+  // and may transiently re-add a mark or atom inside a code block before its own split restores the
+  // paragraph (rule 8 normalization strips anything still left inside).
+  filterTransaction: (tr) => tr.meta.origin === 'history' || !addsFormatting(tr),
   // Decided by where the fragment goes: the drop point of a drop, else the selection.
   transformPasted: (fragment, ctx, { at }) => {
     const { state, registry } = ctx.editor

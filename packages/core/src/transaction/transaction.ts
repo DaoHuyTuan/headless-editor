@@ -187,7 +187,8 @@ export class Transaction {
 
   /**
    * Deletes `at` (default: the selection) and inserts `fragment` at the caret, giving inserted
-   * elements fresh ids where theirs already exist; the caret ends after the inserted content.
+   * elements fresh ids where theirs already exist; the caret ends after the inserted content. A node
+   * selection (without `at`) is replaced in place: the content goes where the node was.
    */
   insertFragment(fragment: Fragment, at?: Range): this {
     fragmentEdit.insertFragment(this, fragment, at)

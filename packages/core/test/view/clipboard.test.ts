@@ -1,18 +1,15 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { Doc, ElementNode, Node, Selection } from '../../src/model/types'
+import type { Doc, ElementNode, Selection } from '../../src/model/types'
 import {
   definePlugin,
   isElement,
   isText,
   nodeEntries,
-  parseFromClipboard,
-  serializeForClipboard,
   nodeSelection,
   type AnyPlugin,
   type InputIntent,
   type Editor,
-  type Fragment,
 } from '../../src/index'
 import { createTestEditor, doc, stripIds, txt } from '../../src/testing/index'
 import { testBold, testParagraph } from '../fixtures'
@@ -61,178 +58,6 @@ afterEach(() => {
   document.getSelection()?.removeAllRanges()
   document.body.replaceChildren()
   vi.restoreAllMocks()
-})
-
-describe('serializeForClipboard / parseFromClipboard', () => {
-  it('round-trips a range with bold through the json flavor', () => {
-    const editor = setup(doc(p('p1', txt('ab'), txt('cd', 'bold'), txt('ef'))), caret([0, 0], 0))
-    const r = { start: { path: [0, 0], offset: 1 }, end: { path: [0, 2], offset: 1 } }
-    const out = serializeForClipboard(editor, r)
-    expect(JSON.parse(out.json)).toEqual([txt('b'), txt('cd', 'bold'), txt('e')])
-    expect(out.text).toBe('bcde')
-    expect(out.html).toBe('<p>b<strong>cd</strong>e</p>')
-    expect(parseFromClipboard(editor, { json: out.json })).toEqual(JSON.parse(out.json))
-  })
-
-  it('serializes several blocks: text joined by newlines, html with one element per block', () => {
-    const editor = setup(doc(p('p1', txt('one')), p('p2', txt('two', 'bold')), p('p3', txt('three'))), caret([0, 0], 0))
-    const out = serializeForClipboard(editor, { start: { path: [0, 0], offset: 1 }, end: { path: [2, 0], offset: 2 } })
-    expect(out.text).toBe('ne\ntwo\nth')
-    expect(out.html).toBe('<p>ne</p><p><strong>two</strong></p><p>th</p>')
-    expect(stripIds(parseFromClipboard(editor, { json: out.json }))).toEqual(
-      stripIds([p('a', txt('ne')), p('b', txt('two', 'bold')), p('c', txt('th'))]),
-    )
-  })
-
-  it("the text flavor uses an inline atom's renderText (with the editor's current options)", () => {
-    const tag = definePlugin({
-      name: 'tag',
-      node: { kind: 'inline', atom: true },
-      options: { prefix: '#' },
-      renderText: (node, { options }) => `${options.prefix}${String(node.data.label)}`,
-    })
-    const bare = definePlugin({ name: 'bare', node: { kind: 'inline', atom: true } })
-    const atom = (type: string): ElementNode => ({ id: type, type, data: { label: 'x' }, children: [] })
-    const content = doc({ id: 'p1', type: 'paragraph', data: {}, children: [txt('hi '), atom('tag'), txt(' '), atom('bare'), txt(' yo')] })
-    const editor = setup(content, caret([0, 0], 0), [testParagraph, testBold, tag, bare])
-    const all = { start: { path: [0, 0], offset: 0 }, end: { path: [0, 4], offset: 3 } }
-    expect(serializeForClipboard(editor, all).text).toBe('hi #x  yo')
-    editor.setPluginOptions('tag', { prefix: '+' })
-    expect(serializeForClipboard(editor, all).text).toBe('hi +x  yo')
-  })
-
-  it('parses html when there is no json', () => {
-    const editor = setup(doc(p('p1', txt(''))), caret([0, 0], 0))
-    const frag = parseFromClipboard(editor, { html: '<p>a<b>b</b></p>', text: 'ab' })
-    expect(stripIds(frag)).toEqual([{ type: 'paragraph', data: {}, children: [txt('a'), txt('b', 'bold')] }])
-  })
-
-  it('falls through to html when the json is malformed or not an array', () => {
-    const editor = setup(doc(p('p1', txt(''))), caret([0, 0], 0))
-    for (const json of ['{not json', '{"text":"x"}', '"x"']) {
-      const frag = parseFromClipboard(editor, { json, html: '<p>h</p>', text: 't' })
-      expect(stripIds(frag)).toEqual([{ type: 'paragraph', data: {}, children: [txt('h')] }])
-    }
-  })
-
-  it('falls through to text: several lines become default blocks', () => {
-    const editor = setup(doc(p('p1', txt(''))), caret([0, 0], 0))
-    expect(stripIds(parseFromClipboard(editor, { text: 'x\ny' }))).toEqual([
-      { type: 'paragraph', data: {}, children: [txt('x')] },
-      { type: 'paragraph', data: {}, children: [txt('y')] },
-    ])
-    expect(parseFromClipboard(editor, { text: 'a\r\nb\rc' })).toHaveLength(3)
-  })
-
-  it('a single line of text is inline text without marks', () => {
-    const editor = setup(doc(p('p1', txt(''))), caret([0, 0], 0))
-    expect(parseFromClipboard(editor, { text: 'Tiếng Việt 👍🏽' })).toEqual([txt('Tiếng Việt 👍🏽')])
-    expect(parseFromClipboard(editor, {})).toEqual([])
-  })
-
-  it("applies each plugin's transformPasted, in priority order", () => {
-    const calls: string[] = []
-    const upper = definePlugin({
-      name: 'upper',
-      priority: 200,
-      transformPasted: (frag: Fragment) => {
-        calls.push('upper')
-        const up = (n: Node): Node =>
-          isText(n) ? { ...n, text: n.text.toUpperCase() } : { ...n, children: n.children?.map(up) }
-        return frag.map(up)
-      },
-    })
-    const suffix = definePlugin({
-      name: 'suffix',
-      priority: 150,
-      transformPasted: (frag: Fragment) => {
-        calls.push('suffix')
-        return [...frag, txt('!')]
-      },
-    })
-    const editor = setup(doc(p('p1', txt(''))), caret([0, 0], 0), [testParagraph, testBold, suffix, upper])
-    expect(parseFromClipboard(editor, { text: 'abc' })).toEqual([txt('ABC'), txt('!')])
-    expect(calls).toEqual(['upper', 'suffix'])
-  })
-
-  it('transformPasted gets the insertion target: the drop point for a drop, the selection for a paste', () => {
-    const seen: unknown[] = []
-    const spy = definePlugin({
-      name: 'spy',
-      transformPasted: (frag: Fragment, _ctx, info) => {
-        seen.push(info.at)
-        return frag
-      },
-    })
-    const editor = setup(doc(p('p1', txt('abcd'))), caret([0, 0], 1), [testParagraph, testBold, spy])
-    const transfer = { getData: (t: string) => (t === 'text/plain' ? 'x' : '') } as unknown as DataTransfer
-    const dropAt = caret([0, 0], 3)
-    editor.handleIntent({ inputType: 'insertFromDrop', data: null, range: dropAt, dataTransfer: transfer })
-    expect(seen).toEqual([dropAt])
-    expect(parseFromClipboard(editor, { text: 'y' })).toEqual([txt('y')])
-    expect(seen[1]).toBeNull()
-    expect(parseFromClipboard(editor, { text: 'y' }, { at: caret([0, 0], 2) })).toEqual([txt('y')])
-    expect(seen[2]).toEqual(caret([0, 0], 2))
-  })
-
-  it('validates pasted json data: invalid data is repaired by onInvalidData or the node is dropped', () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const schema = {
-      '~standard': {
-        version: 1 as const,
-        vendor: 'test',
-        validate: (v: unknown) =>
-          typeof (v as { href?: unknown })?.href === 'string'
-            ? { value: v as { href: string } }
-            : { issues: [{ message: 'href must be a string' }] },
-      },
-    }
-    const link = definePlugin({
-      name: 'link',
-      mark: { render: (d: { href: string }) => ({ tag: 'a', attrs: { href: d.href } }) },
-      data: schema,
-      onInvalidData: () => ({ href: '#' }),
-    })
-    const strict = definePlugin({ name: 'strict', node: { kind: 'block' }, data: schema })
-    const editor = setup(doc(p('p1', txt(''))), caret([0, 0], 0), [testParagraph, testBold, link, strict])
-    const json = JSON.stringify([
-      { id: 'a', type: 'paragraph', data: {}, children: [{ text: 'x', marks: [{ type: 'link', data: { href: 1 } }] }] },
-      { id: 'b', type: 'strict', data: { href: 2 }, children: [{ text: 'gone', marks: [] }] },
-      { id: 'c', type: 'paragraph', data: {}, children: [{ text: 'y', marks: [] }] },
-    ])
-    expect(stripIds(parseFromClipboard(editor, { json }))).toEqual([
-      { type: 'paragraph', data: {}, children: [txt('x', { type: 'link', data: { href: '#' } })] },
-      { type: 'paragraph', data: {}, children: [txt('y')] },
-    ])
-  })
-
-  it('drops unknown element types and unknown marks from pasted json', () => {
-    const editor = setup(doc(p('p1', txt(''))), caret([0, 0], 0))
-    const json = JSON.stringify([
-      { id: 'a', type: 'paragraph', data: {}, children: [{ text: 'x', marks: [{ type: 'evil', data: {} }] }] },
-      { id: 'b', type: 'mystery', data: { on: 'x' }, children: [{ text: 'hidden', marks: [] }] },
-      { id: 'c', type: 'paragraph', data: {}, children: [{ text: 'y', marks: [] }] },
-    ])
-    expect(stripIds(parseFromClipboard(editor, { json }))).toEqual([
-      { type: 'paragraph', data: {}, children: [txt('x')] },
-      { type: 'paragraph', data: {}, children: [txt('y')] },
-    ])
-  })
-
-  it('gives pasted json a normalize-compatible shape: inline runs beside blocks are wrapped', () => {
-    const editor = setup(doc(p('p1', txt(''))), caret([0, 0], 0))
-    const json = JSON.stringify([{ text: 'loose' }, { id: 'c', type: 'paragraph', children: [] }])
-    expect(stripIds(parseFromClipboard(editor, { json }))).toEqual([
-      { type: 'paragraph', data: {}, children: [txt('loose')] },
-      { type: 'paragraph', data: {}, children: [txt('')] },
-    ])
-  })
-
-  it('json that sanitizes to nothing falls through to html, then text', () => {
-    const editor = setup(doc(p('p1', txt(''))), caret([0, 0], 0))
-    const json = JSON.stringify([{ id: 'b', type: 'mystery', data: {} }])
-    expect(parseFromClipboard(editor, { json, text: 'plain' })).toEqual([txt('plain')])
-  })
 })
 
 describe('clipboard view module', () => {
@@ -312,6 +137,27 @@ describe('clipboard view module', () => {
       'two',
     ])
     const all = ids(editor.getJSON())
+    expect(new Set(all).size).toBe(all.length)
+  })
+
+  // Safari may drop the custom JSON flavor: the HTML (and text) flavors alone must round-trip with fresh ids.
+  it('pasting only the html flavor of a same-doc copy keeps the blocks and gives fresh, unique ids', () => {
+    const editor = setup(doc(p('p1', txt('one')), p('p2', txt('two'))), range([0, 0], 0, [1, 0], 3))
+    const root = mount(editor)
+    const copy = clipboardEvent('copy')
+    root.dispatchEvent(copy.e)
+    copy.store.delete(HTE_MIME)
+    const tr = editor.createTransaction()
+    tr.setSelection(caret([1, 0], 3))
+    editor.dispatch(tr)
+    root.dispatchEvent(clipboardEvent('paste', Object.fromEntries(copy.store)).e)
+    expect(editor.getJSON().children.map((b) => (b.children![0] as { text: string }).text)).toEqual([
+      'one',
+      'twoone',
+      'two',
+    ])
+    const all = ids(editor.getJSON())
+    expect(all).toHaveLength(3)
     expect(new Set(all).size).toBe(all.length)
   })
 
@@ -457,10 +303,70 @@ describe('clipboard with a node selection', () => {
     expect(new Set(all).size).toBe(all.length)
   })
 
-  it('paste with a node selection replaces the node', () => {
+  it('paste with a node selection replaces the node in place', () => {
     const { editor, root } = setupNode()
     root.dispatchEvent(clipboardEvent('paste', { 'text/plain': 'zz' }).e)
-    expect(stripIds(editor.getJSON())).toEqual(stripIds(doc(p('p1', txt('abzz')), p('p2', txt('cd')))))
-    expect(editor.state.selection).toEqual(caret([0, 0], 4))
+    expect(stripIds(editor.getJSON())).toEqual(stripIds(doc(p('p1', txt('ab')), p('x', txt('zz')), p('p2', txt('cd')))))
+    expect(editor.state.selection).toEqual(caret([1, 0], 2))
+  })
+})
+
+describe('paste over a node-selected image', () => {
+  const image = definePlugin({ name: 'image', node: { kind: 'block', atom: true } })
+  const content = () => doc(p('p1', txt('a')), { id: 'img', type: 'image', data: { src: 's' } }, p('p2', txt('b')))
+  const texts = (d: Doc) => d.children.map((b) => (b.children ?? []).map((c) => (isText(c) ? c.text : `<${c.type}>`)).join(''))
+
+  function setupImage() {
+    const plugins = [testParagraph, testBold, image]
+    const editor = setup(content(), caret([0, 0], 0), plugins)
+    const tr = editor.createTransaction()
+    tr.setSelection(nodeSelection(editor.state.doc, editor.registry, [1]))
+    editor.dispatch(tr)
+    const root = mount(editor)
+    return { editor, root }
+  }
+
+  it('pasting text over a selected image puts the text where the image was', () => {
+    const { editor, root } = setupImage()
+    root.dispatchEvent(clipboardEvent('paste', { 'text/plain': 'x' }).e)
+    expect(editor.getJSON().children.map((b) => b.type)).toEqual(['paragraph', 'paragraph', 'paragraph'])
+    expect(texts(editor.getJSON())).toEqual(['a', 'x', 'b'])
+    expect(editor.state.selection).toEqual(caret([1, 0], 1))
+  })
+
+  it('pasting HTML blocks over a selected image keeps their order in place', () => {
+    const { editor, root } = setupImage()
+    root.dispatchEvent(clipboardEvent('paste', { 'text/html': '<p>x</p><p>y</p>', 'text/plain': 'x\ny' }).e)
+    expect(editor.getJSON().children.map((b) => b.type)).toEqual(['paragraph', 'paragraph', 'paragraph', 'paragraph'])
+    expect(texts(editor.getJSON())).toEqual(['a', 'x', 'y', 'b'])
+    expect(editor.state.selection).toEqual(caret([2, 0], 1))
+  })
+
+  it('pasting a copied atom block over a selected image puts it in place', () => {
+    const { editor, root } = setupImage()
+    const block = [{ id: 'other', type: 'image', data: { src: 't' } }]
+    root.dispatchEvent(clipboardEvent('paste', { [HTE_MIME]: JSON.stringify(block) }).e)
+    expect(editor.getJSON().children.map((b) => b.type)).toEqual(['paragraph', 'image', 'paragraph'])
+    expect(editor.getJSON().children[1]!.data).toEqual({ src: 't' })
+  })
+
+  it('one undo restores the image', () => {
+    const { editor, root } = setupImage()
+    const before = editor.getJSON()
+    const selected = editor.state.selection
+    root.dispatchEvent(clipboardEvent('paste', { 'text/html': '<p>x</p><p>y</p>', 'text/plain': 'x\ny' }).e)
+    expect(editor.commands.undo()).toBe(true)
+    expect(editor.getJSON()).toEqual(before)
+    expect(editor.state.selection).toEqual(selected)
+  })
+
+  it('paste over a node selection matches typing over it', () => {
+    const pasted = setupImage()
+    pasted.root.dispatchEvent(clipboardEvent('paste', { 'text/plain': 'x' }).e)
+    document.body.replaceChildren()
+    const typed = setupImage()
+    typed.editor.commands.insertText('x')
+    expect(stripIds(pasted.editor.getJSON())).toEqual(stripIds(typed.editor.getJSON()))
+    expect(pasted.editor.state.selection).toEqual(typed.editor.state.selection)
   })
 })

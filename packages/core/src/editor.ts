@@ -76,10 +76,16 @@ interface Committed {
 
 const MAX_APPEND_ROUNDS = 10
 
+/**
+ * `navigator.platform` names the OS whose keyboard conventions the user has; the user agent is
+ * only a fallback, since it is spoofed more often (Playwright's "Desktop Safari" device sends a Mac
+ * user agent from a Windows host, whose keyboard sends Ctrl).
+ */
 function detectPlatform(): Platform {
   if (typeof navigator === 'undefined') return 'other'
   const nav = navigator as { platform?: string; userAgent?: string }
-  return /Mac/.test(nav.platform ?? '') || /Mac/.test(nav.userAgent ?? '') ? 'mac' : 'other'
+  if (nav.platform) return /Mac|iPhone|iPad|iPod/.test(nav.platform) ? 'mac' : 'other'
+  return /Mac/.test(nav.userAgent ?? '') ? 'mac' : 'other'
 }
 
 /** Rethrows the first collected error, if any. */
@@ -180,6 +186,11 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     return new Transaction(this._state, this.registry)
   }
 
+  /**
+   * Commands that answer whether they would apply (rejected trs and `filterTransaction` vetoes
+   * included) without dispatching. Not covered: while the pipeline is computing or after `destroy()`
+   * a real dispatch is dropped, yet `can()` still answers as if it would apply.
+   */
   can(): EditorCommands<P> {
     return this.bindCommands(this.commandFactories, false) as EditorCommands<P>
   }
@@ -546,9 +557,7 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
       if (this.dev) throw new Error('Transaction was created from an outdated state')
       return null
     }
-    for (const plugin of this.registry.plugins) {
-      if (plugin.spec.filterTransaction && !plugin.spec.filterTransaction(tr, this._state)) return null
-    }
+    if (!this.passesFilters(tr)) return null
     if (tr.docChanged) normalize(tr, this.contextFn)
 
     const prev = this._state
@@ -559,6 +568,14 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     }
     this._state = { doc: tr.doc, selection: tr.selection, storedMarks: tr.storedMarks, pluginStates }
     return { tr, selectionChanged: !selectionEquals(prev.selection, tr.selection) }
+  }
+
+  /** Runs every plugin's `filterTransaction` in plugin order; false on the first veto. */
+  private passesFilters(tr: Transaction): boolean {
+    for (const plugin of this.registry.plugins) {
+      if (plugin.spec.filterTransaction && !plugin.spec.filterTransaction(tr, this._state)) return false
+    }
+    return true
   }
 
   private emit(event: EditorEventName, tr: Transaction): void {
@@ -578,7 +595,11 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
         const tr = this.createTransaction()
         tr.meta.origin = 'command'
         const ok = factory(...args)({ tr, state: this._state, editor: this as unknown as Editor })
-        if (ok && dispatch && (tr.ops.length > 0 || tr.storedMarks !== this._state.storedMarks)) {
+        const changes = tr.ops.length > 0 || tr.storedMarks !== this._state.storedMarks
+        // can(): answers what the command would do, filters included, without dispatching (no
+        // appendTransaction, normalize, state apply or events).
+        if (!dispatch) return ok && (!changes || (tr.rejected === null && this.passesFilters(tr)))
+        if (ok && changes) {
           const before = this._state
           this.dispatch(tr)
           // Dropped by the pipeline (a `filterTransaction` veto, or a dispatch that is not allowed

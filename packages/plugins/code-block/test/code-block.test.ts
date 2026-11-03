@@ -288,10 +288,61 @@ describe('code block blocks marks and inline nodes', () => {
     expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p(txt('ab', 'bold')), code('cd'))))
   })
 
+  it('can().toggleBold() is false inside a code block', () => {
+    const ed = setup(doc(code('abc')), sel([0, 0], 0, [0, 0], 2))
+    expect(ed.can().toggleBold()).toBe(false)
+    const atCaret = setup(doc(code('abc')), caret([0, 0], 1))
+    expect(atCaret.can().toggleBold()).toBe(false)
+    expect(atCaret.state.storedMarks).toBeNull()
+  })
+
+  it('can().toggleBold() is true in a paragraph', () => {
+    const ed = setup(doc(p(txt('ab')), code('c')), sel([0, 0], 0, [0, 0], 2))
+    const before = ed.state
+    expect(ed.can().toggleBold()).toBe(true)
+    expect(ed.state).toBe(before)
+  })
+
   it('bold still works outside the code block', () => {
     const ed = setup(doc(p(txt('ab')), code('c')), sel([0, 0], 0, [0, 0], 2))
     expect(ed.commands.toggleBold()).toBe(true)
     expect(ed.isActive('bold')).toBe(true)
+  })
+})
+
+describe('undo after normalizing into a code block', () => {
+  const join = (inline: Node) => {
+    const ed = setup(doc(code('x'), p(txt('a'), inline)), caret([1, 0], 0))
+    const before = stripIds(ed.getJSON())
+    // Backspace at the paragraph start: the keymap passes (not in a code block), the intent joins.
+    expect(ed.runKeymap('Backspace')).toBe(false)
+    expect(ed.handleIntent({ inputType: 'deleteContentBackward', data: null, range: ed.state.selection })).toBe(true)
+    expect(ed.state.doc.children).toHaveLength(1)
+    return { ed, before }
+  }
+
+  it('undoes a Backspace-join of a paragraph with bold text', () => {
+    const { ed, before } = join(txt('b', 'bold'))
+    expect(ed.commands.undo()).toBe(true)
+    expect(stripIds(ed.getJSON())).toEqual(before)
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(code('x'), p(txt('a'), txt('b', 'bold')))))
+  })
+
+  it('undoes a Backspace-join of a paragraph with a mention', () => {
+    const { ed, before } = join(mentionNode())
+    expect(ed.commands.undo()).toBe(true)
+    expect(stripIds(ed.getJSON())).toEqual(before)
+    const restored = ed.state.doc.children[1]!.children!.find((c) => 'type' in c && c.type === 'mention') as ElementNode
+    expect(restored.data).toEqual({ userId: 'u1', label: 'Ann' })
+  })
+
+  it('redo re-applies the join', () => {
+    const { ed } = join(txt('b', 'bold'))
+    const joined = stripIds(ed.getJSON())
+    expect(ed.commands.undo()).toBe(true)
+    expect(ed.commands.redo()).toBe(true)
+    expect(stripIds(ed.getJSON())).toEqual(joined)
+    expect(blocks(ed)).toEqual([{ type: 'codeBlock', text: 'xab' }])
   })
 })
 

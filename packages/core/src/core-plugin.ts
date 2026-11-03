@@ -6,7 +6,7 @@ import { definePlugin } from './plugin/define'
 import type { Command, InputIntent } from './plugin/types'
 import { insertFragment, type Fragment } from './transaction/fragment'
 import { addMark, removeMark, toggleMark } from './transaction/marks'
-import { FRAGMENT_MIME, parseFromClipboard } from './view/clipboard'
+import { FRAGMENT_MIME, parseFromClipboard } from './content/clipboard'
 import type { Transaction } from './transaction/transaction'
 import { deleteBackward, deleteForward, insertText, selectAll, splitBlock, type DeleteUnit } from './transaction/text'
 
@@ -39,7 +39,7 @@ const PASTE_INPUT: Record<string, 'paste' | 'input'> = { insertFromPaste: 'paste
 function insertTransfer(intent: InputIntent, editor: Editor): boolean {
   const transfer = intent.dataTransfer
   if (!transfer) return false
-  // With a node selection the fragment replaces the node (at the selection); else it goes to
+  // With a node selection the fragment replaces the node in place, as typing does; else it goes to
   // `intent.range` (a drop point), which `transformPasted` hooks get too.
   const at = isNodeSelection(editor.state.selection) ? null : intent.range
   const fragment = parseFromClipboard(

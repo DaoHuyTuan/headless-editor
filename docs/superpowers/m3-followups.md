@@ -3,13 +3,14 @@
 Collected from the per-task and final reviews of milestone M3 (branch `feat/m3`), from the SDD ledger. The open items of `m2-followups.md` (including its M4 section) and `m1-followups.md` still apply as well.
 
 ## Start of M4: do these first
-- **Undo is vetoed after content is normalized into a code block.** Backspace-joining a paragraph that holds bold text or a mention into the code block above cannot be undone: the undo tr re-adds the mark / re-inserts the atom inside the code block before its split restores the paragraph, and the code block's `filterTransaction` (`addsFormatting`) vetoes it, so `undo()` returns false. Pre-existing (old rule 8 also stripped marks and atoms). Likely fix: don't veto history trs, or judge by the final doc.
-- **`can()` doesn't run `filterTransaction`.** `can().toggleBold()` is true inside a code block, so the toolbar and the real command disagree.
+- ✅ ~~**Undo is vetoed after content is normalized into a code block.** Backspace-joining a paragraph that holds bold text or a mention into the code block above cannot be undone: the undo tr re-adds the mark / re-inserts the atom inside the code block before its split restores the paragraph, and the code block's `filterTransaction` (`addsFormatting`) vetoes it, so `undo()` returns false. Pre-existing (old rule 8 also stripped marks and atoms). Likely fix: don't veto history trs, or judge by the final doc.~~ Closed in M4 part 1.
+- ✅ ~~**`can()` doesn't run `filterTransaction`.** `can().toggleBold()` is true inside a code block, so the toolbar and the real command disagree.~~ Closed in M4 part 1.
 - **Re-run the e2e suite on port 5174.** Port 5174 was held by an unrelated `wslrelay.exe` (another project), so `pnpm --filter playground e2e` could not run. M3 e2e passed (75 tests) on a temporary copy of the config on port 5175.
-- **The three items moved from m2** (see the M4 section of `m2-followups.md`):
-  - map the history stacks through outside-history structural changes instead of clearing them;
-  - move clipboard parse/serialize into `content/`;
-  - make text pasted over a node selection behave like typing over it.
+- ✅ **The three items moved from m2** (see the M4 section of `m2-followups.md`), closed in M4 part 1:
+  - ✅ ~~map the history stacks through outside-history structural changes instead of clearing them;~~
+  - ✅ ~~move clipboard parse/serialize into `content/`;~~
+  - ✅ ~~make text pasted over a node selection behave like typing over it.~~
+- **Input for M4 part 2:** [`m4-cross-browser.md`](m4-cross-browser.md). WebKit has 11 real e2e failures (49 pass, 15 CDP-only skips); Firefox cannot launch on this machine, so it has no data yet. Deferred minors from part 1 are in [`m4-followups.md`](m4-followups.md).
 
 ## Decisions and scope for M4+
 - Firefox and WebKit (M4).
@@ -88,7 +89,7 @@ Collected from the per-task and final reviews of milestone M3 (branch `feat/m3`)
 - `useMention` re-renders every mention chip while the popup is open (each view subscribes to the mention plugin state, which changes on every query and result).
 
 ## Code block
-- Normalize rule 11 (split inline blocks at `\n`) restarts from the root per split, so it is super-linear in the number of newlines: Backspace-joining a 1000-line code block takes ~170 ms, 2000 lines ~1.4 s; `setContent` with a 2000-line paragraph ~0.5–1.5 s. Split all newlines of a block in one pass.
+- ✅ ~~Normalize rule 11 (split inline blocks at `\n`) restarts from the root per split, so it is super-linear in the number of newlines: Backspace-joining a 1000-line code block takes ~170 ms, 2000 lines ~1.4 s; `setContent` with a 2000-line paragraph ~0.5–1.5 s. Split all newlines of a block in one pass.~~ Closed in M4 part 1.
 - Nested blocks (lists) lose newlines when pasted into a code block (`plainText` joins children with `""`).
 - Text with newlines pasted outside a code block splits paragraphs (untested for a non-code source).
 - A vetoed line-break tr in a code block falls through to core `splitBlock`.

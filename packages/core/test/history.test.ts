@@ -145,8 +145,8 @@ describe('history plugin', () => {
     expect(stacks().redo).toHaveLength(1)
   })
 
-  it('a tr with addToHistory false and doc ops empties both stacks', () => {
-    const { ed, clock, type, stacks } = setup()
+  it('a tr with addToHistory false and doc ops maps both stacks, dropping what it cannot rebase', () => {
+    const { ed, clock, type, text, stacks } = setup()
     type('a')
     clock.t += 600
     type('b')
@@ -157,8 +157,11 @@ describe('history plugin', () => {
     tr.meta.addToHistory = false
     tr.insertText('z')
     ed.dispatch(tr)
-    expect(stacks().undo).toHaveLength(0)
+    // Undo removes "a" before the "z"; redo inserted "b" exactly where "z" went: an ambiguous tie, dropped.
+    expect(stacks().undo).toHaveLength(1)
     expect(stacks().redo).toHaveLength(0)
+    expect(ed.commands.undo()).toBe(true)
+    expect(text()).toEqual(stripIds(doc(p('z'))))
   })
 
   it('setContent empties the stacks', () => {
@@ -333,10 +336,10 @@ describe('history rewrites data-only changes made outside history', () => {
     expect(dataOf(b)).toEqual({ src: 'blob:b2' })
   })
 
-  it('a structural addToHistory:false tr still clears both stacks', () => {
-    const { ed, stacks, insertImage } = imageSetup()
+  it('a structural addToHistory:false tr drops the entries touching the removed node and maps the rest', () => {
+    const { ed, stacks, insertImage, dataOf } = imageSetup()
     const id = insertImage({ src: 'blob:1' })
-    insertImage({ src: 'blob:2' })
+    const id2 = insertImage({ src: 'blob:2' })
     ed.commands.undo()
     expect(stacks().undo).toHaveLength(1)
     expect(stacks().redo).toHaveLength(1)
@@ -345,8 +348,12 @@ describe('history rewrites data-only changes made outside history', () => {
     tr.setNodeData(findPathById(ed.state.doc, id)!, { src: 'https://x/1.png' })
     tr.removeNode(findPathById(tr.doc, id)!)
     ed.dispatch(tr)
+    // The undo entry removes image 1 (changed, then removed outside): dropped. Redo of image 2 is unrelated.
     expect(stacks().undo).toHaveLength(0)
-    expect(stacks().redo).toHaveLength(0)
+    expect(stacks().redo).toHaveLength(1)
+    expect(ed.commands.redo()).toBe(true)
+    expect(dataOf(id2)).toEqual({ src: 'blob:2' })
+    expect(dataOf(id)).toBeNull()
   })
 })
 
@@ -377,6 +384,37 @@ describe('clearHistory', () => {
     type('a')
     const tr = ed.createTransaction()
     tr.setMeta('historyClear', 'yes')
+    ed.dispatch(tr)
+    expect(stacks().undo).toHaveLength(1)
+  })
+})
+
+describe("a doc-changing tr with origin 'history' but no valid historyAction", () => {
+  for (const action of [undefined, 'bogus']) {
+    it(`clears the stacks (historyAction: ${String(action)}) instead of desyncing them`, () => {
+      const { ed, type, text, stacks } = setup()
+      type('a')
+      ed.commands.undo()
+      type('a')
+      expect(stacks().undo).toHaveLength(1)
+      const tr = ed.createTransaction()
+      tr.meta.origin = 'history'
+      if (action !== undefined) tr.meta.historyAction = action as never
+      tr.apply({ type: 'insert_text', path: [0, 0], offset: 0, text: 'x' })
+      ed.dispatch(tr)
+      expect(text()).toEqual(stripIds(doc(p('xa'))))
+      expect(stacks()).toEqual({ undo: [], redo: [] })
+      expect(ed.commands.undo()).toBe(false)
+      expect(text()).toEqual(stripIds(doc(p('xa'))))
+    })
+  }
+
+  it('a selection-only one leaves the stacks alone', () => {
+    const { ed, type, stacks } = setup()
+    type('a')
+    const tr = ed.createTransaction()
+    tr.meta.origin = 'history'
+    tr.setSelection(sel([0, 0], 0))
     ed.dispatch(tr)
     expect(stacks().undo).toHaveLength(1)
   })
@@ -520,11 +558,13 @@ describe('appendTransaction trs join the triggering history entry', () => {
         return t
       },
     })
-    const { type, text, stacks } = appendSetup([outside])
+    const { ed, type, text, stacks } = appendSetup([outside])
     type('a')
     expect(text()).toBe('>a')
-    // Structural change made outside history: today's behaviour clears the stacks.
-    expect(stacks().undo).toHaveLength(0)
+    // Structural change made outside history: the typing entry is rebased past it.
+    expect(stacks().undo).toHaveLength(1)
+    expect(ed.commands.undo()).toBe(true)
+    expect(text()).toBe('>')
   })
 
   it('appended trs inherit addToHistory:false from their root', () => {
@@ -549,5 +589,327 @@ describe('appendTransaction trs join the triggering history entry', () => {
     expect(metas[1]).toMatchObject({ addToHistory: false })
     expect(metas[1]!.appendedTo).toBeUndefined()
     expect(stacks().undo).toHaveLength(0)
+  })
+})
+
+describe('history maps its stacks through structural changes made outside history', () => {
+  const outside = (ed: ReturnType<typeof setup>['ed'], fn: (tr: Transaction) => void) => {
+    const tr = ed.createTransaction()
+    tr.meta.origin = 'plugin'
+    tr.meta.addToHistory = false
+    fn(tr)
+    ed.dispatch(tr)
+  }
+  const moveCaret = (ed: ReturnType<typeof setup>['ed'], s: Selection) => {
+    const tr = ed.createTransaction()
+    tr.setSelection(s)
+    ed.dispatch(tr)
+  }
+
+  it('keeps undo after an outside-history insert of an unrelated block', () => {
+    const { ed, type, text, stacks } = setup()
+    type('a')
+    outside(ed, (tr) => tr.insertNode([0], p('x')))
+    expect(text()).toEqual(stripIds(doc(p('x'), p('a'))))
+    expect(stacks().undo).toHaveLength(1)
+    expect(ed.commands.undo()).toBe(true)
+    expect(text()).toEqual(stripIds(doc(p('x'), p(''))))
+    expect(ed.state.selection).toEqual(sel([1, 0], 0))
+  })
+
+  it('keeps undo after an outside edit of a different block before the typed block', () => {
+    const { ed, type, text } = setup(doc(p('one'), p('')), sel([1, 0], 0))
+    type('a')
+    outside(ed, (tr) => {
+      tr.insertText('!', sel([0, 0], 3))
+      tr.insertNode([1], p('mid'))
+    })
+    expect(text()).toEqual(stripIds(doc(p('one!'), p('mid'), p('a'))))
+    expect(ed.commands.undo()).toBe(true)
+    expect(text()).toEqual(stripIds(doc(p('one!'), p('mid'), p(''))))
+    expect(ed.commands.redo()).toBe(true)
+    expect(text()).toEqual(stripIds(doc(p('one!'), p('mid'), p('a'))))
+    expect(ed.state.selection).toEqual(sel([2, 0], 1))
+  })
+
+  it('an outside remove of the very block the entry touched drops that entry', () => {
+    const { ed, type, text, stacks } = setup(doc(p(''), p('z')))
+    type('a')
+    outside(ed, (tr) => tr.removeNode([0]))
+    expect(stacks().undo).toHaveLength(0)
+    expect(ed.commands.undo()).toBe(false)
+    expect(text()).toEqual(stripIds(doc(p('z'))))
+  })
+
+  it('drops only entries that touch a node removed outside history', () => {
+    const { ed, clock, type, text, stacks } = setup(doc(p(''), p('')))
+    type('a') // entry 1: paragraph 0
+    clock.t += 600
+    moveCaret(ed, sel([1, 0], 0))
+    type('b') // entry 2: paragraph 1
+    outside(ed, (tr) => tr.removeNode([0]))
+    expect(text()).toEqual(stripIds(doc(p('b'))))
+    expect(stacks().undo).toHaveLength(1)
+    expect(ed.commands.undo()).toBe(true)
+    expect(text()).toEqual(stripIds(doc(p(''))))
+    expect(ed.commands.undo()).toBe(false)
+  })
+
+  it('drops every entry below one that cannot be rebased, keeping the ones above', () => {
+    const { ed, clock, type, text, stacks } = setup(doc(p(''), p('')))
+    moveCaret(ed, sel([1, 0], 0))
+    type('b') // entry 1: paragraph 1 (rebasable on its own)
+    clock.t += 600
+    moveCaret(ed, sel([0, 0], 0))
+    type('a') // entry 2: paragraph 0 (removed below)
+    clock.t += 600
+    moveCaret(ed, sel([1, 0], 1))
+    type('c') // entry 3: paragraph 1
+    outside(ed, (tr) => tr.removeNode([0]))
+    expect(stacks().undo).toHaveLength(1)
+    expect(ed.commands.undo()).toBe(true)
+    expect(text()).toEqual(stripIds(doc(p('b'))))
+    expect(ed.commands.undo()).toBe(false)
+  })
+
+  it('maps the redo stack too: redo re-applies at the shifted position', () => {
+    const { ed, clock, type, text, stacks } = setup()
+    type('a')
+    clock.t += 600
+    type('b')
+    ed.commands.undo()
+    outside(ed, (tr) => tr.insertNode([0], p('x')))
+    expect(stacks().redo).toHaveLength(1)
+    expect(ed.commands.redo()).toBe(true)
+    expect(text()).toEqual(stripIds(doc(p('x'), p('ab'))))
+    expect(ed.state.selection).toEqual(sel([1, 0], 2))
+    expect(ed.commands.undo()).toBe(true)
+    expect(ed.commands.undo()).toBe(true)
+    expect(text()).toEqual(stripIds(doc(p('x'), p(''))))
+    expect(ed.commands.redo()).toBe(true)
+    expect(ed.commands.redo()).toBe(true)
+    expect(text()).toEqual(stripIds(doc(p('x'), p('ab'))))
+  })
+
+  it('drops a redo entry that touches a node removed outside history, keeping undo', () => {
+    const { ed, clock, type, text, stacks } = setup(doc(p(''), p('')))
+    type('a') // entry 1: paragraph 0
+    clock.t += 600
+    moveCaret(ed, sel([1, 0], 0))
+    type('b') // entry 2: paragraph 1
+    ed.commands.undo()
+    outside(ed, (tr) => tr.removeNode([1]))
+    expect(stacks().redo).toHaveLength(0)
+    expect(stacks().undo).toHaveLength(1)
+    expect(ed.commands.undo()).toBe(true)
+    expect(text()).toEqual(stripIds(doc(p(''))))
+  })
+
+  it('a move_node outside history still clears both stacks', () => {
+    const { ed, type, stacks } = setup(doc(p(''), p('z')))
+    type('a')
+    outside(ed, (tr) => tr.apply({ type: 'move_node', path: [1], newPath: [0] }))
+    expect(stacks().undo).toHaveLength(0)
+    expect(stacks().redo).toHaveLength(0)
+  })
+})
+
+describe('a rebased undo/redo that lands on a non-normalized doc', () => {
+  function stepper(content: Doc) {
+    const s = setup(content, sel([0, 0], 1))
+    const step = (fn: (tr: Transaction) => void, outside = false) => {
+      const tr = s.ed.createTransaction()
+      if (outside) {
+        tr.meta.origin = 'plugin'
+        tr.meta.addToHistory = false
+      }
+      fn(tr)
+      s.ed.dispatch(tr)
+      s.clock.t += 600
+    }
+    return { ...s, step }
+  }
+  const bold = (t: string) => txt(t, 'bold')
+
+  it('folds the normalization of an undo into the stacks (merge after undo, split back on redo)', () => {
+    const { ed, text, step } = stepper(doc(p('a')))
+    step((tr) => tr.insertNode([0, 1], bold('b')))
+    step((tr) => tr.insertNode([0, 2], txt('c')), true)
+    expect(text()).toEqual(stripIds(doc(p('a', bold('b'), 'c'))))
+    expect(ed.commands.undo()).toBe(true)
+    expect(text()).toEqual(stripIds(doc(p('ac'))))
+    expect(ed.commands.undo()).toBe(false)
+    expect(ed.commands.redo()).toBe(true)
+    expect(text()).toEqual(stripIds(doc(p('a', bold('b'), 'c'))))
+    expect(ed.commands.undo()).toBe(true)
+    expect(text()).toEqual(stripIds(doc(p('ac'))))
+    expect(ed.commands.redo()).toBe(true)
+    expect(text()).toEqual(stripIds(doc(p('a', bold('b'), 'c'))))
+    expect(ed.commands.redo()).toBe(false)
+  })
+
+  it('keeps the entry below consistent with the merged text, never losing the outside text', () => {
+    const { ed, text, step } = stepper(doc(p('a')))
+    step((tr) => tr.insertNode([0, 1], bold('q')))
+    step((tr) => tr.insertNode([0, 2], txt('b')))
+    step((tr) => tr.insertNode([0, 3], bold('r')))
+    step((tr) => tr.insertNode([0, 4], txt('c')), true)
+    const steps = [
+      doc(p('a', bold('q'), 'b', bold('r'), 'c')),
+      doc(p('a', bold('q'), 'bc')),
+      doc(p('a', bold('q'), 'c')),
+      doc(p('ac')),
+    ].map(stripIds)
+    expect(text()).toEqual(steps[0])
+    for (let i = 1; i < steps.length; i++) {
+      expect(ed.commands.undo()).toBe(true)
+      expect(text()).toEqual(steps[i])
+    }
+    expect(ed.commands.undo()).toBe(false)
+    for (let i = steps.length - 2; i >= 0; i--) {
+      expect(ed.commands.redo()).toBe(true)
+      expect(text()).toEqual(steps[i])
+    }
+    expect(ed.commands.redo()).toBe(false)
+  })
+
+  it('folds the normalization of a redo (k undone steps, an outside tr, redo all, then full cycles)', () => {
+    const { ed, text, step, stacks } = stepper(doc(p('a', bold('x'))))
+    step((tr) => tr.insertNode([1], p('q')))
+    step((tr) => tr.removeNode([0, 1]))
+    expect(text()).toEqual(stripIds(doc(p('a'), p('q'))))
+    expect(ed.commands.undo()).toBe(true)
+    expect(ed.commands.undo()).toBe(true)
+    expect(text()).toEqual(stripIds(doc(p('a', bold('x')))))
+    step((tr) => tr.insertNode([0, 2], txt('c')), true)
+    const states = [
+      doc(p('a', bold('x'), 'c')),
+      doc(p('a', bold('x'), 'c'), p('q')),
+      // The rebased remove of *x* leaves "a" and "c" adjacent: normalization merges them.
+      doc(p('ac'), p('q')),
+    ].map(stripIds)
+    expect(text()).toEqual(states[0])
+    const redoAll = () => {
+      for (let i = 1; i < states.length; i++) {
+        expect(ed.commands.redo()).toBe(true)
+        expect(text()).toEqual(states[i])
+      }
+      expect(ed.commands.redo()).toBe(false)
+    }
+    const undoAll = () => {
+      for (let i = states.length - 2; i >= 0; i--) {
+        expect(ed.commands.undo()).toBe(true)
+        expect(text()).toEqual(states[i])
+      }
+      expect(ed.commands.undo()).toBe(false)
+    }
+    redoAll()
+    // The merge was folded into the redone entry: it is longer than its two recorded ops.
+    const top = stacks().undo[stacks().undo.length - 1] as { ops: unknown[] }
+    expect(top.ops.length).toBeGreaterThan(1)
+    for (let c = 0; c < 2; c++) {
+      undoAll()
+      redoAll()
+    }
+  })
+
+  it('typing right after an outside structural tr starts a new step', () => {
+    const { ed, type, text } = setup()
+    type('a')
+    const tr = ed.createTransaction()
+    tr.meta.addToHistory = false
+    tr.insertNode([0], p('x'))
+    ed.dispatch(tr)
+    type('b') // same clock: would group with "a" without the break
+    expect(ed.commands.undo()).toBe(true)
+    expect(text()).toEqual(stripIds(doc(p('x'), p('a'))))
+    expect(ed.commands.undo()).toBe(true)
+    expect(text()).toEqual(stripIds(doc(p('x'), p(''))))
+  })
+})
+
+describe('history fuzz: user steps, an outside structural tr, then undo all and redo all', () => {
+  function rng(seed: number) {
+    return () => {
+      seed |= 0
+      seed = (seed + 0x6d2b79f5) | 0
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed)
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+    }
+  }
+
+  it('never throws, never loses the outside text, and redo all restores the doc', () => {
+    let totalUndos = 0
+    for (let seed = 1; seed <= 300; seed++) {
+      const r = rng(seed)
+      const int = (n: number) => Math.floor(r() * n)
+      const { ed, clock } = setup(doc(p('abc', txt('de', 'bold')), p('fgh')), sel([0, 0], 0))
+      const texts = () => {
+        const out: [number[], number][] = []
+        ed.state.doc.children.forEach((b, i) =>
+          (b.children ?? []).forEach((t, j) => out.push([[i, j], (t as { text: string }).text.length])),
+        )
+        return out
+      }
+      const caret = () => {
+        const all = texts()
+        const [path, len] = all[int(all.length)]!
+        return { path, offset: int(len + 1), len }
+      }
+      const moveTo = (s: Selection) => {
+        const tr = ed.createTransaction()
+        tr.setSelection(s)
+        ed.dispatch(tr)
+      }
+      const steps = 2 + int(3)
+      for (let i = 0; i < steps; i++) {
+        const c = caret()
+        moveTo(sel(c.path, c.offset))
+        const kind = int(4)
+        if (kind === 0) ed.handleIntent({ inputType: 'insertText', data: 'k', range: null })
+        else if (kind === 1) ed.handleIntent({ inputType: 'deleteContentBackward', data: null, range: null })
+        else if (kind === 2) ed.handleIntent({ inputType: 'insertParagraph', data: null, range: null })
+        else if (c.len > 0) {
+          const s = int(c.len)
+          moveTo(sel(c.path, s, c.path, s + 1 + int(c.len - s)))
+          ed.commands.toggleMark('bold')
+        }
+        clock.t += 600
+      }
+      const tr = ed.createTransaction()
+      tr.meta.origin = 'plugin'
+      tr.meta.addToHistory = false
+      const blocks = ed.state.doc.children.length
+      const kind = int(3)
+      if (kind === 0) tr.insertNode([int(blocks + 1)], p('OUT'))
+      else if (kind === 1) {
+        const b = int(blocks)
+        tr.insertNode([b, int(ed.state.doc.children[b]!.children!.length + 1)], r() < 0.5 ? txt('OUT') : txt('OUT', 'bold'))
+      } else {
+        const c = caret()
+        tr.apply({ type: 'insert_text', path: c.path, offset: c.offset, text: 'OUT' })
+      }
+      ed.dispatch(tr)
+      const after = ed.getJSON()
+      const all = () =>
+        ed.state.doc.children.map((b) => (b.children ?? []).map((t) => (t as { text: string }).text).join('')).join('|')
+      const msg = `seed ${seed}`
+      expect(all(), msg).toContain('OUT')
+      let undos = 0
+      while (undos < 20 && ed.commands.undo()) {
+        undos++
+        expect(all(), msg).toContain('OUT')
+      }
+      let redos = 0
+      while (redos < 20 && ed.commands.redo()) {
+        redos++
+        expect(all(), msg).toContain('OUT')
+      }
+      expect(redos, msg).toBe(undos)
+      expect(ed.getJSON(), msg).toEqual(after)
+      totalUndos += undos
+    }
+    expect(totalUndos).toBeGreaterThan(300)
   })
 })

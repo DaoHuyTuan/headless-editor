@@ -195,6 +195,79 @@ describe('Editor', () => {
     expect(ed.commands.toggleMark('bold')).toBe(true)
   })
 
+  describe('can() runs filterTransaction', () => {
+    const vetoSetup = () => {
+      const filter = vi.fn((tr: Transaction) => tr.meta.veto !== true)
+      const vetoing = definePlugin({
+        name: 'vetoing',
+        filterTransaction: filter,
+        commands: () => ({
+          vetoedInsert:
+            (): Command =>
+            ({ tr }) => {
+              tr.meta.veto = true
+              tr.apply({ type: 'insert_text', path: [0, 0], offset: 0, text: 'x' })
+              return true
+            },
+          allowedInsert:
+            (): Command =>
+            ({ tr }) => {
+              tr.apply({ type: 'insert_text', path: [0, 0], offset: 0, text: 'y' })
+              return true
+            },
+        }),
+      })
+      const ed = createTestEditor({ plugins: [testParagraph, counter, vetoing], doc: doc(el('paragraph', txt('ab'))) })
+      const events = vi.fn()
+      ed.on('update', events)
+      ed.on('transaction', events)
+      return { ed, filter, events }
+    }
+
+    it('can() answers false when a filterTransaction vetoes the command tr', () => {
+      const { ed, filter, events } = vetoSetup()
+      const before = ed.state
+      expect(ed.can().vetoedInsert()).toBe(false)
+      expect(ed.state).toBe(before)
+      expect(ed.getPluginState('counter')).toBe(0)
+      expect(events).not.toHaveBeenCalled()
+      expect(filter).toHaveBeenCalledTimes(1)
+      expect(filter.mock.calls[0]![0].meta.veto).toBe(true)
+      // The command itself agrees.
+      expect(ed.commands.vetoedInsert()).toBe(false)
+    })
+
+    it('can() answers false for a rejected command tr (non-dev), like the command itself', () => {
+      const rejecting = definePlugin({
+        name: 'rejecting',
+        commands: () => ({
+          badData:
+            (): Command =>
+            ({ tr }) => {
+              tr.apply({ type: 'insert_text', path: [0, 0], offset: 0, text: 'x' })
+              tr.setNodeData([0], { level: 'x' })
+              return true
+            },
+        }),
+      })
+      const prod = new Editor({ plugins: [testParagraph, heading, rejecting], content: doc(el('heading', { level: 1 }, txt('a'))) })
+      const before = prod.state
+      expect(prod.can().badData()).toBe(false)
+      expect(prod.commands.badData()).toBe(false)
+      expect(prod.state).toBe(before)
+    })
+
+    it('can() still answers true for an allowed command', () => {
+      const { ed, filter, events } = vetoSetup()
+      const before = ed.state
+      expect(ed.can().allowedInsert()).toBe(true)
+      expect(ed.state).toBe(before)
+      expect(events).not.toHaveBeenCalled()
+      expect(filter).toHaveBeenCalledTimes(1)
+      expect(ed.commands.allowedInsert()).toBe(true)
+    })
+  })
+
   it('normalizes dispatched transactions', () => {
     const ed = createTestEditor({ plugins: [testParagraph, testBold], doc: doc(el('paragraph', txt('ab'))) })
     const tr = ed.createTransaction()
@@ -347,6 +420,30 @@ describe('Editor', () => {
     const mac = createTestEditor({ plugins: [testParagraph, lo], platform: 'mac' })
     expect(mac.runKeymap('Meta-k')).toBe(true)
     expect(mac.runKeymap('Ctrl-k')).toBe(false)
+  })
+
+  it.each([
+    // Playwright's "Desktop Safari" on a Windows host: Mac user agent, Windows OS and keyboard.
+    { platform: 'Win32', ua: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15', key: 'Ctrl' },
+    { platform: 'MacIntel', ua: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15', key: 'Meta' },
+    // Chrome on a Mac with a spoofed Windows user agent.
+    { platform: 'MacIntel', ua: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', key: 'Meta' },
+    { platform: 'iPad', ua: 'Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X)', key: 'Meta' },
+    { platform: 'iPhone', ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)', key: 'Meta' },
+    { platform: 'Linux x86_64', ua: 'Mozilla/5.0 (X11; Linux x86_64)', key: 'Ctrl' },
+    // No navigator.platform: fall back to the user agent.
+    { platform: '', ua: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', key: 'Meta' },
+    { platform: '', ua: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', key: 'Ctrl' },
+  ])('Mod follows the OS in navigator.platform ($platform), not a spoofed user agent', ({ platform, ua, key }) => {
+    vi.stubGlobal('navigator', { platform, userAgent: ua })
+    try {
+      const k = definePlugin({ name: 'k', keymap: () => ({ 'Mod-k': () => true }) })
+      const ed = new Editor({ plugins: [testParagraph, k] })
+      expect(ed.runKeymap(`${key}-k`)).toBe(true)
+      expect(ed.runKeymap(`${key === 'Ctrl' ? 'Meta' : 'Ctrl'}-k`)).toBe(false)
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 
   it('handleIntent asks plugins by priority', () => {

@@ -1,7 +1,16 @@
 import { deflateSync } from 'node:zlib'
 import { expect, test, type Page } from '@playwright/test'
 import type { Doc, ElementNode } from '@hte/core'
-import { focusEnd, getDoc, getSelection, getText, openPlayground } from './helpers'
+import {
+  focusEnd,
+  getDoc,
+  getSelection,
+  getText,
+  openPlayground,
+  syntheticCopy,
+  syntheticPaste,
+  WEBKIT_KEYBOARD_CLIPBOARD,
+} from './helpers'
 
 function crc32(bytes: Uint8Array): number {
   let crc = 0xffffffff
@@ -40,8 +49,6 @@ function makePng(): Buffer {
 const PNG = makePng()
 const PNG_BASE64 = PNG.toString('base64')
 const png = () => PNG
-
-test.use({ permissions: ['clipboard-read', 'clipboard-write'] })
 
 let errors: string[]
 
@@ -228,7 +235,9 @@ test.describe('the image scenario', () => {
 
   test('an IME composition while the image is selected replaces it with a paragraph of the composed text', async ({
     page,
+    browserName,
   }) => {
+    test.skip(browserName !== 'chromium', 'CDP-only')
     await editorImg(page).click()
     await expect.poll(async () => (await getSelection(page))?.node).toEqual([1])
     const cdp = await page.context().newCDPSession(page)
@@ -278,7 +287,11 @@ test.describe('the image scenario', () => {
     await expect(editorImg(page)).toHaveAttribute('width', String(width))
   })
 
-  test('copying a selected image and pasting it elsewhere adds a second image with a fresh id', async ({ page }) => {
+  test('copying a selected image and pasting it elsewhere adds a second image with a fresh id', async ({
+    page,
+    browserName,
+  }) => {
+    test.skip(browserName === 'webkit', WEBKIT_KEYBOARD_CLIPBOARD)
     await editorImg(page).click()
     await page.keyboard.press('ControlOrMeta+c')
     await caret(page, [2, 0], 'after'.length)
@@ -291,7 +304,8 @@ test.describe('the image scenario', () => {
     expect(second!.data).toEqual(first!.data)
   })
 
-  test('cutting a selected image removes it; pasting puts it back', async ({ page }) => {
+  test('cutting a selected image removes it; pasting puts it back', async ({ page, browserName }) => {
+    test.skip(browserName === 'webkit', WEBKIT_KEYBOARD_CLIPBOARD)
     await editorImg(page).click()
     await page.keyboard.press('ControlOrMeta+x')
     await expect(editorImg(page)).toHaveCount(0)
@@ -300,5 +314,74 @@ test.describe('the image scenario', () => {
     await page.keyboard.press('ControlOrMeta+v')
     await expect(editorImg(page)).toHaveCount(1)
     expect(await types(page)).toEqual(['paragraph', 'paragraph', 'image', 'paragraph'])
+  })
+
+  // The same flows through synthetic events sharing one clipboard: WebKit keeps coverage of the handlers.
+  for (const without of [[], ['application/x-hte-fragment']]) {
+    test(`synthetic copy of a selected image, pasted elsewhere, adds an equal image with a fresh id (${without.length ? 'html fallback' : 'json'})`, async ({
+      page,
+    }) => {
+      await editorImg(page).click()
+      await expect.poll(async () => (await getSelection(page))?.node).toEqual([1])
+      expect((await syntheticCopy(page, 'copy')).prevented).toBe(true)
+      await caret(page, [2, 0], 'after'.length)
+      expect(await syntheticPaste(page, without)).toBe(true)
+      await expect(editorImg(page)).toHaveCount(2)
+      const doc = await getDoc(page)
+      expect(doc.children.map((b) => b.type)).toEqual(['paragraph', 'image', 'paragraph', 'image', 'paragraph'])
+      const [first, second] = images(doc)
+      expect(second!.id).not.toBe(first!.id)
+      expect(second!.data).toEqual(first!.data)
+    })
+  }
+
+  test('synthetic cut of a selected image removes it; paste puts it back', async ({ page }) => {
+    await editorImg(page).click()
+    await expect.poll(async () => (await getSelection(page))?.node).toEqual([1])
+    expect((await syntheticCopy(page, 'cut')).prevented).toBe(true)
+    await expect(editorImg(page)).toHaveCount(0)
+    expect(await types(page)).toEqual(['paragraph', 'paragraph'])
+    await caret(page, [1, 0], 'after'.length)
+    expect(await syntheticPaste(page)).toBe(true)
+    await expect(editorImg(page)).toHaveCount(1)
+    expect(await types(page)).toEqual(['paragraph', 'paragraph', 'image', 'paragraph'])
+  })
+})
+
+test.describe('pasting over a selected image', () => {
+  test.beforeEach(async ({ page }) => {
+    await openImageScenario(page)
+  })
+
+  test('pasting text over a selected image replaces it in place', async ({ page }) => {
+    const before = await getDoc(page)
+    await editorImg(page).click()
+    await expect.poll(async () => (await getSelection(page))?.node).toEqual([1])
+    const prevented = await page.evaluate(() => {
+      const dt = new DataTransfer()
+      dt.setData('text/plain', 'pasted')
+      const e = new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true })
+      window.editor.view!.root.dispatchEvent(e)
+      return e.defaultPrevented
+    })
+    expect(prevented).toBe(true)
+    // The image's slot now holds the pasted text; nothing lands before or after it.
+    expect(await types(page)).toEqual(['paragraph', 'paragraph', 'paragraph'])
+    expect(await getText(page)).toBe('before\npasted\nafter')
+    await expect(editorImg(page)).toHaveCount(0)
+    await expect(page.locator('[data-testid=editor] p')).toHaveText(['before', 'pasted', 'after'])
+    // The caret ends after the pasted text, and typing continues there.
+    const sel = await getSelection(page)
+    expect(sel?.node).toBeUndefined()
+    expect(sel?.anchor).toEqual({ path: [1, 0], offset: 'pasted'.length })
+    expect(sel?.focus).toEqual({ path: [1, 0], offset: 'pasted'.length })
+    await page.keyboard.type('!')
+    expect(await getText(page)).toBe('before\npasted!\nafter')
+    // One undo per step: the typing, then the paste, which restores the image.
+    await page.keyboard.press('ControlOrMeta+z')
+    expect(await getText(page)).toBe('before\npasted\nafter')
+    await page.keyboard.press('ControlOrMeta+z')
+    await expect.poll(() => getDoc(page)).toEqual(before)
+    await expect(editorImg(page)).toHaveCount(1)
   })
 })

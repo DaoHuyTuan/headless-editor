@@ -1,8 +1,17 @@
 import { expect, test, type Page } from '@playwright/test'
 import type { Doc, ElementNode, Node, TextNode } from '@hte/core'
-import { focusEnd, getDoc, getSelection, getText, openPlayground } from './helpers'
+import {
+  focusEnd,
+  getDoc,
+  getSelection,
+  getText,
+  openPlayground,
+  syntheticCopy,
+  syntheticPaste,
+  WEBKIT_KEYBOARD_CLIPBOARD,
+} from './helpers'
 
-test.use({ permissions: ['clipboard-read', 'clipboard-write'] })
+const FRAGMENT_MIME = 'application/x-hte-fragment'
 
 test.beforeEach(async ({ page }) => {
   await openPlayground(page)
@@ -46,7 +55,8 @@ async function select(page: Page, anchor: [number[], number], focus: [number[], 
   )
 }
 
-test('copy then paste with the keyboard round-trips through the clipboard', async ({ page }) => {
+test('copy then paste with the keyboard round-trips through the clipboard', async ({ page, browserName }) => {
+  test.skip(browserName === 'webkit', WEBKIT_KEYBOARD_CLIPBOARD)
   await page.keyboard.type('abc')
   await page.keyboard.press('Shift+ArrowLeft')
   await page.keyboard.press('Shift+ArrowLeft')
@@ -59,7 +69,8 @@ test('copy then paste with the keyboard round-trips through the clipboard', asyn
   await expect(page.getByTestId('editor')).toHaveText('abcbc')
 })
 
-test('copy across two blocks and paste keeps the block structure with unique ids', async ({ page }) => {
+test('copy across two blocks and paste keeps the block structure with unique ids', async ({ page, browserName }) => {
+  test.skip(browserName === 'webkit', WEBKIT_KEYBOARD_CLIPBOARD)
   await page.keyboard.type('one')
   await page.keyboard.press('Enter')
   await page.keyboard.type('two')
@@ -104,7 +115,8 @@ test('pasting multi-line plain text creates blocks', async ({ page }) => {
   await expect(page.locator('[data-testid=editor] p')).toHaveText(['first', 'second', 'third'])
 })
 
-test('cut removes the selection and puts it on the clipboard', async ({ page }) => {
+test('cut removes the selection and puts it on the clipboard', async ({ page, browserName }) => {
+  test.skip(browserName === 'webkit', WEBKIT_KEYBOARD_CLIPBOARD)
   await page.keyboard.type('hello world')
   await select(page, [[0, 0], 5], [[0, 0], 11])
   await page.keyboard.press('ControlOrMeta+x')
@@ -112,4 +124,51 @@ test('cut removes the selection and puts it on the clipboard', async ({ page }) 
   await expect(page.getByTestId('editor')).toHaveText('hello')
   await page.keyboard.press('ControlOrMeta+v')
   await expect.poll(() => getText(page)).toBe('hello world')
+})
+
+// The editor's own copy/cut/paste handlers through synthetic events sharing one clipboard: these run
+// on every browser, so WebKit keeps coverage where the keyboard round-trip above is skipped.
+test.describe('synthetic copy / cut → paste', () => {
+  test('copy then paste round-trips', async ({ page }) => {
+    await page.keyboard.type('abc')
+    await select(page, [[0, 0], 3], [[0, 0], 1])
+    expect(await syntheticCopy(page, 'copy')).toEqual({
+      prevented: true,
+      types: expect.arrayContaining(['text/plain', 'text/html', FRAGMENT_MIME]),
+    })
+    await focusEnd(page)
+    expect(await syntheticPaste(page)).toBe(true)
+    await expect.poll(() => getText(page)).toBe('abcbc')
+    await expect(page.getByTestId('editor')).toHaveText('abcbc')
+  })
+
+  for (const without of [[], [FRAGMENT_MIME]]) {
+    test(`copy across two blocks and paste keeps the structure with unique ids (${without.length ? 'html fallback' : 'json'})`, async ({
+      page,
+    }) => {
+      await page.keyboard.type('one')
+      await page.keyboard.press('Enter')
+      await page.keyboard.type('two')
+      await select(page, [[0, 0], 1], [[1, 0], 2])
+      expect((await syntheticCopy(page, 'copy')).prevented).toBe(true)
+      await focusEnd(page)
+      expect(await syntheticPaste(page, without)).toBe(true)
+      await expect.poll(() => getText(page)).toBe('one\ntwone\ntw')
+      const doc = await getDoc(page)
+      expect(doc.children).toHaveLength(3)
+      const ids = elementIds(doc)
+      expect(new Set(ids).size).toBe(ids.length)
+      await expect(page.locator('[data-testid=editor] p')).toHaveText(['one', 'twone', 'tw'])
+    })
+  }
+
+  test('cut removes the selection; paste puts it back', async ({ page }) => {
+    await page.keyboard.type('hello world')
+    await select(page, [[0, 0], 5], [[0, 0], 11])
+    expect((await syntheticCopy(page, 'cut')).prevented).toBe(true)
+    await expect.poll(() => getText(page)).toBe('hello')
+    await expect(page.getByTestId('editor')).toHaveText('hello')
+    expect(await syntheticPaste(page)).toBe(true)
+    await expect.poll(() => getText(page)).toBe('hello world')
+  })
 })

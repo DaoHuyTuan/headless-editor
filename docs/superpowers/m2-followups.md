@@ -7,15 +7,15 @@ Status after M3 verification: the typed storage/state and `appendTransaction` it
 
 - ✅ done in M3: ~~**Typed access to a plugin's own storage and state.** `ctx.storage` is typed like `ctx.commands`, `usePluginState` reads a plugin's state with types, and the casts in `@hte/image` are gone.~~
 - ✅ done in M3: ~~**`appendTransaction` joining history entries** (moved from M1). Appended trs join the entry of the transaction that triggered them (`91f6359`).~~
-- Moved to M4: **History mapping instead of clearing.** Structural changes made outside history (for example a failed upload removing an image) still clear the whole undo history.
-- Moved to M4: **Move clipboard parse/serialize out of `view/` into `content/`.** `core-plugin.ts` imports `view/clipboard` today.
-- Moved to M4: **Text pasted over a node selection** lands in the previous block, while typing replaces the node in place.
+- ✅ closed in M4 part 1: ~~Moved to M4: **History mapping instead of clearing.** Structural changes made outside history (for example a failed upload removing an image) still clear the whole undo history.~~
+- ✅ closed in M4 part 1: ~~Moved to M4: **Move clipboard parse/serialize out of `view/` into `content/`.** `core-plugin.ts` imports `view/clipboard` today.~~
+- ✅ closed in M4 part 1: ~~Moved to M4: **Text pasted over a node selection** lands in the previous block, while typing replaces the node in place.~~
 
 ## M4
-Kept open from "Start of M3" (no M3 plugin needed them, and each is a separate core change):
-- Map the history stacks through outside-history structural changes instead of clearing them.
-- Move clipboard parse/serialize into `content/`.
-- Make text pasted over a node selection behave like typing over it.
+Kept open from "Start of M3" (no M3 plugin needed them, and each is a separate core change). All three closed in M4 part 1:
+- ✅ ~~Map the history stacks through outside-history structural changes instead of clearing them.~~
+- ✅ ~~Move clipboard parse/serialize into `content/`.~~
+- ✅ ~~Make text pasted over a node selection behave like typing over it.~~
 
 ## Image
 - After a failed upload where the user had changed the original's `src` meanwhile, undo can restore the dead `blob:` src.

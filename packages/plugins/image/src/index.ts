@@ -165,6 +165,12 @@ function report(error: unknown): void {
 function onFailed(ctx: Ctx, ids: ReadonlySet<string>, blob: string, file: File, error: unknown): void {
   const editor = ctx.editor
   try {
+    // One deleted or undone (checked before the removal below, which takes every id out of the doc):
+    // history still holds the blob preview, which will never be uploaded, so undo / redo must not
+    // bring it back. Otherwise every stored copy is in the doc, and the removal below maps history
+    // through itself: the steps that inserted a preview can't be rebased over its removal and are
+    // dropped (with every entry below them), while later unrelated steps stay undoable.
+    const missing = [...ids].some((id) => !findPathById(editor.state.doc, id))
     // The preview and every copy of it: removed outside history (deepest / last first, so the
     // earlier paths stay valid).
     const paths: Path[] = []
@@ -177,9 +183,7 @@ function onFailed(ctx: Ctx, ids: ReadonlySet<string>, blob: string, file: File, 
       for (const path of paths.reverse()) tr.removeNode(path)
       editor.dispatch(tr)
     }
-    // One deleted or undone: history still holds the blob preview, which will never be uploaded,
-    // so undo / redo must not bring it back.
-    if ([...ids].some((id) => !findPathById(editor.state.doc, id))) clearHistory(editor)
+    if (missing) clearHistory(editor)
   } catch (e) {
     report(e)
   }

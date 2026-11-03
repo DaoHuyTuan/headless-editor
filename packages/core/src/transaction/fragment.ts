@@ -219,19 +219,54 @@ function insertBlocks(tr: Transaction, point: Point, blocks: Node[], rightId: st
 }
 
 /**
+ * Replaces the node-selected element with the blocks `nodes` (fresh ids), the first at its index.
+ * The caret ends at the end of the last block's last editable text; when the last block is opaque
+ * (or has none), at the start of the editable text following it, an empty default block being added
+ * when none follows. False when a block is rejected (the tr stays rejected).
+ */
+function replaceSelectedNodeWithBlocks(tr: Transaction, path: Path, nodes: Node[]): boolean {
+  const last = nodes[nodes.length - 1] as ElementNode
+  // Puts `last` where the node was and the caret after it; the blocks before it then go in front,
+  // which maps the caret.
+  if (!replaceSelectedNode(tr, { node: last })) return false
+  const parent = parentPath(path)
+  const index = path[path.length - 1]!
+  nodes.slice(0, -1).forEach((n, i) => tr.insertNode([...parent, index + i], n))
+  if (tr.rejected !== null) return false
+  if (isOpaque(last, tr.registry)) return true
+  const end = endOfInserted([last], parent, index + nodes.length - 1, tr.registry)
+  return end ? caretAt(tr, end) : true
+}
+
+/**
  * Deletes `at` (default: the selection), then inserts `fragment` at the caret; the caret ends after
- * the inserted content. Inserted elements get fresh ids where theirs already exist in the doc or
- * repeat within the fragment. Pasted texts keep their own marks. Returns false without a target;
- * an empty fragment only deletes (true when something was deleted).
+ * the inserted content. A node selection (without `at`) is replaced in place: the content goes where
+ * the node was, as typed text does. Inserted elements get fresh ids where theirs already exist in the
+ * doc or repeat within the fragment. Pasted texts keep their own marks. Returns false without a
+ * target; an empty fragment only deletes (true when something was deleted).
  */
 export function insertFragment(tr: Transaction, fragment: Fragment, at?: Range | Selection): boolean {
-  // A selected node is removed first; the content goes in at the (mapped) caret.
-  const removedNode = !at && replaceSelectedNode(tr, 'delete')
+  // A selected node is replaced in place, as typing does. Blocks with an opaque edge go in whole at
+  // the node's index (merging them into a placeholder would leave it behind as a stray empty block);
+  // other content goes into the start of an empty default block put in the node's place, with the
+  // same split / merge rules as at any caret. An empty fragment only removes the node.
+  const selected = tr.selection
+  if (!at && isNodeSelection(selected)) {
+    if (fragment.length === 0) return replaceSelectedNode(tr, 'delete')
+    const block = (n: Node): n is ElementNode => isElement(n) && tr.registry.node(n.type)?.kind !== 'inline'
+    const opaqueBlock = (n: Node): boolean => block(n) && isOpaque(n, tr.registry)
+    if (block(fragment[0]!) && (opaqueBlock(fragment[0]!) || opaqueBlock(fragment[fragment.length - 1]!))) {
+      const used = new Set<string>()
+      for (const [n] of nodeEntries(tr.doc)) if (isElement(n)) used.add(n.id)
+      return replaceSelectedNodeWithBlocks(tr, selected.node, withUniqueIds(fragment, used))
+    }
+    if (!replaceSelectedNode(tr, { text: '' })) return false
+  }
   const target = at ?? tr.selection
   if (!target) return false
   const range = ordered(target)
   const deleted = deleteRange(tr, range)
-  if (fragment.length === 0) return deleted || removedNode
+  if (fragment.length === 0) return deleted
   const point = range.start
 
   const used = new Set<string>()
