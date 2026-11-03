@@ -1,5 +1,5 @@
 import { comparePath } from './path'
-import { createSelection, isNodeRange, mainRange, single } from './selection'
+import { createSelection, isNodeRange, mainRange, selectionEquals, single } from './selection'
 import { getNode, isText, type ReadableRoot } from './node'
 import type { Doc, ElementNode, Node, Path, Point, Range, Selection, SelectionRange, TextNode } from './types'
 
@@ -118,12 +118,16 @@ export function isEditableRange(doc: ReadableRoot, types: NodeTypes, range: Sele
 }
 
 /**
- * `sel` with every range that is not at an editable point moved there: each bad point goes to
+ * `input` with every range that is not at an editable point moved there: each bad point goes to
  * `nearestEditablePoint`, and a `node` that is not an opaque element is dropped. A range is dropped
  * only when the doc has no editable point; null when every range is. Normalized (moved ranges may
- * merge, `main` follows its range); `sel` itself when every range is already valid.
+ * merge, `main` follows its range; several ranges are normalized even when all are valid, e.g. after a
+ * raw `set_selection` op); `input` itself when it is already normalized and every range is valid.
  */
-export function rehomeRanges(doc: ReadableRoot, types: NodeTypes, sel: Selection): Selection | null {
+export function rehomeRanges(doc: ReadableRoot, types: NodeTypes, input: Selection): Selection | null {
+  // Normalized first: ranges set by a raw `set_selection` op never went through `createSelection`.
+  const normalized = input.ranges.length > 1 ? createSelection(input.ranges, input.main) : input
+  const sel = selectionEquals(normalized, input) ? input : normalized
   if (sel.ranges.every((r) => isEditableRange(doc, types, r))) return sel
   const out: SelectionRange[] = []
   let main = 0

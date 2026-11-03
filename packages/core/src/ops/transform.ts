@@ -137,8 +137,8 @@ export function transformRange(range: SelectionRange, op: Operation, affinity: A
  * `sel` with every range mapped through `op` on its own, then normalized (`createSelection`): ranges
  * that collide are merged and `main` follows its range. A range that can't be mapped is dropped (if it
  * was the main one, `main` moves to the closest surviving range before it, else the first one); null
- * only when every range is gone. Live edits (`Transaction.apply`) re-home such ranges instead of
- * dropping them; history and rebase use `transformSelectionStrict`.
+ * only when every range is gone. It only maps and drops: live-edit re-homing lives in
+ * `Transaction.mapSelection` (used by `Transaction.apply`). History and rebase use `transformSelectionStrict`.
  */
 export function transformSelection(sel: Selection, op: Operation, affinity: Affinity = 'forward'): Selection | null {
   const out: SelectionRange[] = []

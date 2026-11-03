@@ -106,10 +106,7 @@ describe('Transaction with several ranges', () => {
     expect(tr.selection).toEqual({ ranges: [caret([0, 0], 0), caret([1, 0], 2)], main: 1 })
   })
 
-  it('null when every range is gone (as with a single range)', () => {
-    const tr = trOn(doc(para('abc'), para('def')), createSelection([caret([1, 0], 0), caret([1, 0], 2)], 0))
-    tr.removeNode([1])
-    expect(tr.selection).toBeNull()
+  it('a single lost range still gives null (unchanged rule)', () => {
     const one = trOn(doc(para('abc'), para('def')), single(caret([1, 0], 1)))
     one.removeNode([1])
     expect(one.selection).toBeNull()
@@ -172,5 +169,39 @@ describe('Editor validates every committed range', () => {
     tr.setSelection(createSelection([caret([1, 0], 3), caret([2, 0], 1)], 0))
     editor.dispatch(tr)
     expect(editor.state.selection).toEqual({ ranges: [caret([0, 0], 2), caret([2, 0], 1)], main: 0 })
+  })
+})
+
+describe('fix round 1', () => {
+  it('several ranges all in a removed node are rehomed, not nulled', () => {
+    const tr = trOn(doc(para('ab'), para('cd'), para('ef')), createSelection([caret([1, 0], 0), caret([1, 0], 2)], 0))
+    tr.removeNode([1])
+    // Both carets go to the end of p0 and merge.
+    expect(tr.selection).toEqual({ ranges: [caret([0, 0], 2)], main: 0 })
+  })
+
+  it('null when several ranges are lost and the doc has no editable point', () => {
+    const tr = trOn(doc(para('ab')), createSelection([caret([0, 0], 0), caret([0, 0], 2)], 1))
+    tr.removeNode([0])
+    expect(tr.selection).toBeNull()
+  })
+
+  it('a range with only one lost point collapses to a caret at the rehomed point', () => {
+    const range: SelectionRange = { anchor: { path: [1, 0], offset: 1 }, focus: { path: [2, 0], offset: 1 } }
+    const tr = trOn(doc(para('ab'), para('cd'), para('ef')), createSelection([caret([0, 0], 0), range], 1))
+    tr.removeNode([2])
+    expect(tr.selection).toEqual({ ranges: [caret([0, 0], 0), caret([1, 0], 2)], main: 1 })
+  })
+
+  it('raw set_selection ranges are committed normalized', () => {
+    const editor = createTestEditor({ plugins, doc: doc(para('ab'), para('cd')) })
+    const tr = editor.createTransaction()
+    tr.apply({
+      type: 'set_selection',
+      selection: { ranges: [caret([1, 0], 1), caret([0, 0], 1), caret([0, 0], 1)], main: 2 },
+      prevSelection: tr.selection,
+    })
+    editor.dispatch(tr)
+    expect(editor.state.selection).toEqual({ ranges: [caret([0, 0], 1), caret([1, 0], 1)], main: 0 })
   })
 })

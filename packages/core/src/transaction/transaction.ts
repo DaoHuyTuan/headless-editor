@@ -4,7 +4,7 @@ import { nearestEditablePoint } from '../model/editable'
 import { createSelection, selectionEquals } from '../model/selection'
 import type { Data, Doc, ElementNode, Mark, Node, Path, Point, Range, Selection, SelectionRange, TextNode } from '../model/types'
 import { applyOp } from '../ops/apply'
-import { transformPoint, transformRange, transformSelection } from '../ops/transform'
+import { transformRange, transformSelection } from '../ops/transform'
 import type { Operation } from '../ops/types'
 import type { Registry } from '../plugin/registry'
 import type { EditorState } from '../state'
@@ -79,16 +79,15 @@ export class Transaction {
   }
 
   /**
-   * `sel` mapped through `op` (just applied), every range on its own. With several ranges, a point
-   * that can't be mapped (its text was removed) moves to the nearest editable point of the new doc
-   * (`nearestEditablePoint` at the removed path); its range is dropped only if there is none. When
-   * every range fails to map, the selection is null (no re-homing), as with a single range, which
-   * keeps the plain rule: null when it can't be mapped. (Several ranges never hold a node range.)
+   * `sel` mapped through `op` (just applied), every range on its own. Live-edit re-homing lives here;
+   * `transformSelection` only maps and drops. With several ranges, a range that can't be mapped (a
+   * point's text was removed) becomes a caret at the nearest editable point of the new doc
+   * (`nearestEditablePoint` at the removed path), even when every range was lost; it is dropped only
+   * if there is none, and the selection is null only when no range is left. A single range keeps the
+   * plain rule: null when it can't be mapped. (Several ranges never hold a node range.)
    */
   private mapSelection(sel: Selection, op: Operation): Selection | null {
     if (sel.ranges.length === 1) return transformSelection(sel, op)
-    const mapped = sel.ranges.map((range) => transformRange(range, op))
-    if (mapped.every((r) => r === null)) return null
     let target: Point | null | undefined
     const rehome = () => {
       if (target === undefined)
@@ -98,17 +97,17 @@ export class Transaction {
     const out: SelectionRange[] = []
     let main = 0
     sel.ranges.forEach((range, i) => {
-      let next = mapped[i]
+      let next = transformRange(range, op)
       if (!next) {
-        const anchor = transformPoint(range.anchor, op) ?? rehome()
-        const focus = transformPoint(range.focus, op) ?? rehome()
-        if (!anchor || !focus) return
-        next = { anchor, focus }
+        // Collapsed at the re-homed point, so a half-lost range does not stretch across blocks.
+        const at = rehome()
+        if (!at) return
+        next = { anchor: at, focus: at }
       }
       if (i <= sel.main) main = out.length
       out.push(next)
     })
-    return createSelection(out, main)
+    return out.length === 0 ? null : createSelection(out, main)
   }
 
   /**
