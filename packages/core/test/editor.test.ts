@@ -422,6 +422,30 @@ describe('Editor', () => {
     expect(mac.runKeymap('Ctrl-k')).toBe(false)
   })
 
+  it.each([
+    // Playwright's "Desktop Safari" on a Windows host: Mac user agent, Windows OS and keyboard.
+    { platform: 'Win32', ua: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15', key: 'Ctrl' },
+    { platform: 'MacIntel', ua: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15', key: 'Meta' },
+    // Chrome on a Mac with a spoofed Windows user agent.
+    { platform: 'MacIntel', ua: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', key: 'Meta' },
+    { platform: 'iPad', ua: 'Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X)', key: 'Meta' },
+    { platform: 'iPhone', ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)', key: 'Meta' },
+    { platform: 'Linux x86_64', ua: 'Mozilla/5.0 (X11; Linux x86_64)', key: 'Ctrl' },
+    // No navigator.platform: fall back to the user agent.
+    { platform: '', ua: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', key: 'Meta' },
+    { platform: '', ua: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', key: 'Ctrl' },
+  ])('Mod follows the OS in navigator.platform ($platform), not a spoofed user agent', ({ platform, ua, key }) => {
+    vi.stubGlobal('navigator', { platform, userAgent: ua })
+    try {
+      const k = definePlugin({ name: 'k', keymap: () => ({ 'Mod-k': () => true }) })
+      const ed = new Editor({ plugins: [testParagraph, k] })
+      expect(ed.runKeymap(`${key}-k`)).toBe(true)
+      expect(ed.runKeymap(`${key === 'Ctrl' ? 'Meta' : 'Ctrl'}-k`)).toBe(false)
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
   it('handleIntent asks plugins by priority', () => {
     const calls: string[] = []
     const italic = definePlugin({

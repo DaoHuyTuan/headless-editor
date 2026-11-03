@@ -76,10 +76,16 @@ interface Committed {
 
 const MAX_APPEND_ROUNDS = 10
 
+/**
+ * `navigator.platform` names the OS whose keyboard conventions the user has; the user agent is
+ * only a fallback, since it is spoofed more often (Playwright's "Desktop Safari" device sends a Mac
+ * user agent from a Windows host, whose keyboard sends Ctrl).
+ */
 function detectPlatform(): Platform {
   if (typeof navigator === 'undefined') return 'other'
   const nav = navigator as { platform?: string; userAgent?: string }
-  return /Mac/.test(nav.platform ?? '') || /Mac/.test(nav.userAgent ?? '') ? 'mac' : 'other'
+  if (nav.platform) return /Mac|iPhone|iPad|iPod/.test(nav.platform) ? 'mac' : 'other'
+  return /Mac/.test(nav.userAgent ?? '') ? 'mac' : 'other'
 }
 
 /** Rethrows the first collected error, if any. */
