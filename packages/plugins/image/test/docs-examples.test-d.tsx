@@ -17,6 +17,7 @@ import {
   nodeEntries,
   type Attrs,
   type Command,
+  type Data,
   type CommandsOfPlugin,
   type HTMLAttributes,
   type NodeViewPropsOf,
@@ -379,3 +380,36 @@ describe('docs: spec ordering rule', () => {
 
 void [LevelTwoEditor, LevelThreeImageView, ImageWithoutHandle, LevelFourImageView, roundedImage, CalloutEditor]
 void [MentionEditor, InlineOptionsEditor, ShoutingMention, CodeEditor]
+
+// doc: api — the samples of docs/plugin-api.md.
+const highlight = definePlugin({
+  name: 'highlight',
+  options: { color: 'yellow', HTMLAttributes: {} as HTMLAttributes },
+  data: z.object({ color: z.string().optional() }),
+  mark: {
+    render: (data, { options }) => ({
+      tag: 'mark',
+      attrs: mergeAttrs(options.HTMLAttributes, {}),
+      style: { background: data.color ?? options.color },
+    }),
+  },
+  parseHTML: [{ tag: 'mark', getData: (el): Data => (el.style.background ? { color: el.style.background } : {}) }],
+  commands: () => ({
+    toggleHighlight:
+      (color?: string): Command =>
+      ({ tr }) =>
+        tr.toggleMark('highlight', color ? { color } : {}).rejected === null,
+  }),
+  keymap: (ctx) => ({ 'Mod-Shift-h': () => ctx.commands.toggleHighlight() }),
+})
+
+describe('docs: plugin-api', () => {
+  it('infers commands and options', () => {
+    expectTypeOf<CommandsOfPlugin<typeof highlight>>().toHaveProperty('toggleHighlight')
+    const pink = highlight.configure({ color: 'pink' })
+    const withAlt = highlight.extend((parent) => ({
+      keymap: (ctx) => ({ ...parent.keymap?.(ctx), 'Mod-Alt-h': () => ctx.commands.toggleHighlight('orange') }),
+    }))
+    void [pink, withAlt]
+  })
+})

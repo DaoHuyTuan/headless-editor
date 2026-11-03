@@ -2,6 +2,8 @@
 
 This guide shows how the built-in plugins are customized and how to write a plugin that can be customized the same way. The rules come from spec §5.11 (`docs/superpowers/specs/2026-10-27-headless-editor-design.md`); this document agrees with it and adds the practical details.
 
+For a field-by-field reference of the object passed to `definePlugin`, see [plugin-api.md](plugin-api.md).
+
 Every code sample here is typechecked: they live in `packages/plugins/image/test/docs-examples.test-d.tsx` (run `pnpm exec vitest --typecheck run`). Keep the two in sync.
 
 Contents: [layers](#layers-of-a-plugin) · [customization levels](#customization-levels-using-image) · [writing a plugin](#writing-a-plugin-callout) · [lifecycle hooks](#lifecycle-hooks) · [extend](#extendparent--overrides) · [pitfalls](#pitfalls) · [built-in attributes](#stable-data-attributes-of-the-built-in-plugins)
