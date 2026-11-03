@@ -212,7 +212,8 @@ test('highlight classes appear and follow the language', async ({ page }) => {
 })
 
 test.describe('IME composition inside a code block', () => {
-  test('mid-code: the text lands at the caret, newlines are kept and the caret follows', async ({ page }) => {
+  test('mid-code: the text lands at the caret, newlines are kept and the caret follows', async ({ page, browserName }) => {
+    test.skip(browserName !== 'chromium', 'CDP-only')
     await openSnippet(page)
     await setCaret(page, [1, 0], LINE_1_END)
     await compose(page, ['ê', 'ế'], 'ế')
@@ -225,7 +226,8 @@ test.describe('IME composition inside a code block', () => {
     expect(await codeText(page, 1)).toBe(SNIPPET.slice(0, LINE_1_END) + 'ế\nx' + SNIPPET.slice(LINE_1_END))
   })
 
-  test('on the empty last line after a trailing newline', async ({ page }) => {
+  test('on the empty last line after a trailing newline', async ({ page, browserName }) => {
+    test.skip(browserName !== 'chromium', 'CDP-only')
     await openSnippet(page)
     await setCaret(page, [1, 0], SNIPPET.length)
     await page.keyboard.press('Enter')

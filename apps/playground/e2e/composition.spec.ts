@@ -4,7 +4,8 @@ import { focusEnd, getDoc, getSelection, getText, openPlayground } from './helpe
 
 let cdp: CDPSession
 
-test.beforeEach(async ({ page }) => {
+test.beforeEach(async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'CDP-only')
   await openPlayground(page)
   cdp = await page.context().newCDPSession(page)
   await focusEnd(page)

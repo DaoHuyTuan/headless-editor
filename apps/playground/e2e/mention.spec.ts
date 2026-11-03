@@ -185,7 +185,8 @@ test('a mouse drag from text across a mention selects a range covering it', asyn
 })
 
 test.describe('IME composition next to a mention', () => {
-  test('right after a mention', async ({ page }) => {
+  test('right after a mention', async ({ page, browserName }) => {
+    test.skip(browserName !== 'chromium', 'CDP-only')
     await openMentions(page)
     await setCaret(page, [0, 2], 0)
     await compose(page, ['ê', 'ế'], 'ế')
@@ -196,7 +197,8 @@ test.describe('IME composition next to a mention', () => {
     expect(await inline(page)).toEqual(['Hi ', '@Anna', 'ếx and ', '@Bob', ', welcome!'])
   })
 
-  test('right before a mention', async ({ page }) => {
+  test('right before a mention', async ({ page, browserName }) => {
+    test.skip(browserName !== 'chromium', 'CDP-only')
     await openMentions(page)
     await setCaret(page, [0, 0], 3)
     await compose(page, ['n', 'ni', '你'], '你')
@@ -206,7 +208,8 @@ test.describe('IME composition next to a mention', () => {
     expect(await inline(page)).toEqual(['Hi 你x', '@Anna', ' and ', '@Bob', ', welcome!'])
   })
 
-  test('in the zero-width leaf before a mention at the start of a block', async ({ page }) => {
+  test('in the zero-width leaf before a mention at the start of a block', async ({ page, browserName }) => {
+    test.skip(browserName !== 'chromium', 'CDP-only')
     await openPlayground(page)
     await focusEnd(page)
     await page.keyboard.type('@ca')

@@ -228,7 +228,9 @@ test.describe('the image scenario', () => {
 
   test('an IME composition while the image is selected replaces it with a paragraph of the composed text', async ({
     page,
+    browserName,
   }) => {
+    test.skip(browserName !== 'chromium', 'CDP-only')
     await editorImg(page).click()
     await expect.poll(async () => (await getSelection(page))?.node).toEqual([1])
     const cdp = await page.context().newCDPSession(page)
