@@ -546,9 +546,7 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
       if (this.dev) throw new Error('Transaction was created from an outdated state')
       return null
     }
-    for (const plugin of this.registry.plugins) {
-      if (plugin.spec.filterTransaction && !plugin.spec.filterTransaction(tr, this._state)) return null
-    }
+    if (!this.passesFilters(tr)) return null
     if (tr.docChanged) normalize(tr, this.contextFn)
 
     const prev = this._state
@@ -559,6 +557,14 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     }
     this._state = { doc: tr.doc, selection: tr.selection, storedMarks: tr.storedMarks, pluginStates }
     return { tr, selectionChanged: !selectionEquals(prev.selection, tr.selection) }
+  }
+
+  /** Runs every plugin's `filterTransaction` in plugin order; false on the first veto. */
+  private passesFilters(tr: Transaction): boolean {
+    for (const plugin of this.registry.plugins) {
+      if (plugin.spec.filterTransaction && !plugin.spec.filterTransaction(tr, this._state)) return false
+    }
+    return true
   }
 
   private emit(event: EditorEventName, tr: Transaction): void {
@@ -578,7 +584,11 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
         const tr = this.createTransaction()
         tr.meta.origin = 'command'
         const ok = factory(...args)({ tr, state: this._state, editor: this as unknown as Editor })
-        if (ok && dispatch && (tr.ops.length > 0 || tr.storedMarks !== this._state.storedMarks)) {
+        const changes = tr.ops.length > 0 || tr.storedMarks !== this._state.storedMarks
+        // can(): answers what the command would do, filters included, without dispatching (no
+        // appendTransaction, normalize, state apply or events).
+        if (!dispatch) return ok && (!changes || this.passesFilters(tr))
+        if (ok && changes) {
           const before = this._state
           this.dispatch(tr)
           // Dropped by the pipeline (a `filterTransaction` veto, or a dispatch that is not allowed

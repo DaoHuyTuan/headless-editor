@@ -195,6 +195,59 @@ describe('Editor', () => {
     expect(ed.commands.toggleMark('bold')).toBe(true)
   })
 
+  describe('can() runs filterTransaction', () => {
+    const vetoSetup = () => {
+      const filter = vi.fn((tr: Transaction) => tr.meta.veto !== true)
+      const vetoing = definePlugin({
+        name: 'vetoing',
+        filterTransaction: filter,
+        commands: () => ({
+          vetoedInsert:
+            (): Command =>
+            ({ tr }) => {
+              tr.meta.veto = true
+              tr.apply({ type: 'insert_text', path: [0, 0], offset: 0, text: 'x' })
+              return true
+            },
+          allowedInsert:
+            (): Command =>
+            ({ tr }) => {
+              tr.apply({ type: 'insert_text', path: [0, 0], offset: 0, text: 'y' })
+              return true
+            },
+        }),
+      })
+      const ed = createTestEditor({ plugins: [testParagraph, counter, vetoing], doc: doc(el('paragraph', txt('ab'))) })
+      const events = vi.fn()
+      ed.on('update', events)
+      ed.on('transaction', events)
+      return { ed, filter, events }
+    }
+
+    it('can() answers false when a filterTransaction vetoes the command tr', () => {
+      const { ed, filter, events } = vetoSetup()
+      const before = ed.state
+      expect(ed.can().vetoedInsert()).toBe(false)
+      expect(ed.state).toBe(before)
+      expect(ed.getPluginState('counter')).toBe(0)
+      expect(events).not.toHaveBeenCalled()
+      expect(filter).toHaveBeenCalledTimes(1)
+      expect(filter.mock.calls[0]![0].meta.veto).toBe(true)
+      // The command itself agrees.
+      expect(ed.commands.vetoedInsert()).toBe(false)
+    })
+
+    it('can() still answers true for an allowed command', () => {
+      const { ed, filter, events } = vetoSetup()
+      const before = ed.state
+      expect(ed.can().allowedInsert()).toBe(true)
+      expect(ed.state).toBe(before)
+      expect(events).not.toHaveBeenCalled()
+      expect(filter).toHaveBeenCalledTimes(1)
+      expect(ed.commands.allowedInsert()).toBe(true)
+    })
+  })
+
   it('normalizes dispatched transactions', () => {
     const ed = createTestEditor({ plugins: [testParagraph, testBold], doc: doc(el('paragraph', txt('ab'))) })
     const tr = ed.createTransaction()

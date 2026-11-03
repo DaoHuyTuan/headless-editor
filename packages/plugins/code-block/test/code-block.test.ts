@@ -288,6 +288,21 @@ describe('code block blocks marks and inline nodes', () => {
     expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p(txt('ab', 'bold')), code('cd'))))
   })
 
+  it('can().toggleBold() is false inside a code block', () => {
+    const ed = setup(doc(code('abc')), sel([0, 0], 0, [0, 0], 2))
+    expect(ed.can().toggleBold()).toBe(false)
+    const atCaret = setup(doc(code('abc')), caret([0, 0], 1))
+    expect(atCaret.can().toggleBold()).toBe(false)
+    expect(atCaret.state.storedMarks).toBeNull()
+  })
+
+  it('can().toggleBold() is true in a paragraph', () => {
+    const ed = setup(doc(p(txt('ab')), code('c')), sel([0, 0], 0, [0, 0], 2))
+    const before = ed.state
+    expect(ed.can().toggleBold()).toBe(true)
+    expect(ed.state).toBe(before)
+  })
+
   it('bold still works outside the code block', () => {
     const ed = setup(doc(p(txt('ab')), code('c')), sel([0, 0], 0, [0, 0], 2))
     expect(ed.commands.toggleBold()).toBe(true)
