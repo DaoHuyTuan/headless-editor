@@ -11,6 +11,8 @@ import type { EditorState } from '../state'
 import * as fragmentEdit from './fragment'
 import type { Fragment } from './fragment'
 import * as markEdit from './marks'
+import { forEachRange, inForEachRange, mapRun } from './ranges'
+import type { RangeStep } from './ranges'
 import * as textEdit from './text'
 import type { DeleteUnit } from './text'
 
@@ -66,6 +68,21 @@ export class Transaction {
   get docChanged(): boolean {
     return this.ops.some((op) => op.type !== 'set_selection')
   }
+  /** True while a `forEachRange` callback runs. */
+  get inForEachRange(): boolean {
+    return inForEachRange(this)
+  }
+
+  /**
+   * Runs `fn` once per selection range, in document order, on this tr; each range is mapped through
+   * the ops added before its call. The selection becomes the returned ranges (null drops one),
+   * normalized, with `main` kept on its range. Stored marks survive the per-range selection moves.
+   * See `forEachRange` in `./ranges`.
+   */
+  forEachRange(fn: RangeStep): this {
+    forEachRange(this, fn)
+    return this
+  }
 
   apply(op: Operation): this {
     if (op.type === 'set_selection') {
@@ -73,6 +90,7 @@ export class Transaction {
     } else {
       this._doc = applyOp(this._doc, op)
       if (this._selection) this._selection = this.mapSelection(this._selection, op)
+      mapRun(this, op)
     }
     this.ops.push(op)
     return this

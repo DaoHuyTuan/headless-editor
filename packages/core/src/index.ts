@@ -75,6 +75,7 @@ export type {
   StorageOf,
   StorageOfPlugin,
 } from './plugin/types'
+export type { RangeStep } from './transaction/ranges'
 export { definePlugin } from './plugin/define'
 export { mergeAttrs } from './plugin/attrs'
 export { nodeText } from './content/text'
