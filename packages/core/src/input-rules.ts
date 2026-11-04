@@ -1,9 +1,9 @@
 import type { Editor } from './editor'
 import { isNodeSelection } from './model/editable'
 import { pointEquals } from './model/path'
-import { mainRange } from './model/selection'
-import type { Point, Range } from './model/types'
-import { transformPoint } from './ops/transform'
+import { createSelection, mainRange, single } from './model/selection'
+import type { Point, Range, SelectionRange } from './model/types'
+import { transformRange } from './ops/transform'
 import type { AnyPlugin, PluginContext } from './plugin/types'
 import { lockSelection } from './transaction/ranges'
 import { blockPathOf, fromBlockOffset, runAt, toBlockOffset, type Run } from './transaction/text'
@@ -58,8 +58,10 @@ function fireAt(editor: RulesEditor, contextOf: ContextOf, probe: Transaction, c
  *
  * Each matching rule gets a fresh tr; a handler returning false has its tr dropped. With several
  * carets, a handler's tr starts from the rule tr so far (its `range` mapped through the earlier
- * firings) and its ops are added to the rule tr when it returns true. A handler must not set the
- * selection then (the carets are mapped through the edits): `setSelection` throws in dev mode.
+ * firings) with only its own caret as the selection, so its edits (no-range calls included) act
+ * there; when it returns true its doc ops are added to the rule tr, its caret becomes that tr's
+ * result and the other ranges are mapped. A handler must not set the selection then:
+ * `setSelection` throws in dev mode.
  */
 export function runInputRules(editor: RulesEditor, contextOf: ContextOf): boolean {
   const sel = editor.state.selection
@@ -75,30 +77,44 @@ export function runInputRules(editor: RulesEditor, contextOf: ContextOf): boolea
   const shared = editor.createTransaction()
   shared.meta.origin = 'input'
   shared.meta[INPUT_RULE_META] = true
-  const carets: (Point | null)[] = sel.ranges.map((r) => (pointEquals(r.anchor, r.focus) ? r.focus : null))
+  // Every range, kept mapped through the firings; a fired caret becomes its handler's result.
+  const ranges: (SelectionRange | null)[] = [...sel.ranges]
+  const checked = sel.ranges.map((r) => pointEquals(r.anchor, r.focus))
   let fired = false
-  carets.forEach((caret, i) => {
-    if (!caret) return
+  for (let i = 0; i < ranges.length; i++) {
+    const own = ranges[i]
+    if (!own || !checked[i]) continue
+    // The handler sees only its own caret: its edits (no-range calls included) act there, and the
+    // other carets are not its to move.
     const handlerTr = (): Transaction => {
-      const state = { ...editor.state, doc: shared.doc, selection: shared.selection, storedMarks: shared.storedMarks }
+      const state = { ...editor.state, doc: shared.doc, selection: single(own), storedMarks: shared.storedMarks }
       const tr = new Transaction(state, editor.registry, { dev: shared.dev })
       lockSelection(tr, 'An input rule handler must not set the selection when there are several ranges')
       return tr
     }
-    const tr = fireAt(editor, contextOf, shared, caret, handlerTr)
-    if (!tr) return
+    const tr = fireAt(editor, contextOf, shared, own.focus, handlerTr)
+    if (!tr) continue
     fired = true
-    const from = shared.ops.length
-    for (const op of tr.ops) shared.apply(op)
+    for (const op of tr.ops) {
+      if (op.type === 'set_selection') continue
+      shared.apply(op)
+      ranges.forEach((r, j) => {
+        if (r && j !== i) ranges[j] = transformRange(r, op)
+      })
+    }
     Object.assign(shared.meta, tr.meta)
     shared.setStoredMarks(tr.storedMarks)
     if (tr.rejected !== null && shared.rejected === null) shared.rejected = tr.rejected
-    // The carets still to check, mapped through this firing.
-    for (const op of shared.ops.slice(from)) {
-      if (op.type === 'set_selection') continue
-      for (let j = i + 1; j < carets.length; j++) carets[j] = carets[j] && transformPoint(carets[j]!, op)
-    }
-  })
-  if (fired && shared.ops.length > 0) editor.dispatch(shared)
-  return fired
+    ranges[i] = tr.selection ? mainRange(tr.selection) : null
+  }
+  if (!fired) return false
+  const out = ranges.filter((r): r is SelectionRange => r !== null)
+  if (out.length > 0) {
+    // `setSelection` clears the stored marks: they are the handlers' own.
+    const marks = shared.storedMarks
+    const main = ranges.slice(0, sel.main + 1).filter((r) => r !== null).length - 1
+    shared.setSelection(createSelection(out, Math.max(main, 0))).setStoredMarks(marks)
+  }
+  if (shared.ops.length > 0) editor.dispatch(shared)
+  return true
 }

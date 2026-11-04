@@ -44,7 +44,9 @@ function insertIntentText(tr: Transaction, intent: InputIntent): boolean {
   if (!sel || sel.ranges.length === 1) return insertText(tr, text, intent.range ?? undefined)
   // Several ranges: plain typing (the intent targets the main range) goes to every range.
   const range = intent.range
-  if (!range || targetsMain(intent, sel)) return insertText(tr, text)
+  // Replacement text (spellcheck, autocorrect) always addresses its own range, even the main one.
+  const targeted = intent.inputType === 'insertReplacementText'
+  if (!range || (!targeted && targetsMain(intent, sel))) return insertText(tr, text)
   // An intent with its own target (autocorrect, spellcheck) applies only there (spec §8 call 13).
   collapseTo(tr, range)
   return insertText(tr, text, range)

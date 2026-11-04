@@ -199,6 +199,11 @@ describe('input rules with several carets', () => {
     typeAt(ed, '-- ')
     expect(blockTexts(ed)).toEqual(['— ', 'x-- '])
     expect(ed.state.selection).toEqual(createSelection([at([0, 0], 2), at([1, 0], 4)]))
+    ed.commands.undo()
+    expect(blockTexts(ed)).toEqual(['-- ', 'x-- '])
+    expect(ed.state.selection).toEqual(createSelection([at([0, 0], 3), at([1, 0], 4)]))
+    ed.commands.undo()
+    expect(blockTexts(ed)).toEqual(['', 'x'])
   })
 
   it('carets in one text: each handler gets its range mapped through the earlier firings', () => {
@@ -215,6 +220,11 @@ describe('input rules with several carets', () => {
       { start: pt([0, 0], 4), end: pt([0, 0], 6) },
     ])
     expect(ed.state.selection).toEqual(createSelection([at([0, 0], 2), at([0, 0], 5)]))
+    ed.commands.undo()
+    expect(blockTexts(ed)).toEqual(['a:) b:)'])
+    expect(ed.state.selection).toEqual(createSelection([at([0, 0], 3), at([0, 0], 7)]))
+    ed.commands.undo()
+    expect(blockTexts(ed)).toEqual(['a b'])
   })
 
   it('at each caret the first matching rule wins', () => {
@@ -243,5 +253,49 @@ describe('input rules with several carets', () => {
     expect(() => ed.runInputRules()).toThrow(/selection/)
     const one = setup(doc(p('a!')), sel([0, 0], 2), [bad])
     expect(one.ed.runInputRules()).toBe(true)
+  })
+
+  it('a two-delimiter bold rule at two carets: each caret stays in its own block', () => {
+    const boldRule: InputRule = {
+      match: /\*\*([^*]+)\*\*$/,
+      handler: (_ctx, m, range, tr) => {
+        tr.deleteRange({ start: { ...range.end, offset: range.end.offset - 2 }, end: range.end })
+        tr.deleteRange({ start: range.start, end: { ...range.start, offset: range.start.offset + 2 } })
+        tr.addMark({ type: 'bold', data: {} }, { start: range.start, end: { ...range.start, offset: range.start.offset + m[1]!.length } })
+        return true
+      },
+    }
+    const { ed } = setup(doc(p('a'), p('b')), createSelection([at([0, 0], 1), at([1, 0], 1)]), [boldRule])
+    typeAt(ed, '**x**')
+    expect(blockTexts(ed)).toEqual(['ax', 'bx'])
+    const ranges = ed.state.selection!.ranges
+    expect(ranges).toHaveLength(2)
+    expect(ranges.map((r) => r.focus.path[0])).toEqual([0, 1])
+    expect(ed.state.doc.children.map((b) => b.children)).toEqual([
+      [txt('a'), txt('x', 'bold')],
+      [txt('b'), txt('x', 'bold')],
+    ])
+  })
+
+  it('a no-range edit in a handler acts only at its own caret', () => {
+    const rule: InputRule = {
+      match: /-- $/,
+      handler: (_ctx, _m, range, tr) => (tr.deleteRange(range), tr.insertText('— '), true),
+    }
+    const { ed } = setup(doc(p(''), p('')), createSelection([at([0, 0], 0), at([1, 0], 0)]), [rule])
+    typeAt(ed, '-- ')
+    expect(blockTexts(ed)).toEqual(['— ', '— '])
+    expect(ed.state.selection).toEqual(createSelection([at([0, 0], 2), at([1, 0], 2)]))
+  })
+
+  it('forEachRange in a handler sees only its own caret', () => {
+    const rule: InputRule = {
+      match: /!$/,
+      handler: (_ctx, _m, _range, tr) => (tr.forEachRange((r, t) => void t.insertText('?', r)), true),
+    }
+    const { ed } = setup(doc(p('a!'), p('b!')), createSelection([at([0, 0], 2), at([1, 0], 2)]), [rule])
+    expect(ed.runInputRules()).toBe(true)
+    expect(blockTexts(ed)).toEqual(['a!?', 'b!?'])
+    expect(ed.state.selection).toEqual(createSelection([at([0, 0], 3), at([1, 0], 3)]))
   })
 })

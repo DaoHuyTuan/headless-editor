@@ -74,6 +74,13 @@ describe('intents with several ranges', () => {
     expect(ed.state.selection).toEqual(single(caret([0, 0], 3)))
   })
 
+  it('insertReplacementText at the main range is still targeted: it collapses', () => {
+    const ed = setup(doc(p('teh'), p('foo')), sel(span([0, 0], 0, 3), span([1, 0], 0, 3)))
+    ed.handleIntent({ inputType: 'insertReplacementText', data: 'the', range: span([0, 0], 0, 3) })
+    expect(texts(ed)).toEqual(['the', 'foo'])
+    expect(ed.state.selection).toEqual(single(caret([0, 0], 3)))
+  })
+
   it('a typing intent whose range is not the main range applies there only and collapses', () => {
     const ed = setup(doc(p('ab'), p('cd'), p('ef')), sel(caret([0, 0], 1), caret([1, 0], 1)))
     ed.handleIntent({ inputType: 'insertText', data: 'x', range: caret([2, 0], 1) })
@@ -191,12 +198,23 @@ describe('view with several ranges', () => {
     })
     const ed = setup(doc(p('abcd'), p('ef')), sel(caret([0, 0], 1), caret([0, 0], 3), caret([1, 0], 1)), [carets])
     const root = mount(ed)
-    // Main is the first range: the two others get a widget.
-    expect(root.querySelectorAll('.secondary-caret')).toHaveLength(2)
+    /** Each widget as [block index, the block's text before it]. */
+    const widgets = () =>
+      [...root.querySelectorAll('.secondary-caret')].map((w) => {
+        const block = [0, 1].find((i) => ed.view!.renderer.elementAt([i])!.contains(w))!
+        const r = document.createRange()
+        r.setStart(ed.view!.renderer.elementAt([block])!, 0)
+        r.setEndBefore(w)
+        return [block, r.toString()]
+      })
+    // Main is the first range: the two others get a widget, each at its caret.
+    expect(widgets()).toEqual([[0, 'abc'], [1, 'e']])
     expect(root.textContent).toBe('abcdef')
     ed.handleIntent({ inputType: 'insertText', data: 'x', range: main(ed) })
-    expect(root.querySelectorAll('.secondary-caret')).toHaveLength(2)
     expect(texts(ed)).toEqual(['axbcxd', 'exf'])
+    // The widgets moved with their carets, past the inserted text.
+    expect(widgets()).toEqual([[0, 'axbcx'], [1, 'ex']])
+    expect(root.textContent).toBe('axbcxdexf')
   })
 })
 
