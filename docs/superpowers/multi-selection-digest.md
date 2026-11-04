@@ -17,9 +17,9 @@ The controller updates this file after each task.
 | 6 Marks on every range | done | 9daee41, b899257 |
 | 7 Fragments, paste, drop | done | 2b848f5 |
 | 8 Input, IME, input rules, view | done | c5bb316, fa359f4 |
-| 9 History, rebase | in progress | |
-| 10 Code block, font-size | todo | |
-| 11 Mention, image | todo | |
+| 9 History, rebase | done (tests only; code already correct) | 150ca0c |
+| 10 Code block, font-size | in progress | |
+| 11 Mention, image | in progress | |
 | 12 Docs, e2e smoke, perf, verification | todo | |
 
 ## API built so far (what later tasks use)
