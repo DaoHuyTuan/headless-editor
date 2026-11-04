@@ -11,7 +11,7 @@ import type { EditorState } from '../state'
 import * as fragmentEdit from './fragment'
 import type { Fragment } from './fragment'
 import * as markEdit from './marks'
-import { forEachRange, inForEachRange, mapRun } from './ranges'
+import { forEachRange, inForEachRange, mapRun, selectionLock } from './ranges'
 import type { RangeStep } from './ranges'
 import * as textEdit from './text'
 import type { DeleteUnit } from './text'
@@ -136,6 +136,8 @@ export class Transaction {
    * No-op when equal to the current selection (every range's anchor, focus and `node`, and `main` compared).
    */
   setSelection(sel: Selection | null): this {
+    const lock = this.dev ? selectionLock(this) : null
+    if (lock) throw new Error(lock)
     if (sel) sel = createSelection(sel.ranges, sel.main)
     if (selectionEquals(sel, this._selection)) return this
     this.apply({ type: 'set_selection', selection: sel, prevSelection: this._selection })

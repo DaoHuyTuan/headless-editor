@@ -55,6 +55,16 @@ function onCompositionStart(view: EditorView): void {
   const { editor, renderer } = view
   // While not yet composing, so the model follows the DOM caret.
   view.syncSelection()
+  // The IME composes at one place: the main range on purpose (spec §3). Several ranges collapse to
+  // it first, keeping the stored marks (a Mod-b before composing still applies).
+  const before = editor.state.selection
+  if (before && before.ranges.length > 1) {
+    const tr = editor.createTransaction()
+    const marks = editor.state.storedMarks
+    tr.setSelection(single(mainRange(before))).setStoredMarks(marks)
+    tr.setMeta('origin', 'selection').setMeta('addToHistory', false)
+    editor.dispatch(tr)
+  }
   if (isNodeSelection(editor.state.selection)) {
     // The IME replaces the selected node: swap it for an empty default block holding the caret first.
     const tr = editor.createTransaction()
@@ -63,6 +73,7 @@ function onCompositionStart(view: EditorView): void {
       editor.dispatch(tr)
     }
   }
+  // One range left (collapsed above): the main range, on purpose.
   const sel = editor.state.selection && mainRange(editor.state.selection)
   if (sel) {
     const state = editor.state
@@ -78,6 +89,7 @@ function onCompositionStart(view: EditorView): void {
     editor.dispatch(tr)
   }
   view.composing = true
+  // The composition lands at the main range, on purpose (spec §3).
   const focus = editor.state.selection && mainRange(editor.state.selection).focus
   const leaf = focus && renderer.leafAt(focus.path)
   if (!focus || !leaf) return

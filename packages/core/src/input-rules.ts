@@ -2,50 +2,103 @@ import type { Editor } from './editor'
 import { isNodeSelection } from './model/editable'
 import { pointEquals } from './model/path'
 import { mainRange } from './model/selection'
-import type { Range } from './model/types'
+import type { Point, Range } from './model/types'
+import { transformPoint } from './ops/transform'
 import type { AnyPlugin, PluginContext } from './plugin/types'
+import { lockSelection } from './transaction/ranges'
 import { blockPathOf, fromBlockOffset, runAt, toBlockOffset, type Run } from './transaction/text'
+import { Transaction } from './transaction/transaction'
 
 /** Meta key set on the tr of a fired input rule (recorded as its own history entry of kind `'other'`). */
 export const INPUT_RULE_META = 'inputRule'
 
-/**
- * Runs the input rules of every plugin, by priority, against the text of the caret's run (the
- * block's texts no inline atom separates, model text only) from its start to the collapsed caret.
- * Each rule that matches gets a fresh tr (origin `input`, meta `inputRule: true`); the first handler
- * returning true has its tr dispatched (when it changed anything) and ends the run. True when a rule fired.
- */
-export function runInputRules(
-  editor: Pick<Editor, 'state' | 'registry' | 'createTransaction' | 'dispatch'>,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  contextOf: (plugin: AnyPlugin) => PluginContext<any, any, any, any>,
-): boolean {
-  const sel = editor.state.selection
-  if (!sel || isNodeSelection(sel)) return false
-  const range = mainRange(sel)
-  if (!pointEquals(range.anchor, range.focus)) return false
-  const caret = range.focus
-  let run: Run
+type RulesEditor = Pick<Editor, 'state' | 'registry' | 'createTransaction' | 'dispatch'>
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type ContextOf = (plugin: AnyPlugin) => PluginContext<any, any, any, any>
+
+/** The block text of the caret's run, from its start to `caret`, or null when it has none. */
+function textBefore(tr: Transaction, caret: Point): { run: Run; text: string } | null {
   try {
-    const probe = editor.createTransaction()
-    run = runAt(probe, blockPathOf(probe, caret.path), caret)
+    const run = runAt(tr, blockPathOf(tr, caret.path), caret)
+    return { run, text: run.text.slice(0, toBlockOffset(run, caret)) }
   } catch {
-    return false
+    return null
   }
-  const text = run.text.slice(0, toBlockOffset(run, caret))
+}
+
+/**
+ * Tries the rules (every plugin's, by priority) at `caret`: each matching rule gets `trFor()` and the
+ * first handler returning true wins. Returns that tr, or null when no rule fired.
+ */
+function fireAt(editor: RulesEditor, contextOf: ContextOf, probe: Transaction, caret: Point, trFor: () => Transaction): Transaction | null {
+  const found = textBefore(probe, caret)
+  if (!found) return null
+  const { run, text } = found
   for (const plugin of editor.registry.plugins) {
     for (const rule of plugin.spec.inputRules ?? []) {
       rule.match.lastIndex = 0
       const match = rule.match.exec(text)
       if (!match || match.index + match[0].length !== text.length) continue
       const range: Range = { start: fromBlockOffset(run, match.index), end: caret }
-      const tr = editor.createTransaction()
+      const tr = trFor()
       tr.meta.origin = 'input'
       tr.meta[INPUT_RULE_META] = true
-      if (!rule.handler(contextOf(plugin), match, range, tr)) continue
-      if (tr.ops.length > 0) editor.dispatch(tr)
-      return true
+      if (rule.handler(contextOf(plugin), match, range, tr)) return tr
     }
   }
-  return false
+  return null
+}
+
+/**
+ * Runs the input rules of every plugin, by priority, against the text of each caret's run (the
+ * block's texts no inline atom separates, model text only) from its start to the caret. At each
+ * collapsed caret, checked on its own, the first handler returning true wins and ends that caret's
+ * run. Every firing goes into one rule tr (origin `input`, meta `inputRule: true`), dispatched when
+ * it changed anything, so the rules are one undo step after the typing. True when a rule fired.
+ *
+ * Each matching rule gets a fresh tr; a handler returning false has its tr dropped. With several
+ * carets, a handler's tr starts from the rule tr so far (its `range` mapped through the earlier
+ * firings) and its ops are added to the rule tr when it returns true. A handler must not set the
+ * selection then (the carets are mapped through the edits): `setSelection` throws in dev mode.
+ */
+export function runInputRules(editor: RulesEditor, contextOf: ContextOf): boolean {
+  const sel = editor.state.selection
+  if (!sel || isNodeSelection(sel)) return false
+  if (sel.ranges.length === 1) {
+    const range = mainRange(sel)
+    if (!pointEquals(range.anchor, range.focus)) return false
+    const tr = fireAt(editor, contextOf, editor.createTransaction(), range.focus, () => editor.createTransaction())
+    if (!tr) return false
+    if (tr.ops.length > 0) editor.dispatch(tr)
+    return true
+  }
+  const shared = editor.createTransaction()
+  shared.meta.origin = 'input'
+  shared.meta[INPUT_RULE_META] = true
+  const carets: (Point | null)[] = sel.ranges.map((r) => (pointEquals(r.anchor, r.focus) ? r.focus : null))
+  let fired = false
+  carets.forEach((caret, i) => {
+    if (!caret) return
+    const handlerTr = (): Transaction => {
+      const state = { ...editor.state, doc: shared.doc, selection: shared.selection, storedMarks: shared.storedMarks }
+      const tr = new Transaction(state, editor.registry, { dev: shared.dev })
+      lockSelection(tr, 'An input rule handler must not set the selection when there are several ranges')
+      return tr
+    }
+    const tr = fireAt(editor, contextOf, shared, caret, handlerTr)
+    if (!tr) return
+    fired = true
+    const from = shared.ops.length
+    for (const op of tr.ops) shared.apply(op)
+    Object.assign(shared.meta, tr.meta)
+    shared.setStoredMarks(tr.storedMarks)
+    if (tr.rejected !== null && shared.rejected === null) shared.rejected = tr.rejected
+    // The carets still to check, mapped through this firing.
+    for (const op of shared.ops.slice(from)) {
+      if (op.type === 'set_selection') continue
+      for (let j = i + 1; j < carets.length; j++) carets[j] = carets[j] && transformPoint(carets[j]!, op)
+    }
+  })
+  if (fired && shared.ops.length > 0) editor.dispatch(shared)
+  return fired
 }

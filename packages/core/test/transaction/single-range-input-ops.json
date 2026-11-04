@@ -1,0 +1,3974 @@
+{
+ "type at a caret": {
+  "returned": [
+   true,
+   true
+  ],
+  "trs": [
+   {
+    "meta": {
+     "origin": "input",
+     "inputType": "insertText"
+    },
+    "ops": [
+     {
+      "type": "insert_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2,
+      "text": "x"
+     }
+    ]
+   },
+   {
+    "meta": {
+     "origin": "input",
+     "inputRule": true
+    },
+    "ops": [
+     {
+      "type": "remove_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2,
+      "text": "x"
+     },
+     {
+      "type": "insert_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2,
+      "text": "X"
+     }
+    ]
+   },
+   {
+    "meta": {
+     "origin": "input",
+     "inputType": "insertText"
+    },
+    "ops": [
+     {
+      "type": "insert_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 3,
+      "text": "y"
+     }
+    ]
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 4
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 4
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "n1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "abXycd",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "n2",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "efgh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "type with a null range": {
+  "returned": [
+   true,
+   true
+  ],
+  "trs": [
+   {
+    "meta": {
+     "origin": "input",
+     "inputType": "insertText"
+    },
+    "ops": [
+     {
+      "type": "insert_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2,
+      "text": "x"
+     }
+    ]
+   },
+   {
+    "meta": {
+     "origin": "input",
+     "inputRule": true
+    },
+    "ops": [
+     {
+      "type": "remove_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2,
+      "text": "x"
+     },
+     {
+      "type": "insert_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2,
+      "text": "X"
+     }
+    ]
+   },
+   {
+    "meta": {
+     "origin": "input",
+     "inputType": "insertText"
+    },
+    "ops": [
+     {
+      "type": "insert_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 3,
+      "text": "y"
+     }
+    ]
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 4
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 4
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "n1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "abXycd",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "n2",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "efgh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "type over a range": {
+  "returned": [
+   true
+  ],
+  "trs": [
+   {
+    "meta": {
+     "origin": "input",
+     "inputType": "insertText"
+    },
+    "ops": [
+     {
+      "type": "remove_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 1,
+      "text": "bc"
+     },
+     {
+      "type": "insert_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 1,
+      "text": "x"
+     }
+    ]
+   },
+   {
+    "meta": {
+     "origin": "input",
+     "inputRule": true
+    },
+    "ops": [
+     {
+      "type": "remove_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 1,
+      "text": "x"
+     },
+     {
+      "type": "insert_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 1,
+      "text": "X"
+     }
+    ]
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "n1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "aXd",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "n2",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "efgh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "type with stored marks": {
+  "returned": [
+   true,
+   true
+  ],
+  "trs": [
+   {
+    "meta": {
+     "origin": "input",
+     "inputType": "insertText"
+    },
+    "ops": [
+     {
+      "type": "split_node",
+      "path": [
+       0,
+       0
+      ],
+      "position": 2,
+      "properties": {
+       "marks": []
+      }
+     },
+     {
+      "type": "insert_node",
+      "path": [
+       0,
+       1
+      ],
+      "node": {
+       "text": "x",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      }
+     },
+     {
+      "type": "set_selection",
+      "selection": {
+       "ranges": [
+        {
+         "anchor": {
+          "path": [
+           0,
+           1
+          ],
+          "offset": 1
+         },
+         "focus": {
+          "path": [
+           0,
+           1
+          ],
+          "offset": 1
+         }
+        }
+       ],
+       "main": 0
+      },
+      "prevSelection": {
+       "ranges": [
+        {
+         "anchor": {
+          "path": [
+           0,
+           2
+          ],
+          "offset": 0
+         },
+         "focus": {
+          "path": [
+           0,
+           2
+          ],
+          "offset": 0
+         }
+        }
+       ],
+       "main": 0
+      }
+     }
+    ]
+   },
+   {
+    "meta": {
+     "origin": "input",
+     "inputRule": true
+    },
+    "ops": [
+     {
+      "type": "remove_text",
+      "path": [
+       0,
+       1
+      ],
+      "offset": 0,
+      "text": "x"
+     },
+     {
+      "type": "insert_node",
+      "path": [
+       0,
+       1
+      ],
+      "node": {
+       "text": "X",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      }
+     },
+     {
+      "type": "set_selection",
+      "selection": {
+       "ranges": [
+        {
+         "anchor": {
+          "path": [
+           0,
+           1
+          ],
+          "offset": 1
+         },
+         "focus": {
+          "path": [
+           0,
+           1
+          ],
+          "offset": 1
+         }
+        }
+       ],
+       "main": 0
+      },
+      "prevSelection": {
+       "ranges": [
+        {
+         "anchor": {
+          "path": [
+           0,
+           2
+          ],
+          "offset": 0
+         },
+         "focus": {
+          "path": [
+           0,
+           2
+          ],
+          "offset": 0
+         }
+        }
+       ],
+       "main": 0
+      }
+     },
+     {
+      "type": "merge_node",
+      "path": [
+       0,
+       2
+      ],
+      "position": 1,
+      "properties": {
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      }
+     }
+    ]
+   },
+   {
+    "meta": {
+     "origin": "input",
+     "inputType": "insertText"
+    },
+    "ops": [
+     {
+      "type": "insert_text",
+      "path": [
+       0,
+       1
+      ],
+      "offset": 1,
+      "text": "y"
+     }
+    ]
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       1
+      ],
+      "offset": 2
+     },
+     "focus": {
+      "path": [
+       0,
+       1
+      ],
+      "offset": 2
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "n1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      },
+      {
+       "text": "Xy",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "cd",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "n2",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "efgh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "type over a node selection": {
+  "returned": [
+   true
+  ],
+  "trs": [
+   {
+    "meta": {
+     "origin": "input",
+     "inputType": "insertText"
+    },
+    "ops": [
+     {
+      "type": "insert_node",
+      "path": [
+       2
+      ],
+      "node": {
+       "id": "n4",
+       "type": "paragraph",
+       "data": {},
+       "children": [
+        {
+         "text": "x",
+         "marks": []
+        }
+       ]
+      }
+     },
+     {
+      "type": "remove_node",
+      "path": [
+       1
+      ],
+      "node": {
+       "id": "n2",
+       "type": "atom",
+       "data": {},
+       "children": []
+      }
+     },
+     {
+      "type": "set_selection",
+      "selection": {
+       "ranges": [
+        {
+         "anchor": {
+          "path": [
+           1,
+           0
+          ],
+          "offset": 1
+         },
+         "focus": {
+          "path": [
+           1,
+           0
+          ],
+          "offset": 1
+         }
+        }
+       ],
+       "main": 0
+      },
+      "prevSelection": {
+       "ranges": [
+        {
+         "anchor": {
+          "path": [
+           0,
+           0
+          ],
+          "offset": 2
+         },
+         "focus": {
+          "path": [
+           0,
+           0
+          ],
+          "offset": 2
+         }
+        }
+       ],
+       "main": 0
+      }
+     }
+    ]
+   },
+   {
+    "meta": {
+     "origin": "input",
+     "inputRule": true
+    },
+    "ops": [
+     {
+      "type": "remove_text",
+      "path": [
+       1,
+       0
+      ],
+      "offset": 0,
+      "text": "x"
+     },
+     {
+      "type": "insert_text",
+      "path": [
+       1,
+       0
+      ],
+      "offset": 0,
+      "text": "X"
+     }
+    ]
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       1,
+       0
+      ],
+      "offset": 1
+     },
+     "focus": {
+      "path": [
+       1,
+       0
+      ],
+      "offset": 1
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "n1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "n4",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "X",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "n3",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "cd",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "type at a range other than the selection": {
+  "returned": [
+   true
+  ],
+  "trs": [
+   {
+    "meta": {
+     "origin": "input",
+     "inputType": "insertText"
+    },
+    "ops": [
+     {
+      "type": "insert_text",
+      "path": [
+       1,
+       0
+      ],
+      "offset": 1,
+      "text": "x"
+     },
+     {
+      "type": "set_selection",
+      "selection": {
+       "ranges": [
+        {
+         "anchor": {
+          "path": [
+           1,
+           0
+          ],
+          "offset": 2
+         },
+         "focus": {
+          "path": [
+           1,
+           0
+          ],
+          "offset": 2
+         }
+        }
+       ],
+       "main": 0
+      },
+      "prevSelection": {
+       "ranges": [
+        {
+         "anchor": {
+          "path": [
+           0,
+           0
+          ],
+          "offset": 2
+         },
+         "focus": {
+          "path": [
+           0,
+           0
+          ],
+          "offset": 2
+         }
+        }
+       ],
+       "main": 0
+      }
+     }
+    ]
+   },
+   {
+    "meta": {
+     "origin": "input",
+     "inputRule": true
+    },
+    "ops": [
+     {
+      "type": "remove_text",
+      "path": [
+       1,
+       0
+      ],
+      "offset": 1,
+      "text": "x"
+     },
+     {
+      "type": "insert_text",
+      "path": [
+       1,
+       0
+      ],
+      "offset": 1,
+      "text": "X"
+     }
+    ]
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       1,
+       0
+      ],
+      "offset": 2
+     },
+     "focus": {
+      "path": [
+       1,
+       0
+      ],
+      "offset": 2
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "n1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "abcd",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "n2",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "eXfgh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "replacement text with its own range": {
+  "returned": true,
+  "trs": [
+   {
+    "meta": {
+     "origin": "input",
+     "inputType": "insertReplacementText"
+    },
+    "ops": [
+     {
+      "type": "remove_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 1,
+      "text": "bc"
+     },
+     {
+      "type": "insert_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 1,
+      "text": "XY"
+     },
+     {
+      "type": "set_selection",
+      "selection": {
+       "ranges": [
+        {
+         "anchor": {
+          "path": [
+           0,
+           0
+          ],
+          "offset": 3
+         },
+         "focus": {
+          "path": [
+           0,
+           0
+          ],
+          "offset": 3
+         }
+        }
+       ],
+       "main": 0
+      },
+      "prevSelection": {
+       "ranges": [
+        {
+         "anchor": {
+          "path": [
+           0,
+           0
+          ],
+          "offset": 4
+         },
+         "focus": {
+          "path": [
+           0,
+           0
+          ],
+          "offset": 4
+         }
+        }
+       ],
+       "main": 0
+      }
+     }
+    ]
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 3
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 3
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "n1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "aXYd",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "n2",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "efgh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "replacement text at the selection": {
+  "returned": true,
+  "trs": [
+   {
+    "meta": {
+     "origin": "input",
+     "inputType": "insertReplacementText"
+    },
+    "ops": [
+     {
+      "type": "remove_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 1,
+      "text": "bc"
+     },
+     {
+      "type": "insert_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 1,
+      "text": "XY"
+     }
+    ]
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 3
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 3
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "n1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "aXYd",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "n2",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "efgh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "replacement text without data": {
+  "returned": false,
+  "trs": [],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "n1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "abcd",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "n2",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "efgh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "backspace intent": {
+  "returned": true,
+  "trs": [
+   {
+    "meta": {
+     "origin": "input",
+     "inputType": "deleteContentBackward"
+    },
+    "ops": [
+     {
+      "type": "remove_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 1,
+      "text": "b"
+     }
+    ]
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 1
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 1
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "n1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "acd",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "n2",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "efgh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "paragraph intent": {
+  "returned": true,
+  "trs": [
+   {
+    "meta": {
+     "origin": "input",
+     "inputType": "insertParagraph"
+    },
+    "ops": [
+     {
+      "type": "split_node",
+      "path": [
+       0,
+       0
+      ],
+      "position": 2,
+      "properties": {
+       "marks": []
+      }
+     },
+     {
+      "type": "split_node",
+      "path": [
+       0
+      ],
+      "position": 1,
+      "properties": {
+       "id": "n3",
+       "type": "paragraph",
+       "data": {}
+      }
+     }
+    ]
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       1,
+       0
+      ],
+      "offset": 0
+     },
+     "focus": {
+      "path": [
+       1,
+       0
+      ],
+      "offset": 0
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "n1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "n3",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "cd",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "n2",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "efgh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "typing undo": {
+  "returned": {
+   "out": [
+    true,
+    true,
+    true
+   ],
+   "steps": [
+    {
+     "doc": {
+      "type": "doc",
+      "children": [
+       {
+        "id": "n1",
+        "type": "paragraph",
+        "data": {},
+        "children": [
+         {
+          "text": "abXcd",
+          "marks": []
+         }
+        ]
+       },
+       {
+        "id": "n2",
+        "type": "paragraph",
+        "data": {},
+        "children": [
+         {
+          "text": "efgh",
+          "marks": []
+         }
+        ]
+       }
+      ]
+     },
+     "selection": {
+      "ranges": [
+       {
+        "anchor": {
+         "path": [
+          0,
+          0
+         ],
+         "offset": 3
+        },
+        "focus": {
+         "path": [
+          0,
+          0
+         ],
+         "offset": 3
+        }
+       }
+      ],
+      "main": 0
+     }
+    },
+    {
+     "doc": {
+      "type": "doc",
+      "children": [
+       {
+        "id": "n1",
+        "type": "paragraph",
+        "data": {},
+        "children": [
+         {
+          "text": "abxcd",
+          "marks": []
+         }
+        ]
+       },
+       {
+        "id": "n2",
+        "type": "paragraph",
+        "data": {},
+        "children": [
+         {
+          "text": "efgh",
+          "marks": []
+         }
+        ]
+       }
+      ]
+     },
+     "selection": {
+      "ranges": [
+       {
+        "anchor": {
+         "path": [
+          0,
+          0
+         ],
+         "offset": 3
+        },
+        "focus": {
+         "path": [
+          0,
+          0
+         ],
+         "offset": 3
+        }
+       }
+      ],
+      "main": 0
+     }
+    },
+    {
+     "doc": {
+      "type": "doc",
+      "children": [
+       {
+        "id": "n1",
+        "type": "paragraph",
+        "data": {},
+        "children": [
+         {
+          "text": "abcd",
+          "marks": []
+         }
+        ]
+       },
+       {
+        "id": "n2",
+        "type": "paragraph",
+        "data": {},
+        "children": [
+         {
+          "text": "efgh",
+          "marks": []
+         }
+        ]
+       }
+      ]
+     },
+     "selection": {
+      "ranges": [
+       {
+        "anchor": {
+         "path": [
+          0,
+          0
+         ],
+         "offset": 2
+        },
+        "focus": {
+         "path": [
+          0,
+          0
+         ],
+         "offset": 2
+        }
+       }
+      ],
+      "main": 0
+     }
+    }
+   ]
+  },
+  "trs": [
+   {
+    "meta": {
+     "origin": "input",
+     "inputType": "insertText"
+    },
+    "ops": [
+     {
+      "type": "insert_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2,
+      "text": "x"
+     }
+    ]
+   },
+   {
+    "meta": {
+     "origin": "input",
+     "inputRule": true
+    },
+    "ops": [
+     {
+      "type": "remove_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2,
+      "text": "x"
+     },
+     {
+      "type": "insert_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2,
+      "text": "X"
+     }
+    ]
+   },
+   {
+    "meta": {
+     "origin": "input",
+     "inputType": "insertText"
+    },
+    "ops": [
+     {
+      "type": "insert_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 3,
+      "text": "y"
+     }
+    ]
+   },
+   {
+    "meta": {
+     "origin": "input",
+     "inputType": "insertText"
+    },
+    "ops": [
+     {
+      "type": "insert_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 4,
+      "text": "z"
+     }
+    ]
+   },
+   {
+    "meta": {
+     "origin": "history",
+     "historyAction": "undo"
+    },
+    "ops": [
+     {
+      "type": "remove_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 4,
+      "text": "z"
+     },
+     {
+      "type": "remove_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 3,
+      "text": "y"
+     }
+    ]
+   },
+   {
+    "meta": {
+     "origin": "history",
+     "historyAction": "undo"
+    },
+    "ops": [
+     {
+      "type": "remove_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2,
+      "text": "X"
+     },
+     {
+      "type": "insert_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2,
+      "text": "x"
+     }
+    ]
+   },
+   {
+    "meta": {
+     "origin": "history",
+     "historyAction": "undo"
+    },
+    "ops": [
+     {
+      "type": "remove_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2,
+      "text": "x"
+     }
+    ]
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "n1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "abcd",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "n2",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "efgh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "rule replaces, then undo twice": {
+  "returned": {
+   "out": [
+    true,
+    true,
+    true
+   ],
+   "steps": [
+    {
+     "doc": {
+      "type": "doc",
+      "children": [
+       {
+        "id": "n1",
+        "type": "paragraph",
+        "data": {},
+        "children": [
+         {
+          "text": "-- ",
+          "marks": []
+         }
+        ]
+       }
+      ]
+     },
+     "selection": {
+      "ranges": [
+       {
+        "anchor": {
+         "path": [
+          0,
+          0
+         ],
+         "offset": 3
+        },
+        "focus": {
+         "path": [
+          0,
+          0
+         ],
+         "offset": 3
+        }
+       }
+      ],
+      "main": 0
+     }
+    },
+    {
+     "doc": {
+      "type": "doc",
+      "children": [
+       {
+        "id": "n1",
+        "type": "paragraph",
+        "data": {},
+        "children": [
+         {
+          "text": "",
+          "marks": []
+         }
+        ]
+       }
+      ]
+     },
+     "selection": {
+      "ranges": [
+       {
+        "anchor": {
+         "path": [
+          0,
+          0
+         ],
+         "offset": 0
+        },
+        "focus": {
+         "path": [
+          0,
+          0
+         ],
+         "offset": 0
+        }
+       }
+      ],
+      "main": 0
+     }
+    }
+   ]
+  },
+  "trs": [
+   {
+    "meta": {
+     "origin": "input",
+     "inputType": "insertText"
+    },
+    "ops": [
+     {
+      "type": "insert_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 0,
+      "text": "-"
+     }
+    ]
+   },
+   {
+    "meta": {
+     "origin": "input",
+     "inputType": "insertText"
+    },
+    "ops": [
+     {
+      "type": "insert_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 1,
+      "text": "-"
+     }
+    ]
+   },
+   {
+    "meta": {
+     "origin": "input",
+     "inputType": "insertText"
+    },
+    "ops": [
+     {
+      "type": "insert_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2,
+      "text": " "
+     }
+    ]
+   },
+   {
+    "meta": {
+     "origin": "input",
+     "inputRule": true
+    },
+    "ops": [
+     {
+      "type": "remove_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 0,
+      "text": "-- "
+     },
+     {
+      "type": "insert_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 0,
+      "text": "— "
+     }
+    ]
+   },
+   {
+    "meta": {
+     "origin": "history",
+     "historyAction": "undo"
+    },
+    "ops": [
+     {
+      "type": "remove_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 0,
+      "text": "— "
+     },
+     {
+      "type": "insert_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 0,
+      "text": "-- "
+     }
+    ]
+   },
+   {
+    "meta": {
+     "origin": "history",
+     "historyAction": "undo"
+    },
+    "ops": [
+     {
+      "type": "remove_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2,
+      "text": " "
+     },
+     {
+      "type": "remove_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 1,
+      "text": "-"
+     },
+     {
+      "type": "remove_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 0,
+      "text": "-"
+     }
+    ]
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 0
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 0
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "n1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "rule declines, the next fires": {
+  "returned": {
+   "out": [
+    true
+   ],
+   "steps": [
+    {
+     "doc": {
+      "type": "doc",
+      "children": [
+       {
+        "id": "n1",
+        "type": "paragraph",
+        "data": {},
+        "children": [
+         {
+          "text": "abxcd",
+          "marks": []
+         }
+        ]
+       },
+       {
+        "id": "n2",
+        "type": "paragraph",
+        "data": {},
+        "children": [
+         {
+          "text": "efgh",
+          "marks": []
+         }
+        ]
+       }
+      ]
+     },
+     "selection": {
+      "ranges": [
+       {
+        "anchor": {
+         "path": [
+          0,
+          0
+         ],
+         "offset": 3
+        },
+        "focus": {
+         "path": [
+          0,
+          0
+         ],
+         "offset": 3
+        }
+       }
+      ],
+      "main": 0
+     }
+    },
+    {
+     "doc": {
+      "type": "doc",
+      "children": [
+       {
+        "id": "n1",
+        "type": "paragraph",
+        "data": {},
+        "children": [
+         {
+          "text": "abcd",
+          "marks": []
+         }
+        ]
+       },
+       {
+        "id": "n2",
+        "type": "paragraph",
+        "data": {},
+        "children": [
+         {
+          "text": "efgh",
+          "marks": []
+         }
+        ]
+       }
+      ]
+     },
+     "selection": {
+      "ranges": [
+       {
+        "anchor": {
+         "path": [
+          0,
+          0
+         ],
+         "offset": 2
+        },
+        "focus": {
+         "path": [
+          0,
+          0
+         ],
+         "offset": 2
+        }
+       }
+      ],
+      "main": 0
+     }
+    }
+   ]
+  },
+  "trs": [
+   {
+    "meta": {
+     "origin": "input",
+     "inputType": "insertText"
+    },
+    "ops": [
+     {
+      "type": "insert_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2,
+      "text": "x"
+     }
+    ]
+   },
+   {
+    "meta": {
+     "origin": "input",
+     "inputRule": true
+    },
+    "ops": [
+     {
+      "type": "remove_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2,
+      "text": "x"
+     },
+     {
+      "type": "insert_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2,
+      "text": "X"
+     }
+    ]
+   },
+   {
+    "meta": {
+     "origin": "history",
+     "historyAction": "undo"
+    },
+    "ops": [
+     {
+      "type": "remove_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2,
+      "text": "X"
+     },
+     {
+      "type": "insert_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2,
+      "text": "x"
+     }
+    ]
+   },
+   {
+    "meta": {
+     "origin": "history",
+     "historyAction": "undo"
+    },
+    "ops": [
+     {
+      "type": "remove_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2,
+      "text": "x"
+     }
+    ]
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "n1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "abcd",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "n2",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "efgh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "rule sets the selection": {
+  "returned": {
+   "out": [
+    true,
+    true,
+    true
+   ],
+   "steps": [
+    {
+     "doc": {
+      "type": "doc",
+      "children": [
+       {
+        "id": "n1",
+        "type": "paragraph",
+        "data": {},
+        "children": [
+         {
+          "text": "ab>> ",
+          "marks": []
+         }
+        ]
+       }
+      ]
+     },
+     "selection": {
+      "ranges": [
+       {
+        "anchor": {
+         "path": [
+          0,
+          0
+         ],
+         "offset": 5
+        },
+        "focus": {
+         "path": [
+          0,
+          0
+         ],
+         "offset": 5
+        }
+       }
+      ],
+      "main": 0
+     }
+    },
+    {
+     "doc": {
+      "type": "doc",
+      "children": [
+       {
+        "id": "n1",
+        "type": "paragraph",
+        "data": {},
+        "children": [
+         {
+          "text": "ab",
+          "marks": []
+         }
+        ]
+       }
+      ]
+     },
+     "selection": {
+      "ranges": [
+       {
+        "anchor": {
+         "path": [
+          0,
+          0
+         ],
+         "offset": 2
+        },
+        "focus": {
+         "path": [
+          0,
+          0
+         ],
+         "offset": 2
+        }
+       }
+      ],
+      "main": 0
+     }
+    }
+   ]
+  },
+  "trs": [
+   {
+    "meta": {
+     "origin": "input",
+     "inputType": "insertText"
+    },
+    "ops": [
+     {
+      "type": "insert_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2,
+      "text": ">"
+     }
+    ]
+   },
+   {
+    "meta": {
+     "origin": "input",
+     "inputType": "insertText"
+    },
+    "ops": [
+     {
+      "type": "insert_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 3,
+      "text": ">"
+     }
+    ]
+   },
+   {
+    "meta": {
+     "origin": "input",
+     "inputType": "insertText"
+    },
+    "ops": [
+     {
+      "type": "insert_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 4,
+      "text": " "
+     }
+    ]
+   },
+   {
+    "meta": {
+     "origin": "input",
+     "inputRule": true
+    },
+    "ops": [
+     {
+      "type": "remove_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2,
+      "text": ">> "
+     },
+     {
+      "type": "insert_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2,
+      "text": "»"
+     },
+     {
+      "type": "set_selection",
+      "selection": {
+       "ranges": [
+        {
+         "anchor": {
+          "path": [
+           0,
+           0
+          ],
+          "offset": 2
+         },
+         "focus": {
+          "path": [
+           0,
+           0
+          ],
+          "offset": 2
+         }
+        }
+       ],
+       "main": 0
+      },
+      "prevSelection": {
+       "ranges": [
+        {
+         "anchor": {
+          "path": [
+           0,
+           0
+          ],
+          "offset": 3
+         },
+         "focus": {
+          "path": [
+           0,
+           0
+          ],
+          "offset": 3
+         }
+        }
+       ],
+       "main": 0
+      }
+     }
+    ]
+   },
+   {
+    "meta": {
+     "origin": "history",
+     "historyAction": "undo"
+    },
+    "ops": [
+     {
+      "type": "remove_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2,
+      "text": "»"
+     },
+     {
+      "type": "insert_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2,
+      "text": ">> "
+     }
+    ]
+   },
+   {
+    "meta": {
+     "origin": "history",
+     "historyAction": "undo"
+    },
+    "ops": [
+     {
+      "type": "remove_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 4,
+      "text": " "
+     },
+     {
+      "type": "remove_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 3,
+      "text": ">"
+     },
+     {
+      "type": "remove_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2,
+      "text": ">"
+     }
+    ]
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "n1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "rule marks and stores": {
+  "returned": {
+   "out": [
+    true,
+    true,
+    true,
+    true
+   ],
+   "steps": [
+    {
+     "doc": {
+      "type": "doc",
+      "children": [
+       {
+        "id": "n1",
+        "type": "paragraph",
+        "data": {},
+        "children": [
+         {
+          "text": "ab *hi*",
+          "marks": []
+         }
+        ]
+       }
+      ]
+     },
+     "selection": {
+      "ranges": [
+       {
+        "anchor": {
+         "path": [
+          0,
+          0
+         ],
+         "offset": 7
+        },
+        "focus": {
+         "path": [
+          0,
+          0
+         ],
+         "offset": 7
+        }
+       }
+      ],
+      "main": 0
+     }
+    },
+    {
+     "doc": {
+      "type": "doc",
+      "children": [
+       {
+        "id": "n1",
+        "type": "paragraph",
+        "data": {},
+        "children": [
+         {
+          "text": "ab ",
+          "marks": []
+         }
+        ]
+       }
+      ]
+     },
+     "selection": {
+      "ranges": [
+       {
+        "anchor": {
+         "path": [
+          0,
+          0
+         ],
+         "offset": 3
+        },
+        "focus": {
+         "path": [
+          0,
+          0
+         ],
+         "offset": 3
+        }
+       }
+      ],
+      "main": 0
+     }
+    }
+   ]
+  },
+  "trs": [
+   {
+    "meta": {
+     "origin": "input",
+     "inputType": "insertText"
+    },
+    "ops": [
+     {
+      "type": "insert_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 3,
+      "text": "*"
+     }
+    ]
+   },
+   {
+    "meta": {
+     "origin": "input",
+     "inputType": "insertText"
+    },
+    "ops": [
+     {
+      "type": "insert_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 4,
+      "text": "h"
+     }
+    ]
+   },
+   {
+    "meta": {
+     "origin": "input",
+     "inputType": "insertText"
+    },
+    "ops": [
+     {
+      "type": "insert_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 5,
+      "text": "i"
+     }
+    ]
+   },
+   {
+    "meta": {
+     "origin": "input",
+     "inputType": "insertText"
+    },
+    "ops": [
+     {
+      "type": "insert_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 6,
+      "text": "*"
+     }
+    ]
+   },
+   {
+    "meta": {
+     "origin": "input",
+     "inputRule": true
+    },
+    "ops": [
+     {
+      "type": "remove_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 3,
+      "text": "*hi*"
+     },
+     {
+      "type": "insert_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 3,
+      "text": "hi"
+     },
+     {
+      "type": "split_node",
+      "path": [
+       0,
+       0
+      ],
+      "position": 3,
+      "properties": {
+       "marks": []
+      }
+     },
+     {
+      "type": "add_mark",
+      "path": [
+       0,
+       1
+      ],
+      "mark": {
+       "type": "bold",
+       "data": {}
+      }
+     }
+    ]
+   },
+   {
+    "meta": {
+     "origin": "history",
+     "historyAction": "undo"
+    },
+    "ops": [
+     {
+      "type": "remove_mark",
+      "path": [
+       0,
+       1
+      ],
+      "mark": {
+       "type": "bold",
+       "data": {}
+      }
+     },
+     {
+      "type": "merge_node",
+      "path": [
+       0,
+       1
+      ],
+      "position": 3,
+      "properties": {
+       "marks": []
+      }
+     },
+     {
+      "type": "remove_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 3,
+      "text": "hi"
+     },
+     {
+      "type": "insert_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 3,
+      "text": "*hi*"
+     }
+    ]
+   },
+   {
+    "meta": {
+     "origin": "history",
+     "historyAction": "undo"
+    },
+    "ops": [
+     {
+      "type": "remove_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 6,
+      "text": "*"
+     },
+     {
+      "type": "remove_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 5,
+      "text": "i"
+     },
+     {
+      "type": "remove_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 4,
+      "text": "h"
+     },
+     {
+      "type": "remove_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 3,
+      "text": "*"
+     }
+    ]
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 3
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 3
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": [
+   {
+    "type": "bold",
+    "data": {}
+   }
+  ],
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "n1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab ",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "rule fires without changes": {
+  "returned": {
+   "out": [
+    true,
+    true,
+    true,
+    true
+   ],
+   "steps": [
+    {
+     "doc": {
+      "type": "doc",
+      "children": [
+       {
+        "id": "n1",
+        "type": "paragraph",
+        "data": {},
+        "children": [
+         {
+          "text": "",
+          "marks": []
+         }
+        ]
+       }
+      ]
+     },
+     "selection": {
+      "ranges": [
+       {
+        "anchor": {
+         "path": [
+          0,
+          0
+         ],
+         "offset": 0
+        },
+        "focus": {
+         "path": [
+          0,
+          0
+         ],
+         "offset": 0
+        }
+       }
+      ],
+      "main": 0
+     }
+    }
+   ]
+  },
+  "trs": [
+   {
+    "meta": {
+     "origin": "input",
+     "inputType": "insertText"
+    },
+    "ops": [
+     {
+      "type": "insert_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 0,
+      "text": "n"
+     }
+    ]
+   },
+   {
+    "meta": {
+     "origin": "input",
+     "inputType": "insertText"
+    },
+    "ops": [
+     {
+      "type": "insert_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 1,
+      "text": "o"
+     }
+    ]
+   },
+   {
+    "meta": {
+     "origin": "input",
+     "inputType": "insertText"
+    },
+    "ops": [
+     {
+      "type": "insert_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2,
+      "text": "o"
+     }
+    ]
+   },
+   {
+    "meta": {
+     "origin": "input",
+     "inputType": "insertText"
+    },
+    "ops": [
+     {
+      "type": "insert_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 3,
+      "text": "p"
+     }
+    ]
+   },
+   {
+    "meta": {
+     "origin": "history",
+     "historyAction": "undo"
+    },
+    "ops": [
+     {
+      "type": "remove_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 3,
+      "text": "p"
+     },
+     {
+      "type": "remove_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2,
+      "text": "o"
+     },
+     {
+      "type": "remove_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 1,
+      "text": "o"
+     },
+     {
+      "type": "remove_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 0,
+      "text": "n"
+     }
+    ]
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 0
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 0
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "n1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "rule does not run over a range": {
+  "returned": [
+   true
+  ],
+  "trs": [
+   {
+    "meta": {
+     "origin": "input",
+     "inputType": "insertText"
+    },
+    "ops": [
+     {
+      "type": "remove_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 0,
+      "text": "a"
+     },
+     {
+      "type": "insert_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 0,
+      "text": "x"
+     }
+    ]
+   },
+   {
+    "meta": {
+     "origin": "input",
+     "inputRule": true
+    },
+    "ops": [
+     {
+      "type": "remove_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 0,
+      "text": "x"
+     },
+     {
+      "type": "insert_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 0,
+      "text": "X"
+     }
+    ]
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 1
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 1
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "n1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "Xbcd",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "n2",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "efgh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "rule after a chip": {
+  "returned": [
+   true,
+   true
+  ],
+  "trs": [
+   {
+    "meta": {
+     "origin": "input",
+     "inputType": "insertText"
+    },
+    "ops": [
+     {
+      "type": "insert_text",
+      "path": [
+       0,
+       2
+      ],
+      "offset": 1,
+      "text": "-"
+     }
+    ]
+   },
+   {
+    "meta": {
+     "origin": "input",
+     "inputType": "insertText"
+    },
+    "ops": [
+     {
+      "type": "insert_text",
+      "path": [
+       0,
+       2
+      ],
+      "offset": 2,
+      "text": " "
+     }
+    ]
+   },
+   {
+    "meta": {
+     "origin": "input",
+     "inputRule": true
+    },
+    "ops": [
+     {
+      "type": "remove_text",
+      "path": [
+       0,
+       2
+      ],
+      "offset": 0,
+      "text": "-- "
+     },
+     {
+      "type": "insert_text",
+      "path": [
+       0,
+       2
+      ],
+      "offset": 0,
+      "text": "— "
+     }
+    ]
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       2
+      ],
+      "offset": 2
+     },
+     "focus": {
+      "path": [
+       0,
+       2
+      ],
+      "offset": 2
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "n1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      },
+      {
+       "id": "n2",
+       "type": "chip",
+       "data": {},
+       "children": []
+      },
+      {
+       "text": "— ",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "runInputRules directly": {
+  "returned": true,
+  "trs": [
+   {
+    "meta": {
+     "origin": "input",
+     "inputRule": true
+    },
+    "ops": [
+     {
+      "type": "remove_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 0,
+      "text": "-- "
+     },
+     {
+      "type": "insert_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 0,
+      "text": "— "
+     }
+    ]
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "n1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "— ",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "compose at a caret": {
+  "returned": [
+   0,
+   0
+  ],
+  "trs": [
+   {
+    "meta": {
+     "origin": "input",
+     "inputType": "insertCompositionText"
+    },
+    "ops": [
+     {
+      "type": "insert_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2,
+      "text": "X"
+     }
+    ]
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 3
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 3
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "n1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "abXcd",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "n2",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "efgh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "compose over a range": {
+  "returned": [
+   0,
+   0
+  ],
+  "trs": [
+   {
+    "meta": {
+     "origin": "input",
+     "inputType": "insertCompositionText"
+    },
+    "ops": [
+     {
+      "type": "remove_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 1,
+      "text": "bc"
+     }
+    ]
+   },
+   {
+    "meta": {
+     "origin": "input",
+     "inputType": "insertCompositionText"
+    },
+    "ops": [
+     {
+      "type": "insert_text",
+      "path": [
+       0,
+       0
+      ],
+      "offset": 1,
+      "text": "X"
+     }
+    ]
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2
+     },
+     "focus": {
+      "path": [
+       0,
+       0
+      ],
+      "offset": 2
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "n1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "aXd",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "n2",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "efgh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "compose with stored marks": {
+  "returned": [
+   0,
+   0
+  ],
+  "trs": [
+   {
+    "meta": {
+     "origin": "input",
+     "inputType": "insertCompositionText"
+    },
+    "ops": [
+     {
+      "type": "split_node",
+      "path": [
+       0,
+       0
+      ],
+      "position": 2,
+      "properties": {
+       "marks": []
+      }
+     },
+     {
+      "type": "insert_node",
+      "path": [
+       0,
+       1
+      ],
+      "node": {
+       "text": "X",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      }
+     },
+     {
+      "type": "set_selection",
+      "selection": {
+       "ranges": [
+        {
+         "anchor": {
+          "path": [
+           0,
+           1
+          ],
+          "offset": 1
+         },
+         "focus": {
+          "path": [
+           0,
+           1
+          ],
+          "offset": 1
+         }
+        }
+       ],
+       "main": 0
+      },
+      "prevSelection": {
+       "ranges": [
+        {
+         "anchor": {
+          "path": [
+           0,
+           2
+          ],
+          "offset": 0
+         },
+         "focus": {
+          "path": [
+           0,
+           2
+          ],
+          "offset": 0
+         }
+        }
+       ],
+       "main": 0
+      }
+     }
+    ]
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       0,
+       1
+      ],
+      "offset": 1
+     },
+     "focus": {
+      "path": [
+       0,
+       1
+      ],
+      "offset": 1
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "n1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      },
+      {
+       "text": "X",
+       "marks": [
+        {
+         "type": "bold",
+         "data": {}
+        }
+       ]
+      },
+      {
+       "text": "cd",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "n2",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "efgh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "compose over a node selection": {
+  "returned": [
+   1,
+   0
+  ],
+  "trs": [
+   {
+    "meta": {
+     "origin": "input",
+     "inputType": "insertCompositionText"
+    },
+    "ops": [
+     {
+      "type": "insert_node",
+      "path": [
+       2
+      ],
+      "node": {
+       "id": "n4",
+       "type": "paragraph",
+       "data": {},
+       "children": [
+        {
+         "text": "",
+         "marks": []
+        }
+       ]
+      }
+     },
+     {
+      "type": "remove_node",
+      "path": [
+       1
+      ],
+      "node": {
+       "id": "n2",
+       "type": "atom",
+       "data": {},
+       "children": []
+      }
+     },
+     {
+      "type": "set_selection",
+      "selection": {
+       "ranges": [
+        {
+         "anchor": {
+          "path": [
+           1,
+           0
+          ],
+          "offset": 0
+         },
+         "focus": {
+          "path": [
+           1,
+           0
+          ],
+          "offset": 0
+         }
+        }
+       ],
+       "main": 0
+      },
+      "prevSelection": {
+       "ranges": [
+        {
+         "anchor": {
+          "path": [
+           0,
+           0
+          ],
+          "offset": 2
+         },
+         "focus": {
+          "path": [
+           0,
+           0
+          ],
+          "offset": 2
+         }
+        }
+       ],
+       "main": 0
+      }
+     }
+    ]
+   },
+   {
+    "meta": {
+     "origin": "input",
+     "inputType": "insertCompositionText"
+    },
+    "ops": [
+     {
+      "type": "insert_text",
+      "path": [
+       1,
+       0
+      ],
+      "offset": 0,
+      "text": "X"
+     }
+    ]
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       1,
+       0
+      ],
+      "offset": 1
+     },
+     "focus": {
+      "path": [
+       1,
+       0
+      ],
+      "offset": 1
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "n1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "ab",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "n4",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "X",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "n3",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "cd",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "compose then undo": {
+  "returned": [
+   [
+    1,
+    0
+   ],
+   true,
+   {
+    "type": "doc",
+    "children": [
+     {
+      "id": "n1",
+      "type": "paragraph",
+      "data": {},
+      "children": [
+       {
+        "text": "abcd",
+        "marks": []
+       }
+      ]
+     },
+     {
+      "id": "n2",
+      "type": "paragraph",
+      "data": {},
+      "children": [
+       {
+        "text": "efgh",
+        "marks": []
+       }
+      ]
+     }
+    ]
+   }
+  ],
+  "trs": [
+   {
+    "meta": {
+     "origin": "input",
+     "inputType": "insertCompositionText"
+    },
+    "ops": [
+     {
+      "type": "insert_text",
+      "path": [
+       1,
+       0
+      ],
+      "offset": 4,
+      "text": "Z"
+     }
+    ]
+   },
+   {
+    "meta": {
+     "origin": "history",
+     "historyAction": "undo"
+    },
+    "ops": [
+     {
+      "type": "remove_text",
+      "path": [
+       1,
+       0
+      ],
+      "offset": 4,
+      "text": "Z"
+     }
+    ]
+   }
+  ],
+  "selection": {
+   "ranges": [
+    {
+     "anchor": {
+      "path": [
+       1,
+       0
+      ],
+      "offset": 4
+     },
+     "focus": {
+      "path": [
+       1,
+       0
+      ],
+      "offset": 4
+     }
+    }
+   ],
+   "main": 0
+  },
+  "storedMarks": null,
+  "doc": {
+   "type": "doc",
+   "children": [
+    {
+     "id": "n1",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "abcd",
+       "marks": []
+      }
+     ]
+    },
+    {
+     "id": "n2",
+     "type": "paragraph",
+     "data": {},
+     "children": [
+      {
+       "text": "efgh",
+       "marks": []
+      }
+     ]
+    }
+   ]
+  }
+ }
+}

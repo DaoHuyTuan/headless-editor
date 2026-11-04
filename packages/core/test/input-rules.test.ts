@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it } from 'vitest'
 import { definePlugin } from '../src/plugin/define'
+import { createSelection } from '../src/model/selection'
 import type { InputRule } from '../src/index'
 import type { Doc, ElementNode, Node, Selection, TextNode } from '../src/model/types'
 import { createTestEditor, doc, el, sel, stripIds, txt } from '../src/testing/index'
@@ -155,5 +156,92 @@ describe('input rules', () => {
     ])
     type('a')
     expect(text()).toEqual(stripIds(doc(p('a'))))
+  })
+})
+
+describe('input rules with several carets', () => {
+  const pt = (path: number[], offset: number) => ({ path, offset })
+  const at = (path: number[], offset: number) => ({ anchor: pt(path, offset), focus: pt(path, offset) })
+  const smiley: InputRule = {
+    match: /:\)$/,
+    handler: (_ctx, _m, range, tr) => {
+      tr.insertText('☺', range)
+      return true
+    },
+  }
+  /** Typing as the view sends it: the intent range is the main range. */
+  const typeAt = (ed: ReturnType<typeof setup>['ed'], s: string) => {
+    for (const ch of s) {
+      const sl = ed.state.selection!
+      ed.handleIntent({ inputType: 'insertText', data: ch, range: sl.ranges[sl.main]! })
+    }
+  }
+  const blockTexts = (ed: ReturnType<typeof setup>['ed']) =>
+    ed.state.doc.children.map((b) => (b.children ?? []).map((n) => ('text' in n ? n.text : `<${n.type}>`)).join(''))
+
+  it('input rule fires at both carets in one rule step; one undo reverts both rules, keeps typed text', () => {
+    const { ed } = setup(doc(p(''), p('')), createSelection([at([0, 0], 0), at([1, 0], 0)]))
+    const kinds: unknown[] = []
+    ed.on('transaction', ({ tr }) => kinds.push(tr.meta.inputRule === true ? 'rule' : tr.meta.inputType))
+    typeAt(ed, '-- ')
+    expect(blockTexts(ed)).toEqual(['— ', '— '])
+    expect(kinds).toEqual(['insertText', 'insertText', 'insertText', 'rule'])
+    expect(ed.state.selection).toEqual(createSelection([at([0, 0], 2), at([1, 0], 2)]))
+    ed.commands.undo()
+    expect(blockTexts(ed)).toEqual(['-- ', '-- '])
+    expect(ed.state.selection).toEqual(createSelection([at([0, 0], 3), at([1, 0], 3)]))
+    ed.commands.undo()
+    expect(blockTexts(ed)).toEqual(['', ''])
+  })
+
+  it('input rule fires at one caret only; the other caret is untouched', () => {
+    const { ed } = setup(doc(p(''), p('x')), createSelection([at([0, 0], 0), at([1, 0], 1)]))
+    typeAt(ed, '-- ')
+    expect(blockTexts(ed)).toEqual(['— ', 'x-- '])
+    expect(ed.state.selection).toEqual(createSelection([at([0, 0], 2), at([1, 0], 4)]))
+  })
+
+  it('carets in one text: each handler gets its range mapped through the earlier firings', () => {
+    const ranges: unknown[] = []
+    const spy: InputRule = {
+      match: smiley.match,
+      handler: (ctx, m, range, tr) => (ranges.push(range), smiley.handler(ctx, m, range, tr)),
+    }
+    const { ed } = setup(doc(p('a b')), createSelection([at([0, 0], 1), at([0, 0], 3)]), [spy])
+    typeAt(ed, ':)')
+    expect(blockTexts(ed)).toEqual(['a☺ b☺'])
+    expect(ranges).toEqual([
+      { start: pt([0, 0], 1), end: pt([0, 0], 3) },
+      { start: pt([0, 0], 4), end: pt([0, 0], 6) },
+    ])
+    expect(ed.state.selection).toEqual(createSelection([at([0, 0], 2), at([0, 0], 5)]))
+  })
+
+  it('at each caret the first matching rule wins', () => {
+    const calls: string[] = []
+    const mk = (name: string, result: boolean): InputRule => ({
+      match: /x$/,
+      handler: (_ctx, _m, range, tr) => {
+        calls.push(name)
+        if (result) tr.insertText(name, range)
+        else tr.insertText('NO', range)
+        return result
+      },
+    })
+    const { ed } = setup(doc(p(''), p('')), createSelection([at([0, 0], 0), at([1, 0], 0)]), [mk('a', false), mk('b', true), mk('c', true)])
+    typeAt(ed, 'x')
+    expect(calls).toEqual(['a', 'b', 'a', 'b'])
+    expect(blockTexts(ed)).toEqual(['b', 'b'])
+  })
+
+  it('a setSelection in a rule handler throws in dev with several ranges', () => {
+    const bad: InputRule = {
+      match: /!$/,
+      handler: (_ctx, _m, range, tr) => (tr.setSelection(sel(range.start.path, 0)), true),
+    }
+    const { ed } = setup(doc(p('a!'), p('b!')), createSelection([at([0, 0], 2), at([1, 0], 2)]), [bad])
+    expect(() => ed.runInputRules()).toThrow(/selection/)
+    const one = setup(doc(p('a!')), sel([0, 0], 2), [bad])
+    expect(one.ed.runInputRules()).toBe(true)
   })
 })

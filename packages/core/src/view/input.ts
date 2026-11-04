@@ -65,6 +65,7 @@ function runPendingDelete(view: EditorView, m: InputModuleState, entry: PendingD
   if (editor.state !== entry.state || entry.event.defaultPrevented || view.composing || !view.hasFocus()) return
   view.syncSelection()
   const sel = editor.state.selection
+  // The main range: the intent addresses the selection (core then acts at every range).
   editor.handleIntent({ inputType: entry.inputType, data: null, dataTransfer: null, range: sel && mainRange(sel) })
 }
 
@@ -116,6 +117,8 @@ function onBeforeInput(view: EditorView, e: InputEvent, m: InputModuleState): vo
     e.preventDefault()
     return
   }
+  // The browser's target range, else the main range (the DOM shows only main). A target equal to the
+  // main range is plain input at every range; another target applies only there (core-plugin).
   view.syncSelection()
   const intent: InputIntent = {
     inputType: e.inputType,

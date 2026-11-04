@@ -179,6 +179,30 @@ export function forEachRange(tr: Transaction, fn: RangeStep): void {
   })
   const docChanged = tr.ops.slice(opsBefore).some((op) => op.type !== 'set_selection')
   const marks = tr.storedMarks
-  tr.setSelection(out.length === 0 ? null : createSelection(out, main))
+  settingResults.add(tr)
+  try {
+    tr.setSelection(out.length === 0 ? null : createSelection(out, main))
+  } finally {
+    settingResults.delete(tr)
+  }
   if (docChanged) tr.setStoredMarks(marks)
+}
+
+/** Trs whose `setSelection` throws in dev mode, with the reason (see `lockSelection`). */
+const selectionLocks = new WeakMap<Transaction, string>()
+/** Trs whose `forEachRange` is setting its collected selection (allowed while locked). */
+const settingResults = new WeakSet<Transaction>()
+
+/**
+ * Makes a direct `tr.setSelection` throw in dev mode with `reason` (an input-rule handler's tr while
+ * several carets share one rule tr: the selection is the carets' own). The editing methods still map
+ * and set the ranges they edit (through `forEachRange`).
+ */
+export function lockSelection(tr: Transaction, reason: string): void {
+  selectionLocks.set(tr, reason)
+}
+
+/** The reason a `setSelection` on `tr` must throw now (see `lockSelection`), else null. */
+export function selectionLock(tr: Transaction): string | null {
+  return settingResults.has(tr) ? null : (selectionLocks.get(tr) ?? null)
 }

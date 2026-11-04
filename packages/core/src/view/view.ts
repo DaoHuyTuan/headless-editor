@@ -93,6 +93,7 @@ function sameSnapshot(a: DomSelectionSnapshot, b: DomSelectionSnapshot): boolean
   )
 }
 
+/** Compared by main range: the DOM shows only main, so a DOM selection at it keeps the other ranges. */
 function sameSelection(a: Selection | null, b: Selection | null): boolean {
   if (a === null || b === null) return a === b
   return sameRange(mainRange(a), mainRange(b))
@@ -277,7 +278,8 @@ export class EditorView {
 
   /**
    * Makes the model selection match the DOM selection when it is inside the root, dispatching a
-   * selection-only tr if they differ. Input handlers call it first: `selectionchange` is async.
+   * selection-only tr if they differ. Input handlers call it first: `selectionchange` is async. A
+   * DOM selection away from the main range replaces the selection with that one range (spec §5.6).
    */
   syncSelection(): void {
     if (this.destroyed || this.composing || this.focusIgnored()) return

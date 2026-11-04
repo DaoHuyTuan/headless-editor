@@ -1,7 +1,8 @@
 import { sanitizeFragment } from './content/sanitize'
 import type { Editor } from './editor'
 import { isNodeSelection } from './model/editable'
-import { mainRange, rangeEquals, single } from './model/selection'
+import { mainRange, single } from './model/selection'
+import { comparePoint, toRange } from './model/path'
 import type { Data, Path, Selection, SelectionRange } from './model/types'
 import { definePlugin } from './plugin/define'
 import type { Command, InputIntent } from './plugin/types'
@@ -20,13 +21,42 @@ function intentText(intent: InputIntent): string | null {
   return intent.data ?? (intent.dataTransfer?.getData('text/plain') || null)
 }
 
+/**
+ * Whether the intent addresses the main range (plain typing / pasting at the selection): no range,
+ * or the main range's span (in either direction: a target range is always forward).
+ */
+function targetsMain(intent: InputIntent, sel: Selection): boolean {
+  if (!intent.range) return true
+  const a = toRange(intent.range)
+  const b = toRange(mainRange(sel))
+  return comparePoint(a.start, b.start) === 0 && comparePoint(a.end, b.end) === 0
+}
+
 /** Inserts the intent's text into `intent.range` (or the selection). Without text, does nothing (false). */
 function insertIntentText(tr: Transaction, intent: InputIntent): boolean {
   const text = intentText(intent)
   if (text === null) return false
   // With a node selection the model selection is authoritative (the DOM range is only its caret):
   // typing replaces the selected node.
-  return insertText(tr, text, isNodeSelection(tr.selection) ? undefined : (intent.range ?? undefined))
+  if (isNodeSelection(tr.selection)) return insertText(tr, text)
+  const sel = tr.selection
+  // With one range the intent's range is used as it always was.
+  if (!sel || sel.ranges.length === 1) return insertText(tr, text, intent.range ?? undefined)
+  // Several ranges: plain typing (the intent targets the main range) goes to every range.
+  const range = intent.range
+  if (!range || targetsMain(intent, sel)) return insertText(tr, text)
+  // An intent with its own target (autocorrect, spellcheck) applies only there (spec §8 call 13).
+  collapseTo(tr, range)
+  return insertText(tr, text, range)
+}
+
+/**
+ * Collapses the selection to `range` alone, keeping the stored marks: an input that addresses one
+ * place (an intent's own target, a drop point) drops the other ranges (spec §5.4).
+ */
+function collapseTo(tr: Transaction, range: SelectionRange): void {
+  const marks = tr.storedMarks
+  tr.setSelection(single(range)).setStoredMarks(marks)
 }
 
 /** Transfer input types the core inserts itself, and the origin of their tr. */
@@ -37,14 +67,15 @@ const PASTE_INPUT: Record<string, 'paste' | 'input'> = { insertFromPaste: 'paste
  * - A node selection: null, the fragment replaces the node in place, as typing does.
  * - A drop: its drop point (`intent.range`).
  * - A paste with several ranges: null (the same fragment at every range, spec §5.4) when the intent
- *   targets the main range or nothing; a paste at another range goes only there. With one range
+ *   targets the main range or nothing; a paste at another range goes only there (and collapses,
+ *   as any intent with its own target: spec §8 call 13). With one range
  *   `intent.range` is kept as it always was (it is the selection).
  */
 function transferTarget(intent: InputIntent, sel: Selection | null): SelectionRange | null {
   if (!sel) return intent.range
   if (isNodeSelection(sel)) return null
   if (intent.inputType !== 'insertFromPaste' || sel.ranges.length === 1) return intent.range
-  return !intent.range || rangeEquals(intent.range, mainRange(sel)) ? null : intent.range
+  return targetsMain(intent, sel) ? null : intent.range
 }
 
 /**
@@ -71,8 +102,9 @@ function insertTransfer(intent: InputIntent, editor: Editor): boolean {
   const tr = editor.createTransaction()
   tr.meta.origin = PASTE_INPUT[intent.inputType]!
   tr.meta.inputType = intent.inputType
-  // A drop goes to one place: the other ranges are dropped (no point: the main range).
-  if (intent.inputType === 'insertFromDrop' && sel && sel.ranges.length > 1) tr.setSelection(single(at ?? mainRange(sel)))
+  // A drop, or a paste with its own target, goes to one place: the selection collapses there (a
+  // drop with no point: to the main range). A paste at the selection goes to every range.
+  if (sel && sel.ranges.length > 1 && (at || intent.inputType === 'insertFromDrop')) collapseTo(tr, at ?? mainRange(sel))
   if (insertFragment(tr, fragment, at ?? undefined) && tr.ops.length > 0) editor.dispatch(tr)
   return true
 }
