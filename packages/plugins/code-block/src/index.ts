@@ -457,21 +457,17 @@ const isInlineInsert = (op: Operation, registry: Registry): op is Extract<Operat
  * Whether `tr` must be vetoed: it inserts an inline element into a code block, its marks all land in
  * code blocks (a mark only partly inside one is let through: normalization strips that part), or it
  * stores marks while every caret is in a code block (e.g. toggling bold at the caret). With carets
- * elsewhere too, the stored marks are let through: they type rich text at those carets, and
- * normalization strips them from the code block's text. Never asked for history
+ * elsewhere too, the stored marks are let through, and so are marks that all land in code blocks in
+ * the same tr: they type rich text at those carets, and normalization strips them from the code
+ * block's text. Never asked for history
  * trs (`meta.origin === 'history'`): the filter lets every undo/redo through.
  */
 function addsFormatting(tr: Transaction): boolean {
   const { registry } = tr
   const sel = tr.selection
-  if (
-    sel &&
-    tr.storedMarks &&
-    tr.storedMarks.length > 0 &&
-    tr.storedMarks !== tr.before.storedMarks &&
-    sel.ranges.every((r) => inCodeBlock(tr.doc, registry, r.focus.path))
-  )
-    return true
+  const storesMarks = !!sel && !!tr.storedMarks && tr.storedMarks.length > 0 && tr.storedMarks !== tr.before.storedMarks
+  const someOutside = !!sel && sel.ranges.some((r) => !inCodeBlock(tr.doc, registry, r.focus.path))
+  if (storesMarks && !someOutside) return true
   // Plain typing has neither: no replay.
   if (!tr.ops.some((op) => op.type === 'add_mark' || isInlineInsert(op, registry))) return false
   let doc: Doc = tr.before.doc as Doc
@@ -485,7 +481,9 @@ function addsFormatting(tr: Transaction): boolean {
     if (isInlineInsert(op, registry) && inCodeBlock(doc, registry, op.path.slice(0, -1))) return true
     if (op.type !== 'set_selection') doc = applyOp(doc, op)
   }
-  return marks > 0 && marksInCode === marks
+  // Marks only in code blocks are vetoed, unless the tr also stores marks for a caret outside one
+  // (normalization strips the marks in the code blocks).
+  return marks > 0 && marksInCode === marks && !(storesMarks && someOutside)
 }
 
 const isBlockFragment = (fragment: Fragment, registry: Registry): boolean => {

@@ -639,3 +639,21 @@ describe('code block with several ranges', () => {
     expect(((ed.state.doc.children[0] as ElementNode).children as TextNode[])[0]!.marks).toEqual([])
   })
 })
+
+describe('code block bold with a range in code and a caret in a paragraph', () => {
+  const rng = (path: number[], from: number, to = from) => ({ anchor: { path, offset: from }, focus: { path, offset: to } })
+
+  it('the paragraph caret gets bold stored marks; the code text stays plain', () => {
+    const ed = setup(doc(code('abc'), p(txt('xy'))), createSelection([rng([0, 0], 0, 2), rng([1, 0], 1)]))
+    expect(ed.commands.toggleBold()).toBe(true)
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(code('abc'), p(txt('xy')))))
+    expect(ed.state.storedMarks).toEqual([{ type: 'bold', data: {} }])
+    // Typing at both ranges: bold only in the paragraph.
+    ed.commands.insertText('Z')
+    const codeText = (ed.state.doc.children[0] as ElementNode).children as TextNode[]
+    expect(codeText.every((c) => c.marks.length === 0)).toBe(true)
+    expect(blocks(ed).map((b) => b.text)).toEqual(['Zc', 'xZy'])
+    const para = (ed.state.doc.children[1] as ElementNode).children as TextNode[]
+    expect(para.find((c) => c.text.includes('Z'))!.marks).toEqual([{ type: 'bold', data: {} }])
+  })
+})
