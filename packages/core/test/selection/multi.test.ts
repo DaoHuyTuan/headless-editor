@@ -97,3 +97,12 @@ describe('helpers', () => {
     expect(selectionEquals(null, null)).toBe(true)
   })
 })
+
+describe('public selection exports', () => {
+  it('the package index exports rangeEquals and selectionEquals', async () => {
+    const api = await import('../../src/index')
+    const r = { anchor: { path: [0, 0], offset: 1 }, focus: { path: [0, 0], offset: 1 } }
+    expect(api.rangeEquals(r, { ...r })).toBe(true)
+    expect(api.selectionEquals(api.single(r), api.single({ ...r }))).toBe(true)
+  })
+})
