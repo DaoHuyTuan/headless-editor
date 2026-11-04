@@ -241,9 +241,11 @@ export class Transaction {
   }
 
   /**
-   * Inserts the inline element `node` (e.g. an inline atom) at the caret, replacing the selection;
-   * the caret ends right after it. Its id is refreshed when already in the doc. Does nothing in a
-   * text-only block or for a type that is not a registered inline type; invalid data leaves the tr `rejected`.
+   * Inserts the inline element `node` (e.g. an inline atom) at every selection range, replacing the
+   * range; each caret ends right after its copy, and every copy gets fresh ids where they already
+   * exist in the doc. A caret in a text-only block gets nothing; a type that is not a registered
+   * inline type does nothing; invalid data leaves the tr `rejected`. It takes no range: inside a
+   * `forEachRange` callback it throws in dev mode.
    */
   insertInlineNode(node: ElementNode): this {
     fragmentEdit.insertInlineNode(this, node)
@@ -260,22 +262,30 @@ export class Transaction {
   }
 
   /**
-   * Deletes `at` (default: the selection) and inserts `fragment` at the caret, giving inserted
-   * elements fresh ids where theirs already exist; the caret ends after the inserted content. A node
-   * selection (without `at`) is replaced in place: the content goes where the node was.
+   * Deletes every selection range and inserts `fragment` at each, giving inserted elements fresh ids
+   * where theirs already exist (so every copy has its own); each caret ends after its inserted
+   * content. With `at`, only there. A node selection (without `at`) is replaced in place: the content
+   * goes where the node was. Inside a `forEachRange` callback `at` is required: pass the callback's
+   * range (a call without one throws in dev mode).
    */
   insertFragment(fragment: Fragment, at?: SelectionRange | Range): this {
     fragmentEdit.insertFragment(this, fragment, at)
     return this
   }
 
-  /** Adds `mark` over `range` (default: the selection); a same-type mark with other data is replaced. */
+  /**
+   * Adds `mark` over `range` (default: every selection range; carets update the stored marks); a
+   * same-type mark with other data is replaced. Inside a `forEachRange` callback, pass the callback's range.
+   */
   addMark(mark: Mark, range?: SelectionRange | Range): this {
     markEdit.addMark(this, mark, range)
     return this
   }
 
-  /** Removes marks of `type` over `range` (default: the selection). */
+  /**
+   * Removes marks of `type` over `range` (default: every selection range; carets update the stored
+   * marks). Inside a `forEachRange` callback, pass the callback's range.
+   */
   removeMark(type: string, range?: SelectionRange | Range): this {
     markEdit.removeMark(this, type, range)
     return this

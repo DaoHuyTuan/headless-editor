@@ -350,7 +350,8 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
 
   /**
    * Runs each plugin's `transformPasted` on `fragment`, by priority, with `at`: where the fragment
-   * will be inserted (a drop's drop point); omitted or null, at the selection.
+   * will be inserted (a drop's drop point, or one range of a multi-range paste, which calls this once
+   * per range); omitted or null, at the selection (read `at ?? mainRange(state.selection)`).
    */
   transformPasted(fragment: Fragment, at: SelectionRange | null = null): Fragment {
     const info = { at }

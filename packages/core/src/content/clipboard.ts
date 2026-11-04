@@ -58,7 +58,8 @@ function fromText(text: string, registry: Registry): Fragment {
  * missing, malformed or yields nothing. JSON and HTML are untrusted: data is validated and unknown
  * types are dropped. Text lines become default blocks; a single line is inline text without marks.
  * Finally every plugin's `transformPasted` runs, in priority order, with `options.at`: where the
- * fragment will be inserted (a drop's drop point); omitted or null, at the selection.
+ * fragment will be inserted (a drop's drop point, or one range of a multi-range paste); omitted or
+ * null, at the selection.
  */
 export function parseFromClipboard(
   editor: Editor,

@@ -202,7 +202,8 @@ interface Selection { ranges: SelectionRange[]; main: number }        // never e
   - A node range is always the only range. `isNodeSelection(sel)` returns a plain boolean, not a type guard. To narrow a range, use `isNodeRange(range)`.
 - **`tr` editing methods act on every range by default.** This covers `insertText`, `deleteRange`, `deleteBackward`/`deleteForward`, `splitBlock`, `insertBlockNode`, `insertInlineNode`, `insertFragment`, `addMark`, `removeMark` and `toggleMark`.
   - Called with no range, a method edits at every range in one transaction and one undo step. A plugin that calls `tr.toggleMark('bold')` is multi-range-correct with no extra work.
-  - Called with an explicit range or point (`at`), it edits only there and maps the other ranges.
+  - Called with an explicit range, it edits only there and maps the other ranges. These methods take one (a `SelectionRange` or a `Range`): `insertText(text, at)`, `deleteRange(range)`, `deleteBackward(unit, at)`, `deleteForward(unit, at)`, `splitBlock(at)`, `insertBlockNode(node, at)`, `insertFragment(fragment, at)`, `addMark(mark, range)` and `removeMark(type, range)`. For a single position, pass a collapsed range; no method takes a bare point.
+  - `insertInlineNode` and `toggleMark` take no range: they always act at every range, and throw inside a `forEachRange` callback in dev mode.
 - **Mark state across ranges.**
   - `toggleMark` and `isActive` look at all ranges. If every range already has the mark, toggling removes it everywhere; otherwise it adds it everywhere. Ranges that cover no characters do not count.
   - Stored marks are one set for the whole selection.
