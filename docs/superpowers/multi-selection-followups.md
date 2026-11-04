@@ -28,7 +28,9 @@ These items were collected from the per-task reviews of the multi-selection mile
 - **Mention:**
   - `insertAtTriggers` fakes an `EditorState`.
   - The popup test checks the popup range, not its coordinates.
-- **Image:** the pending state is briefly only the main id while multiple copies upload (two dispatches).
+- **Image:**
+  - The pending state is briefly only the main id while multiple copies upload (two dispatches).
+  - An image file paste with a targeted range (one that is not main) still goes to every range. No intent reaches this today.
 
 ## Tests and docs
 - Task 1: no tests for merging across blocks, or for a node range that is not the main range.
