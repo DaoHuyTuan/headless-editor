@@ -40,10 +40,10 @@ function caret(point: Point): SelectionRange {
  * What a per-range step did: the range after it (null when it is gone), or false when it did nothing
  * (the range stays where it was).
  */
-type StepResult = SelectionRange | null | false
+export type StepResult = SelectionRange | null | false
 
 /** `range` mapped through the doc ops `tr` got since `from` (null when one of its points was removed). */
-function mapSince(tr: Transaction, range: SelectionRange, from: number): SelectionRange | null {
+export function mapSince(tr: Transaction, range: SelectionRange, from: number): SelectionRange | null {
   let out: SelectionRange | null = range
   for (const op of tr.ops.slice(from)) {
     if (!out) break
@@ -76,7 +76,7 @@ function touchedRange(sel: Selection, target: SelectionRange): number {
  *   recorded as the callback's range). A call without `at` throws in dev mode (the edit would
  *   otherwise run at every range, once per callback); else it acts at the callback's range.
  */
-function runStep(
+export function runStep(
   tr: Transaction,
   at: SelectionRange | Range | undefined,
   edit: (range: SelectionRange) => StepResult,
@@ -295,7 +295,7 @@ export function deleteRange(tr: Transaction, range?: SelectionRange | Range): bo
  * range: it is removed whole and nothing is merged into or out of it. When the start edge is
  * opaque, the caret lands at the nearest editable point instead.
  */
-function deleteRangeStep(tr: Transaction, range: Range): Point | null {
+export function deleteRangeStep(tr: Transaction, range: Range): Point | null {
   const { start, end } = asRange(range)
   if (comparePoint(start, end) === 0) return null
   // A range still to run with a point strictly inside this removal is swallowed by it (its own step
@@ -382,7 +382,7 @@ export function replaceSelectedNode(tr: Transaction, mode: NodeSelectionEdit): b
 }
 
 /** `replaceSelectedNode` at one node range: returns the caret after the edit (false when rejected). */
-function replaceNodeStep(tr: Transaction, range: SelectionRange & { node: Path }, mode: NodeSelectionEdit): StepResult {
+export function replaceNodeStep(tr: Transaction, range: SelectionRange & { node: Path }, mode: NodeSelectionEdit): StepResult {
   const path = range.node
   if (mode === 'delete') {
     const from = tr.ops.length
@@ -425,7 +425,7 @@ export function insertBlockNode(tr: Transaction, node: ElementNode, at?: Selecti
   return runStep(tr, at, (range) => insertBlockNodeStep(tr, copies++ === 0 ? node : withFreshIds(node), range))
 }
 
-function insertBlockNodeStep(tr: Transaction, node: ElementNode, sel: SelectionRange): StepResult {
+export function insertBlockNodeStep(tr: Transaction, node: ElementNode, sel: SelectionRange): StepResult {
   if (isNodeRange(sel)) return replaceNodeStep(tr, sel, { node })
   const range = toRange(sel)
   const point = deleteRangeStep(tr, range) ?? range.start

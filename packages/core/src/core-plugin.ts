@@ -1,7 +1,8 @@
 import { sanitizeFragment } from './content/sanitize'
 import type { Editor } from './editor'
 import { isNodeSelection } from './model/editable'
-import type { Data, Path } from './model/types'
+import { mainRange, rangeEquals, single } from './model/selection'
+import type { Data, Path, Selection, SelectionRange } from './model/types'
 import { definePlugin } from './plugin/define'
 import type { Command, InputIntent } from './plugin/types'
 import { insertFragment, type Fragment } from './transaction/fragment'
@@ -32,16 +33,31 @@ function insertIntentText(tr: Transaction, intent: InputIntent): boolean {
 const PASTE_INPUT: Record<string, 'paste' | 'input'> = { insertFromPaste: 'paste', insertFromDrop: 'input' }
 
 /**
+ * Where a paste / drop goes: null for the selection, else a range (passed to `transformPasted` too).
+ * - A node selection: null, the fragment replaces the node in place, as typing does.
+ * - A drop: its drop point (`intent.range`).
+ * - A paste with several ranges: null (the same fragment at every range, spec §5.4) when the intent
+ *   targets the main range or nothing; a paste at another range goes only there. With one range
+ *   `intent.range` is kept as it always was (it is the selection).
+ */
+function transferTarget(intent: InputIntent, sel: Selection | null): SelectionRange | null {
+  if (!sel) return intent.range
+  if (isNodeSelection(sel)) return null
+  if (intent.inputType !== 'insertFromPaste' || sel.ranges.length === 1) return intent.range
+  return !intent.range || rangeEquals(intent.range, mainRange(sel)) ? null : intent.range
+}
+
+/**
  * Default paste / drop: parses the `dataTransfer` flavors (json, html, text) and inserts the
- * fragment at the selection (replacing a node selection). A transfer without usable content is still
- * consumed, so the browser never inserts anything itself.
+ * fragment (see `transferTarget`): a paste at every selection range, a drop only at its drop point,
+ * the selection collapsing to that one range. A transfer without usable content is still consumed,
+ * so the browser never inserts anything itself.
  */
 function insertTransfer(intent: InputIntent, editor: Editor): boolean {
   const transfer = intent.dataTransfer
   if (!transfer) return false
-  // With a node selection the fragment replaces the node in place, as typing does; else it goes to
-  // `intent.range` (a drop point), which `transformPasted` hooks get too.
-  const at = isNodeSelection(editor.state.selection) ? null : intent.range
+  const sel = editor.state.selection
+  const at = transferTarget(intent, sel)
   const fragment = parseFromClipboard(
     editor,
     {
@@ -55,6 +71,8 @@ function insertTransfer(intent: InputIntent, editor: Editor): boolean {
   const tr = editor.createTransaction()
   tr.meta.origin = PASTE_INPUT[intent.inputType]!
   tr.meta.inputType = intent.inputType
+  // A drop goes to one place: the other ranges are dropped (no point: the main range).
+  if (intent.inputType === 'insertFromDrop' && sel && sel.ranges.length > 1) tr.setSelection(single(at ?? mainRange(sel)))
   if (insertFragment(tr, fragment, at ?? undefined) && tr.ops.length > 0) editor.dispatch(tr)
   return true
 }
@@ -95,6 +113,7 @@ export const corePlugin = definePlugin({
         deleteForward(tr, unit),
     splitBlock: (): Command => ({ tr }) => splitBlock(tr),
     selectAll: (): Command => ({ tr }) => selectAll(tr),
+    // At every selection range (a selected node is replaced); each copy gets fresh ids.
     insertContent:
       (fragment: Fragment): Command =>
       ({ tr }) =>

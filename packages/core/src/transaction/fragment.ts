@@ -1,10 +1,20 @@
-import { isNodeSelection, isOpaque, type NodeTypes } from '../model/editable'
+import { isOpaque, type NodeTypes } from '../model/editable'
 import { createId } from '../model/id'
 import { getNode, isElement, isText, nodeEntries } from '../model/node'
-import { comparePoint, parentPath } from '../model/path'
-import { mainRange, single } from '../model/selection'
+import { comparePoint, parentPath, toRange } from '../model/path'
+import { isNodeRange } from '../model/selection'
 import type { DeepReadonly, Doc, ElementNode, Json, Node, Path, Point, Range, SelectionRange, TextNode } from '../model/types'
-import { blockPathOf, deleteRange, insertBlockNode, isInlineOpaque, replaceSelectedNode, splitBlockAt } from './text'
+import {
+  blockPathOf,
+  deleteRangeStep,
+  insertBlockNodeStep,
+  isInlineOpaque,
+  mapSince,
+  replaceNodeStep,
+  runStep,
+  splitBlockAt,
+  type StepResult,
+} from './text'
 import type { Transaction } from './transaction'
 
 /**
@@ -164,28 +174,52 @@ function textStartAt(tr: Transaction, at: Path): Point {
   return { path: at, offset: 0 }
 }
 
+/** The ids of every element in the doc. */
+function docIds(tr: Transaction): Set<string> {
+  const used = new Set<string>()
+  for (const [n] of nodeEntries(tr.doc)) if (isElement(n)) used.add(n.id)
+  return used
+}
+
+function caret(point: Point): SelectionRange {
+  return { anchor: point, focus: point }
+}
+
 /**
- * Inserts the inline element `node` at the caret, replacing the selection (a selected node is first
- * swapped for an empty default block); the caret ends right after it. Its id is replaced when already
- * in the doc. False (nothing inserted) when `node` is not a registered inline type, without a
- * selection, in a text-only block (`content: 'text'`), or when its data is rejected (the tr stays
- * rejected).
+ * Inserts the inline element `node` at every selection range, replacing the range (a selected node is
+ * first swapped for an empty default block); each caret ends right after its copy. A copy's ids are
+ * replaced where already in the doc, so every copy gets fresh ones. A caret in a text-only block
+ * (`content: 'text'`) gets nothing. False (nothing inserted) when `node` is not a registered inline
+ * type, without a selection, when no range takes it, or when its data is rejected (the tr stays
+ * rejected). Takes no range: inside a `forEachRange` callback it throws in dev mode.
  */
 export function insertInlineNode(tr: Transaction, node: ElementNode): boolean {
   if (tr.registry.node(node.type)?.kind !== 'inline') return false
-  if (isNodeSelection(tr.selection)) replaceSelectedNode(tr, { text: '' })
-  const sel = tr.selection
-  if (!sel) return false
-  const range = ordered(mainRange(sel))
-  const block = getNode(tr.doc, blockPathOf(tr, range.start.path)) as ElementNode
-  if (tr.registry.node(block.type)?.content === 'text') return false
-  const point = deleteRange(tr, range) ? mainRange(tr.selection!).anchor : range.start
-  const used = new Set<string>()
-  for (const [n] of nodeEntries(tr.doc)) if (isElement(n)) used.add(n.id)
-  const end = insertInline(tr, point, withUniqueIds([node], used), true)
-  // A rejected tr is never applied (the editor drops it), so the split text needs no undoing.
-  if (tr.rejected !== null) return false
-  return caretAt(tr, end)
+  let inserted = false
+  runStep(tr, undefined, (range) => {
+    let sel: SelectionRange = range
+    if (isNodeRange(range)) {
+      const out = replaceNodeStep(tr, range, { text: '' })
+      if (!out) return out
+      sel = out
+    }
+    const r = toRange(sel)
+    const block = getNode(tr.doc, blockPathOf(tr, r.start.path)) as ElementNode
+    if (tr.registry.node(block.type)?.content === 'text') return sel === range ? false : sel
+    const deleted = deleteRangeStep(tr, r)
+    const point = deleted ?? r.start
+    const from = tr.ops.length
+    const end = insertInline(tr, point, withUniqueIds([node], docIds(tr)), true)
+    // A rejected tr is never applied (the editor drops it), so the split text needs no undoing: the
+    // range is only mapped through it.
+    if (tr.rejected !== null) {
+      const base = deleted ? caret(deleted) : sel
+      return mapSince(tr, base, from) ?? base
+    }
+    inserted = true
+    return caret(end)
+  })
+  return inserted && tr.rejected === null
 }
 
 /**
@@ -219,80 +253,98 @@ function insertBlocks(tr: Transaction, point: Point, blocks: Node[], rightId: st
   return endOfInserted(lastKids, rightPath, 0, tr.registry) ?? remainder
 }
 
-/**
- * Replaces the node-selected element with the blocks `nodes` (fresh ids), the first at its index.
- * The caret ends at the end of the last block's last editable text; when the last block is opaque
- * (or has none), at the start of the editable text following it, an empty default block being added
- * when none follows. False when a block is rejected (the tr stays rejected).
- */
-function replaceSelectedNodeWithBlocks(tr: Transaction, path: Path, nodes: Node[]): boolean {
-  const last = nodes[nodes.length - 1] as ElementNode
-  // Puts `last` where the node was and the caret after it; the blocks before it then go in front,
-  // which maps the caret.
-  if (!replaceSelectedNode(tr, { node: last })) return false
-  const parent = parentPath(path)
-  const index = path[path.length - 1]!
-  nodes.slice(0, -1).forEach((n, i) => tr.insertNode([...parent, index + i], n))
-  if (tr.rejected !== null) return false
-  if (isOpaque(last, tr.registry)) return true
-  const end = endOfInserted([last], parent, index + nodes.length - 1, tr.registry)
-  return end ? caretAt(tr, end) : true
+/** A per-range fragment step's result, plus whether it failed (false from `insertFragment`) after editing. */
+interface FragmentStep {
+  out: StepResult
+  failed?: boolean
 }
 
 /**
- * Deletes `at` (default: the selection), then inserts `fragment` at the caret; the caret ends after
- * the inserted content. A node selection (without `at`) is replaced in place: the content goes where
- * the node was, as typed text does. Inserted elements get fresh ids where theirs already exist in the
- * doc or repeat within the fragment. Pasted texts keep their own marks. Returns false without a
- * target; an empty fragment only deletes (true when something was deleted).
+ * Replaces the node of `range` (a node range) with the blocks `nodes` (fresh ids), the first at its
+ * index. The caret ends at the end of the last block's last editable text; when the last block is
+ * opaque (or has none), at the start of the editable text following it, an empty default block being
+ * added when none follows. Fails when a block is rejected (the tr stays rejected).
  */
-export function insertFragment(tr: Transaction, fragment: Fragment, at?: Range | SelectionRange): boolean {
+function replaceNodeWithBlocksStep(tr: Transaction, range: SelectionRange & { node: Path }, nodes: Node[]): FragmentStep {
+  const path = range.node
+  const last = nodes[nodes.length - 1] as ElementNode
+  // Puts `last` where the node was and the caret after it; the blocks before it then go in front,
+  // which maps the caret.
+  const placed = replaceNodeStep(tr, range, { node: last })
+  if (!placed) return { out: placed, failed: true }
+  const from = tr.ops.length
+  const parent = parentPath(path)
+  const index = path[path.length - 1]!
+  nodes.slice(0, -1).forEach((n, i) => tr.insertNode([...parent, index + i], n))
+  const mapped = mapSince(tr, placed, from)
+  if (tr.rejected !== null) return { out: mapped, failed: true }
+  if (isOpaque(last, tr.registry)) return { out: mapped }
+  const end = endOfInserted([last], parent, index + nodes.length - 1, tr.registry)
+  return { out: end ? caret(end) : mapped }
+}
+
+/**
+ * `insertFragment` at one range. `nodeEdit`: a node range is replaced in place (no explicit target).
+ */
+function insertFragmentStep(tr: Transaction, fragment: Fragment, sel: SelectionRange, nodeEdit: boolean): FragmentStep {
+  let target: SelectionRange = sel
   // A selected node is replaced in place, as typing does. Blocks with an opaque edge go in whole at
   // the node's index (merging them into a placeholder would leave it behind as a stray empty block);
   // other content goes into the start of an empty default block put in the node's place, with the
   // same split / merge rules as at any caret. An empty fragment only removes the node.
-  const selected = tr.selection
-  if (!at && selected && isNodeSelection(selected)) {
-    if (fragment.length === 0) return replaceSelectedNode(tr, 'delete')
+  if (nodeEdit && isNodeRange(sel)) {
+    if (fragment.length === 0) return { out: replaceNodeStep(tr, sel, 'delete') }
     const block = (n: Node): n is ElementNode => isElement(n) && tr.registry.node(n.type)?.kind !== 'inline'
     const opaqueBlock = (n: Node): boolean => block(n) && isOpaque(n, tr.registry)
-    if (block(fragment[0]!) && (opaqueBlock(fragment[0]!) || opaqueBlock(fragment[fragment.length - 1]!))) {
-      const used = new Set<string>()
-      for (const [n] of nodeEntries(tr.doc)) if (isElement(n)) used.add(n.id)
-      return replaceSelectedNodeWithBlocks(tr, mainRange(selected).node!, withUniqueIds(fragment, used))
-    }
-    if (!replaceSelectedNode(tr, { text: '' })) return false
+    if (block(fragment[0]!) && (opaqueBlock(fragment[0]!) || opaqueBlock(fragment[fragment.length - 1]!)))
+      return replaceNodeWithBlocksStep(tr, sel, withUniqueIds(fragment, docIds(tr)))
+    const out = replaceNodeStep(tr, sel, { text: '' })
+    if (!out) return { out, failed: true }
+    target = out
   }
-  const target = at ?? (tr.selection && mainRange(tr.selection))
-  if (!target) return false
-  const range = ordered(target)
-  const deleted = deleteRange(tr, range)
-  if (fragment.length === 0) return deleted
+  const range = toRange(target)
+  const deleted = deleteRangeStep(tr, range)
+  if (fragment.length === 0) return { out: deleted ? caret(deleted) : false }
   const point = range.start
 
-  const used = new Set<string>()
-  for (const [n] of nodeEntries(tr.doc)) if (isElement(n)) used.add(n.id)
+  // Per insert, so every copy gets ids not yet in the doc (the earlier copies included).
+  const used = docIds(tr)
   const nodes = withUniqueIds(fragment, used)
   const first = nodes[0]!
   const isBlockFragment = isElement(first) && tr.registry.node(first.type)?.kind !== 'inline'
 
-  if (!isBlockFragment) return caretAt(tr, insertInline(tr, point, nodes))
+  if (!isBlockFragment) return { out: caret(insertInline(tr, point, nodes)) }
   const opaque = (n: Node): boolean => isElement(n) && isOpaque(n, tr.registry)
   if (nodes.length === 1) {
     // A lone opaque block (e.g. a copied node selection) goes in whole, as a block of its own.
-    if (!opaque(first)) return caretAt(tr, insertInline(tr, point, (first as ElementNode).children ?? []))
-    tr.setSelection(single({ anchor: point, focus: point }))
-    return insertBlockNode(tr, first as ElementNode)
+    if (!opaque(first)) return { out: caret(insertInline(tr, point, (first as ElementNode).children ?? [])) }
+    const out = insertBlockNodeStep(tr, first as ElementNode, caret(point))
+    return out === false ? { out: caret(point), failed: true } : { out }
   }
   // Opaque edge blocks have no children to merge into the split halves: pad the fragment with a
   // childless block on that side, so they are inserted whole as middle blocks.
   const pad: ElementNode = { id: '', type: '', data: {}, children: [] }
   const last = nodes[nodes.length - 1]!
   const blocks = [...(opaque(first) ? [pad] : []), ...nodes, ...(opaque(last) ? [pad] : [])]
-  return caretAt(tr, insertBlocks(tr, point, blocks, freshId(used)))
+  return { out: caret(insertBlocks(tr, point, blocks, freshId(used))) }
 }
 
-function caretAt(tr: Transaction, end: Point): true {
-  tr.setSelection(single({ anchor: end, focus: end }))
-  return true
+/**
+ * Deletes every selection range (or only `at`, see `runStep` in `text.ts`), then inserts the same
+ * `fragment` there; each caret ends after its inserted content. A node selection (without `at`; it is
+ * always the only range) is replaced in place: the content goes where the node was, as typed text
+ * does. Inserted elements get fresh ids where theirs already exist in the doc (an earlier copy's
+ * included) or repeat within the fragment, so every copy has its own. Pasted texts keep their own
+ * marks. Returns false without a target; an empty fragment only deletes (true when something was
+ * deleted). Inside a `forEachRange` callback pass the callback's range as `at` (a call without one
+ * throws in dev mode).
+ */
+export function insertFragment(tr: Transaction, fragment: Fragment, at?: Range | SelectionRange): boolean {
+  let failed = false
+  const did = runStep(tr, at, (range) => {
+    const step = insertFragmentStep(tr, fragment, range, !at)
+    if (step.failed) failed = true
+    return step.out
+  })
+  return did && !failed
 }

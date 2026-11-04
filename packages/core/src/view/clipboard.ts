@@ -1,6 +1,5 @@
-import { isNodeSelection } from '../model/editable'
 import { isCollapsed, toRange } from '../model/path'
-import { mainRange } from '../model/selection'
+import { isNodeRange, mainRange } from '../model/selection'
 import type { Path, Range } from '../model/types'
 import { replaceSelectedNode } from '../transaction/text'
 import { FRAGMENT_MIME, serializeForClipboard } from '../content/clipboard'
@@ -17,7 +16,7 @@ function copyRange(view: EditorView): { range: Range; node?: Path } | null {
   if (!sel) return null
   const range = mainRange(sel)
   // A node selection copies its node, although its caret is collapsed.
-  if (isNodeSelection(sel)) return { range: toRange(range), node: range.node }
+  if (isNodeRange(range)) return { range: toRange(range), node: range.node }
   return !isCollapsed(range) ? { range: toRange(range) } : null
 }
 

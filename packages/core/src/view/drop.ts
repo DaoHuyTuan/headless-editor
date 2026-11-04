@@ -34,10 +34,14 @@ function onDrop(view: EditorView, e: DragEvent): void {
   // The composition owns the DOM: moving the selection now would break it.
   if (view.composing) return
   const { editor } = view
+  // A drop goes to one place: the selection collapses to the drop point (the browser cannot tell
+  // where: to the main range).
   const point = pointAt(view, e.clientX, e.clientY)
-  if (point) {
+  const sel = editor.state.selection
+  const target = point ? { anchor: point, focus: point } : sel && sel.ranges.length > 1 ? mainRange(sel) : null
+  if (target) {
     const tr = editor.createTransaction()
-    tr.setSelection(single({ anchor: point, focus: point })).setMeta('origin', 'selection').setMeta('addToHistory', false)
+    tr.setSelection(single(target)).setMeta('origin', 'selection').setMeta('addToHistory', false)
     editor.dispatch(tr)
   }
   const range: SelectionRange | null = editor.state.selection && mainRange(editor.state.selection)
