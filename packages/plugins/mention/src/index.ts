@@ -260,10 +260,44 @@ function metaCommand(tr: Transaction, meta: MentionMeta): true {
 const isUser = (u: unknown): u is User =>
   typeof u === 'object' && u !== null && typeof (u as User).id === 'string' && (u as User).id.length > 0
 
-/** Replaces the open trigger range (or the selection) with a mention of `user`, adds a space, closes. */
+/**
+ * Replaces the open trigger at every caret whose text before it is the main caret's trigger plus query
+ * (the same `findTrigger` match, in a block taking inline content); the other ranges are untouched.
+ * Each copy gets its own id.
+ */
+function insertAtTriggers(ctx: Ctx, tr: Transaction, user: User, query: string): boolean {
+  const label = typeof user.label === 'string' ? user.label : ''
+  let inserted = false
+  tr.forEachRange((range, t) => {
+    const view = { doc: t.doc, selection: single(range) } as unknown as EditorState
+    const match = findTrigger(view, { char: ctx.options.trigger })
+    if (!match || match.query !== query || inTextOnlyBlock(t.doc, t.registry, match.range.start.path)) return
+    t.insertFragment(
+      [
+        { id: createId(), type: ctx.name, data: { userId: user.id, label }, children: [] },
+        { text: ' ', marks: [] },
+      ],
+      match.range,
+    )
+    inserted = true
+  })
+  return inserted && tr.rejected === null && tr.docChanged
+}
+
+/**
+ * Replaces the open trigger range (or the selection) with a mention of `user`, adds a space, closes.
+ * With several ranges the popup's trigger is the main caret's: it is replaced at every caret with the
+ * same trigger and query, and the other ranges are left alone. Without an open popup the mention goes
+ * to every range.
+ */
 function insertUser(ctx: Ctx, tr: Transaction, user: User): boolean {
   if (!isUser(user)) return false
   const st = ctx.getState()
+  if (st.open && st.range && tr.selection && tr.selection.ranges.length > 1) {
+    if (!insertAtTriggers(ctx, tr, user, st.query)) return false
+    tr.setMeta('mention', { type: 'close' } satisfies MentionMeta)
+    return true
+  }
   if (st.open && st.range) tr.setSelection(single({ anchor: st.range.start, focus: st.range.end }))
   tr.insertInlineNode({
     id: createId(),
@@ -346,6 +380,10 @@ function closeQuietly(ctx: Ctx): void {
  * The trigger is recomputed on every doc and selection change, not only on typing: putting the caret
  * after an existing plain-text `@foo` (at a line start or after whitespace) opens the popup too
  * (like Tiptap), and ↑ ↓ Enter are then captured (as above) until the caret leaves the trigger or Esc dismisses it.
+ *
+ * Several ranges: the popup, trigger, query and coordinates follow the main caret. Accepting (or
+ * `insertMention`) replaces the trigger at every caret that has the same trigger and query; the other
+ * ranges are untouched.
  *
  * Limitations of the trigger detection (`findTrigger`): inside a link only the link's text is
  * searched, and a trigger glued to an inline atom without a space does not open the popup.

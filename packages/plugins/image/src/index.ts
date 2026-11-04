@@ -56,14 +56,16 @@ export interface ImageState {
 
 /** Meta of the trs that start / end an upload (keyed `imageUpload`). */
 export interface ImageUploadMeta {
-  start?: string
-  end?: string
+  start?: string | readonly string[]
+  end?: string | readonly string[]
 }
 
 export interface ImageStorage {
   /**
    * Inserts each image file (`type` starting with `image/`; others are skipped) at the selection
-   * with a `blob:` preview, as one undo step per file, then uploads it with `options.upload`: on
+   * with a `blob:` preview, as one undo step per file, then uploads it with `options.upload`: with
+   * several ranges the file is uploaded once and every range gets a preview (a copy with its own id,
+   * all pending and settled together). On
    * success `src` becomes the uploaded URL outside history, on the image and on every copy of it
    * still showing the preview (history's stored copies are rewritten too); on failure the image and
    * its copies are removed outside history (or, when one is no longer in the doc, history is cleared
@@ -216,14 +218,19 @@ function uploadFiles(ctx: Ctx, files: readonly File[], at?: SelectionRange | nul
     if (i === 0 && at) tr.setSelection(single(at))
     tr.insertBlockNode({ id, type: ctx.name, data: { src: blob, alt: '' } })
     if (tr.rejected === null && tr.docChanged) editor.dispatch(tr)
+    // Every preview this file made: with several ranges the copies got fresh ids (all show the one
+    // blob), and all of them are tracked as holders of this upload.
+    const holders = new Set<string>()
+    for (const [node] of nodeEntries(editor.state.doc))
+      if (isElement(node) && node.type === ctx.name && node.data.src === blob) holders.add(node.id)
     // Not inserted (no selection, rejected or filtered out): nothing to upload into.
-    if (!findPathById(editor.state.doc, id)) {
+    if (holders.size === 0) {
       URL.revokeObjectURL(blob)
       continue
     }
     rt.blobs.add(blob)
-    const holders = new Set([id])
     rt.holders.set(blob, holders)
+    if (holders.size > 1) dispatchMeta(editor, { start: [...holders].filter((h) => h !== id) })
 
     let request: Promise<string>
     try {
@@ -254,7 +261,7 @@ function uploadFiles(ctx: Ctx, files: readonly File[], at?: SelectionRange | nul
       // A throw while applying a successful upload is reported, not treated as an upload failure.
       .catch(report)
       .finally(() => {
-        if (!rt.destroyed) dispatchMeta(editor, { end: id })
+        if (!rt.destroyed) dispatchMeta(editor, { end: [...holders] })
       })
       .catch(report)
   }
@@ -277,8 +284,8 @@ export const image = definePlugin({
       const meta = tr.meta.imageUpload as ImageUploadMeta | undefined
       if (typeof meta !== 'object' || meta === null) return prev
       const pending = new Set(prev.pending)
-      if (typeof meta.start === 'string') pending.add(meta.start)
-      if (typeof meta.end === 'string') pending.delete(meta.end)
+      for (const id of typeof meta.start === 'string' ? [meta.start] : (meta.start ?? [])) pending.add(id)
+      for (const id of typeof meta.end === 'string' ? [meta.end] : (meta.end ?? [])) pending.delete(id)
       return { pending }
     },
   },

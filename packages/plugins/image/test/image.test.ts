@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mainRange } from '@hte/core'
+import { createSelection, mainRange } from '@hte/core'
 import {
   FRAGMENT_MIME,
   nodeSelection,
@@ -679,5 +679,136 @@ describe('image extend(parent)', () => {
     // The schema still rejects an unsafe src.
     expect(ed.commands.insertImage('javascript:alert(1)')).toBe(false)
     expect(JSON.stringify(ed.getJSON())).not.toContain('javascript:')
+  })
+})
+
+describe('image with several ranges', () => {
+  const caret = (path: number[], offset: number) => ({ anchor: { path, offset }, focus: { path, offset } })
+
+  function setupMulti() {
+    const uploads: Deferred[] = []
+    const onUploadError = vi.fn()
+    const upload = (file: File) =>
+      new Promise<string>((resolve, reject) => {
+        uploads.push({ file, resolve, reject })
+      })
+    const editor = createTestEditor({
+      plugins: [paragraph, image.configure({ upload, onUploadError })],
+      doc: doc(p(txt('ab')), p(txt('cd'))),
+      selection: createSelection([caret([0, 0], 2), caret([1, 0], 2)]),
+    })
+    return { editor, uploads, onUploadError }
+  }
+
+  const srcs = (editor: ReturnType<typeof setupMulti>['editor']) => images(editor.state.doc as Doc).map((i) => i.data.src)
+
+  it('insertImage inserts at every range', () => {
+    const { editor } = setupMulti()
+    expect(editor.commands.insertImage('https://x/a.png', 'alt')).toBe(true)
+    expect(srcs(editor)).toEqual(['https://x/a.png', 'https://x/a.png'])
+    const ids = images(editor.state.doc as Doc).map((i) => i.id)
+    expect(new Set(ids).size).toBe(2)
+    expect(editor.commands.undo()).toBe(true)
+    expect(images(editor.state.doc as Doc)).toHaveLength(0)
+  })
+
+  it('upload with two carets uploads once and finalizes both previews', async () => {
+    const { editor, uploads } = setupMulti()
+    editor.storage.image.upload([png()])
+    expect(uploads).toHaveLength(1)
+    expect(created).toHaveLength(1)
+    expect(srcs(editor)).toEqual(['blob:test/1', 'blob:test/1'])
+    const ids = images(editor.state.doc as Doc).map((i) => i.id)
+    expect(new Set(ids).size).toBe(2)
+    expect(ids.every((id) => editor.storage.image.isPending(id))).toBe(true)
+
+    uploads[0]!.resolve('https://x/a.png')
+    await editor.storage.image.whenIdle()
+    expect(srcs(editor)).toEqual(['https://x/a.png', 'https://x/a.png'])
+    expect(editor.storage.image.isUploading()).toBe(false)
+    expect(ids.some((id) => editor.storage.image.isPending(id))).toBe(false)
+
+    // One undo step, and redo brings back the uploaded URLs.
+    expect(editor.commands.undo()).toBe(true)
+    expect(images(editor.state.doc as Doc)).toHaveLength(0)
+    expect(editor.commands.redo()).toBe(true)
+    expect(srcs(editor)).toEqual(['https://x/a.png', 'https://x/a.png'])
+  })
+
+  it('upload failure removes both previews; an unrelated later entry survives', async () => {
+    const { editor, uploads, onUploadError } = setupMulti()
+    const file = png()
+    editor.storage.image.upload([file])
+    // Typing after the upload started (at both carets) is a later, unrelated history entry.
+    editor.handleIntent({ inputType: 'insertText', data: 'x', range: null })
+    expect(text(editor.state.doc as Doc)).toBe('abxcdx')
+    const err = new Error('boom')
+    uploads[0]!.reject(err)
+    await editor.storage.image.whenIdle()
+    expect(images(editor.state.doc as Doc)).toHaveLength(0)
+    expect(onUploadError).toHaveBeenCalledTimes(1)
+    expect(onUploadError).toHaveBeenCalledWith(err, file)
+    expect(editor.getHTML()).not.toContain('blob:')
+    expect(editor.commands.undo()).toBe(true)
+    expect(text(editor.state.doc as Doc)).toBe('abcd')
+    expect(editor.getHTML()).not.toContain('blob:')
+  })
+
+  it('a failure after one copy was deleted clears history, so no blob comes back', async () => {
+    const { editor, uploads } = setupMulti()
+    editor.storage.image.upload([png()])
+    const [first] = images(editor.state.doc as Doc)
+    const tr = editor.createTransaction()
+    tr.meta.origin = 'command'
+    tr.removeNode([(editor.state.doc as Doc).children.findIndex((n) => n.id === first!.id)])
+    editor.dispatch(tr)
+    uploads[0]!.reject(new Error('boom'))
+    await editor.storage.image.whenIdle()
+    expect(images(editor.state.doc as Doc)).toHaveLength(0)
+    editor.commands.undo()
+    editor.commands.redo()
+    expect(JSON.stringify(editor.getJSON())).not.toContain('blob:')
+  })
+
+  it('a failure after the second copy was deleted also clears history (every copy is tracked)', async () => {
+    const { editor, uploads } = setupMulti()
+    editor.storage.image.upload([png()])
+    const copy = images(editor.state.doc as Doc)[1]!
+    const tr = editor.createTransaction()
+    tr.meta.origin = 'command'
+    tr.removeNode([(editor.state.doc as Doc).children.findIndex((n) => n.id === copy.id)])
+    editor.dispatch(tr)
+    uploads[0]!.reject(new Error('boom'))
+    await editor.storage.image.whenIdle()
+    expect(images(editor.state.doc as Doc)).toHaveLength(0)
+    expect(editor.commands.undo()).toBe(false)
+    editor.commands.redo()
+    expect(JSON.stringify(editor.getJSON())).not.toContain('blob:')
+  })
+
+  it('a success after the second copy was deleted rewrites it in history', async () => {
+    const { editor, uploads } = setupMulti()
+    editor.storage.image.upload([png()])
+    const copy = images(editor.state.doc as Doc)[1]!
+    const tr = editor.createTransaction()
+    tr.meta.origin = 'command'
+    tr.removeNode([(editor.state.doc as Doc).children.findIndex((n) => n.id === copy.id)])
+    editor.dispatch(tr)
+    uploads[0]!.resolve('https://x/a.png')
+    await editor.storage.image.whenIdle()
+    expect(editor.commands.undo()).toBe(true)
+    expect(JSON.stringify(editor.getJSON())).not.toContain('blob:')
+    expect(srcs(editor)).toEqual(['https://x/a.png', 'https://x/a.png'])
+  })
+
+  it('two files with two carets upload twice, each with its own previews', async () => {
+    const { editor, uploads } = setupMulti()
+    editor.storage.image.upload([png('a.png'), png('b.png')])
+    expect(uploads).toHaveLength(2)
+    expect(images(editor.state.doc as Doc)).toHaveLength(4)
+    uploads[0]!.resolve('https://x/a.png')
+    uploads[1]!.resolve('https://x/b.png')
+    await editor.storage.image.whenIdle()
+    expect(srcs(editor).sort()).toEqual(['https://x/a.png', 'https://x/a.png', 'https://x/b.png', 'https://x/b.png'])
   })
 })

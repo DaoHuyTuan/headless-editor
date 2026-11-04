@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { definePlugin, serializeForClipboard, type Doc, type ElementNode, type Node, type Transaction } from '@hte/core'
+import { createSelection, definePlugin, serializeForClipboard, type Doc, type ElementNode, type Node, type Transaction } from '@hte/core'
 import { createTestEditor, doc, el, sel, stripIds, txt } from '@hte/core/testing'
 import { paragraph } from '@hte/paragraph'
 import { mention, type MentionState, type User } from '../src/index'
@@ -502,5 +502,100 @@ describe('mention HTML', () => {
     editor.setContent(html)
     expect(editor.getHTML()).toContain('>@Ann</span>')
     expect(renderUser).not.toHaveBeenCalled()
+  })
+})
+
+describe('mention with several ranges', () => {
+  const at = (path: number[], offset: number) => ({ anchor: { path, offset }, focus: { path, offset } })
+  const labels = (d: Doc, i: number) =>
+    blockKids(d, i).map((n) => ('text' in n ? n.text : `[${(n as ElementNode).data.label}]`))
+
+  /** @jo at the end of the first two paragraphs, @ab in the third, plain text in the fourth. */
+  function open(mainIndex = 0) {
+    const ctx = setup(doc(p(txt('@jo')), p(txt('@jo')), p(txt('@ab')), p(txt('hi'))))
+    const tr = ctx.editor.createTransaction()
+    tr.setSelection(createSelection([at([0, 0], 3), at([1, 0], 3), at([2, 0], 3), at([3, 0], 2)], mainIndex))
+    ctx.editor.dispatch(tr)
+    return ctx
+  }
+
+  it('accept inserts at every caret with the same @query', async () => {
+    const { editor, state, last } = open()
+    expect(state()).toMatchObject({ open: true, query: 'jo' })
+    last().resolve([ann])
+    await flush()
+    expect(editor.commands.acceptSuggestion()).toBe(true)
+    expect(labels(editor.getJSON(), 0)).toEqual(['', '[Ann]', ' '])
+    expect(labels(editor.getJSON(), 1)).toEqual(['', '[Ann]', ' '])
+    expect(state()).toMatchObject({ open: false, range: null })
+    expect(editor.state.selection).toEqual(
+      createSelection([at([0, 2], 1), at([1, 2], 1), at([2, 0], 3), at([3, 0], 2)], 0),
+    )
+  })
+
+  it('accept leaves a caret without the trigger untouched', async () => {
+    const { editor, last } = open()
+    last().resolve([ann])
+    await flush()
+    editor.commands.acceptSuggestion()
+    expect(labels(editor.getJSON(), 2)).toEqual(['@ab'])
+    expect(labels(editor.getJSON(), 3)).toEqual(['hi'])
+  })
+
+  it('accepting is one undo step that restores every caret', async () => {
+    const { editor, last } = open()
+    const before = stripIds(editor.getJSON())
+    last().resolve([ann])
+    await flush()
+    editor.commands.acceptSuggestion()
+    editor.commands.undo()
+    expect(stripIds(editor.getJSON())).toEqual(before)
+  })
+
+  it('insertMention with the popup open replaces the trigger at every matching caret', async () => {
+    const { editor, last } = open()
+    last().resolve([ann])
+    await flush()
+    expect(editor.commands.insertMention(bob)).toBe(true)
+    expect(labels(editor.getJSON(), 0)).toEqual(['', '[Bob]', ' '])
+    expect(labels(editor.getJSON(), 1)).toEqual(['', '[Bob]', ' '])
+    expect(labels(editor.getJSON(), 2)).toEqual(['@ab'])
+    const ids: string[] = []
+    for (let i = 0; i < 2; i++) ids.push((blockKids(editor.getJSON(), i)[1] as ElementNode).id)
+    expect(new Set(ids).size).toBe(2)
+  })
+
+  it('popup state follows the main caret', () => {
+    const { state } = open(1)
+    expect(state()).toMatchObject({ open: true, query: 'jo' })
+    expect(state().range!.start).toEqual({ path: [1, 0], offset: 0 })
+  })
+
+  it('the popup closes when main is not at a trigger, whatever the other carets hold', () => {
+    const { state } = open(3)
+    expect(state().open).toBe(false)
+  })
+
+  it('range maps through an edit at another caret', () => {
+    const { editor, state } = setup(doc(p(txt('ab @jo'))))
+    const tr = editor.createTransaction()
+    tr.setSelection(createSelection([at([0, 0], 2), at([0, 0], 6)], 1))
+    editor.dispatch(tr)
+    expect(state().range).toEqual({ start: { path: [0, 0], offset: 3 }, end: { path: [0, 0], offset: 6 } })
+    const edit = editor.createTransaction()
+    edit.insertText('QQ', at([0, 0], 2))
+    editor.dispatch(edit)
+    expect(state().open).toBe(true)
+    expect(state().range).toEqual({ start: { path: [0, 0], offset: 5 }, end: { path: [0, 0], offset: 8 } })
+  })
+
+  it('insertMention without an open popup inserts at every caret', () => {
+    const { editor } = setup(doc(p(txt('ab')), p(txt('cd'))))
+    const tr = editor.createTransaction()
+    tr.setSelection(createSelection([at([0, 0], 1), at([1, 0], 1)]))
+    editor.dispatch(tr)
+    expect(editor.commands.insertMention(ann)).toBe(true)
+    expect(labels(editor.getJSON(), 0)).toEqual(['a', '[Ann]', ' b'])
+    expect(labels(editor.getJSON(), 1)).toEqual(['c', '[Ann]', ' d'])
   })
 })
