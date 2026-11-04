@@ -18,9 +18,9 @@ The controller updates this file after each task.
 | 7 Fragments, paste, drop | done | 2b848f5 |
 | 8 Input, IME, input rules, view | done | c5bb316, fa359f4 |
 | 9 History, rebase | done (tests only; code already correct) | 150ca0c |
-| 10 Code block, font-size | in progress | |
-| 11 Mention, image | in progress | |
-| 12 Docs, e2e smoke, perf, verification | todo | |
+| 10 Code block, font-size | done | a49c1ce |
+| 11 Mention, image | done | 83186cb, 5729204 |
+| 12 Docs, e2e smoke, perf, verification | done (controller) | 4cd928d + docs |
 
 ## API built so far (what later tasks use)
 - **`model/selection.ts`**:

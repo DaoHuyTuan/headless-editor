@@ -34,6 +34,7 @@ export const highlight = definePlugin({
 3. [Schema](#schema): `node`, `mark`, `data`, `onInvalidData`.
 4. [Configuration](#configuration): `options`.
 5. [Commands and input](#commands-and-input): `commands`, `keymap`, `onBeforeInput`, `inputRules`, `handleDOMEvents`.
+   - [Selections and multiple ranges](#selections-and-multiple-ranges): what every command must know.
 6. [Transactions](#transactions): `filterTransaction`, `appendTransaction`, `normalize`.
 7. [HTML and clipboard](#html-and-clipboard): `parseHTML`, `renderHTML`, `renderText`, `transformPasted`.
 8. [View integration](#view-integration): `decorations`, `stopEvent`, `ignoreMutation`.
@@ -154,6 +155,7 @@ type Command = (props: { tr: Transaction; state: EditorState; editor: Editor }) 
 - The editor dispatches `tr` when the command returned true and changed something.
 - `editor.commands.x()` returns false when the pipeline dropped the tr, for example after a `filterTransaction` veto or a rejected op.
 - `editor.can().x()` runs the same command and the filters without dispatching. Use it for toolbar enabled states.
+- The selection can hold several ranges. Read [Selections and multiple ranges](#selections-and-multiple-ranges) before writing a command that edits at the selection.
 - Check `tr.rejected === null` after an edit to know whether it was valid.
 - `ctx` here has no typed `commands` or `storage` yet, to avoid circular inference. The functions you return run later, so they may use the editor freely.
 
@@ -184,6 +186,51 @@ Example: `**text**` becomes bold.
 Raw DOM handlers `(event, ctx) => boolean`. They run first, before keymaps and intents. Return `true` to claim the event. Use them when you need the raw event; a mention popup, for example, captures arrow keys while it is open. Prefer `keymap` and `onBeforeInput` when they are enough.
 
 ---
+
+### Selections and multiple ranges
+
+The selection can hold **several ranges** (multiple cursors). No UI in the document view creates them yet, but the API, history and every built-in plugin support them.
+
+```ts
+interface SelectionRange { anchor: Point; focus: Point; node?: Path } // node: node selection of that element
+interface Selection { ranges: SelectionRange[]; main: number }        // never empty, sorted, non-overlapping
+```
+
+- **Reading the selection.**
+  - Read the primary range with `mainRange(sel)`.
+  - Build selections with `single(range)` or `createSelection(ranges, main)`. `createSelection` sorts the ranges and merges any that overlap or touch.
+  - A node range is always the only range. `isNodeSelection(sel)` returns a plain boolean, not a type guard. To narrow a range, use `isNodeRange(range)`.
+- **`tr` editing methods act on every range by default.** This covers `insertText`, `deleteRange`, `deleteBackward`/`deleteForward`, `splitBlock`, `insertBlockNode`, `insertInlineNode`, `insertFragment`, `addMark`, `removeMark` and `toggleMark`.
+  - Called with no range, a method edits at every range in one transaction and one undo step. A plugin that calls `tr.toggleMark('bold')` is multi-range-correct with no extra work.
+  - Called with an explicit range or point (`at`), it edits only there and maps the other ranges.
+- **Mark state across ranges.**
+  - `toggleMark` and `isActive` look at all ranges. If every range already has the mark, toggling removes it everywhere; otherwise it adds it everywhere. Ranges that cover no characters do not count.
+  - Stored marks are one set for the whole selection.
+- **Custom per-range logic.** Use `tr.forEachRange((range, tr, index) => SelectionRange | null | void)`.
+  - It runs once per range, in document order, on the same tr. Each range is first mapped through the edits made at earlier ranges.
+  - Return the range's new position. Return `null` to drop the range, or nothing to keep its mapped position.
+  - Inside the callback, pass `range` explicitly to the editing methods. A call with no range throws in dev mode, because it would edit every range again.
+  - `toggleMark` takes no range, so inside a callback use `addMark`/`removeMark` with the callback's range.
+  - A range that an earlier step's removal swallowed is skipped and merged.
+- **Acting on the main range on purpose.** Some behaviour belongs to one place:
+  - a popup's position;
+  - IME composition;
+  - a targeted `beforeinput` intent such as autocorrect.
+
+  Such code reads `mainRange` and says so in its JSDoc. Typing, IME and targeted intents collapse a multi-range selection where needed, and so does a user click away from the main caret.
+- **Undo** restores every range and `main`.
+- **`tr.dev`** is true when the editor was created with `dev: true`. It enables the dev-mode checks above.
+
+```ts
+// Insert "TODO" at every caret and leave each caret in front of it (custom per-range logic).
+const insertTodo = (): Command => ({ tr }) => {
+  tr.forEachRange((range, t) => {
+    t.insertText('TODO', range) // explicit range inside the callback
+    return { anchor: range.anchor, focus: range.anchor } // this range's new position
+  })
+  return tr.rejected === null
+}
+```
 
 ## Transactions
 
@@ -232,7 +279,14 @@ The plain text of your node wherever content turns into text:
 Without it, a childless atom has no text and disappears in those places. Example: mention returns `@label`.
 
 ### `transformPasted(fragment, ctx, info) => Fragment`
-Rewrites pasted or dropped content before it is inserted. `info.at` is the drop point for a drop, and `null` for a paste at the selection. Decide by `info.at ?? state.selection`. Example: code block flattens rich content to plain text when the target is inside a code block.
+Rewrites pasted or dropped content before it is inserted. `info.at` says where the fragment goes:
+- for a drop, the drop point;
+- for a paste at a single range, that range;
+- for a paste at several ranges, each range in turn, because the hook runs **once per range** and the fragment it returns is inserted at that range only.
+
+When `info.at` is `null`, the fragment goes at the main range. Decide by `info.at ?? mainRange(state.selection)`.
+
+Example: code block flattens rich content to plain text for the ranges inside a code block, and leaves it rich at the others.
 
 ---
 

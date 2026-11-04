@@ -389,7 +389,11 @@ In addition to the data-flow hooks (`state`, `storage`, `parseHTML` / `renderHTM
 
 `renderText(node, { options })` (on a node plugin, usually an inline atom) returns the node's plain text wherever content becomes plain text: the `text/plain` clipboard flavor, an inline atom normalized into a `content: 'text'` block (it becomes that text; an atom without `renderText` is dropped there), and plugins that flatten content to text (the code block's paste and `setCodeBlock`). `options` are the editor's current plugin options. Without it an element's text is its children's text, so a childless atom has none. Core exports `nodeText(node, registry, options?)` to compute it in your own plugins.
 
-`transformPasted(fragment, ctx, { at })` rewrites a pasted or dropped fragment. `at` is where it will be inserted (the drop point of a drop, the selection of a paste); null means the selection. A hook that depends on the insertion position reads `at ?? ctx.editor.state.selection`, never the selection alone: a drop lands where the pointer is, not at the caret.
+`transformPasted(fragment, ctx, { at })` rewrites a pasted or dropped fragment. `at` is where the fragment will be inserted:
+- for a drop, the drop point;
+- for a paste, the target range. With several selection ranges the hook runs once per range, with `at` set to that range.
+
+`at` is null only when the fragment goes to the main range. A hook that depends on the insertion position reads `at ?? mainRange(ctx.editor.state.selection)`. It never reads the selection alone: a drop lands where the pointer is, not at the caret. See [plugin-api.md: Selections and multiple ranges](plugin-api.md#selections-and-multiple-ranges).
 
 Plugins are called by priority. `onUpdate` / `onSelectionUpdate` / `onFocus` run after the editor's own event emission (transaction, update, selectionUpdate). `onMount` cleanups run in reverse order, and a StrictMode mount, unmount, mount leaves exactly one active mount. A throwing hook does not stop the others: the first error is rethrown after all ran.
 

@@ -95,6 +95,13 @@ Steps 1–4 are worth doing even if the code view never happens.
 
 Decided 2026-11-03. Multi-cursor is implemented in the **core model**, not as a view-only overlay.
 
+**Implemented** on branch `feat/multi-selection`:
+- design: `docs/superpowers/specs/2026-11-03-multi-selection-design.md`;
+- plan: `docs/superpowers/plans/2026-11-03-multi-selection.md`;
+- API summary: `docs/plugin-api.md`, "Selections and multiple ranges".
+
+The document view still shows a single caret: no UI creates secondary ranges yet, and they are not drawn.
+
 - **Shape.** The selection holds one or more ranges, one of them primary. A single-range selection stays the common case. The document view uses the primary range only and behaves as it does today.
 - **Commands and transactions** apply to every range: typing, delete, toggling a mark and paste. Overlapping ranges are merged after each change.
 - **History.** One undo step restores every range. `selectionBefore` and `selectionAfter` hold the whole list.

@@ -308,3 +308,16 @@ describe('forEachRange', () => {
     })
   })
 })
+
+describe('docs/plugin-api.md sample: insertTodo', () => {
+  it('inserts at every caret and leaves each caret in front of the insert', () => {
+    const tr = trOf(doc(el('paragraph', txt('ab')), el('paragraph', txt('cd'))), createSelection([caret([0, 0], 1), caret([1, 0], 2)]))
+    tr.forEachRange((range, t) => {
+      t.insertText('TODO', range)
+      return { anchor: range.anchor, focus: range.anchor }
+    })
+    expect(tr.rejected).toBe(null)
+    expect([textOf(tr, 0), textOf(tr, 1)]).toEqual(['aTODOb', 'cdTODO'])
+    expect(tr.selection!.ranges).toEqual([caret([0, 0], 1), caret([1, 0], 2)])
+  })
+})

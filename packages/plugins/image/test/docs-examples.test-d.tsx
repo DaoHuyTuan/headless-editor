@@ -430,3 +430,15 @@ describe('docs: README', () => {
     expectTypeOf<CommandsOfPlugin<typeof italic>>().toHaveProperty('toggleItalic')
   })
 })
+
+// doc: api — multi-range sample of docs/plugin-api.md ("Selections and multiple ranges").
+const insertTodo =
+  (): Command =>
+  ({ tr }) => {
+    tr.forEachRange((range, t) => {
+      t.insertText('TODO', range)
+      return { anchor: range.anchor, focus: range.anchor }
+    })
+    return tr.rejected === null
+  }
+void insertTodo
