@@ -15,8 +15,8 @@ The controller updates this file after each task.
 | 4 `forEachRange` | done | a49902d, 92e9214 |
 | 5 Text editing on every range | done | 68b849e, 31e8b5e, 44cdfab |
 | 6 Marks on every range | done | 9daee41, b899257 |
-| 7 Fragments, paste, drop | in progress | — |
-| 8 Input, IME, input rules, view | todo | |
+| 7 Fragments, paste, drop | done | 2b848f5 |
+| 8 Input, IME, input rules, view | in progress | |
 | 9 History, rebase | todo | |
 | 10 Code block, font-size | todo | |
 | 11 Mention, image | todo | |
@@ -64,3 +64,14 @@ The controller updates this file after each task.
 - **Task 12 (docs):**
   - `isNodeSelection` is no longer a type guard.
   - Document the new optional `at` params, `RangeStep`'s void/index, `tr.dev`, and the `toggleMark`-in-callback rule.
+
+## Added after Task 7
+- Fragments (`transaction/fragment.ts`):
+  - `insertFragment`, `insertInlineNode` and `insertContent` act at every range. Ids are fresh per copy: `docIds` is recomputed per insert.
+  - Paste (`core-plugin.ts insertTransfer`) goes to every range. With one range, `transformPasted` gets `info.at = intent.range`; with several, it gets `null`.
+  - A drop goes to its drop point and collapses there, or to main as a fallback.
+  - The node-range paths (`replaceNodeStep`, `replaceNodeWithBlocksStep`) run only without `at`.
+- More carry-overs:
+  - **Task 8:** a paste intent whose range is not main acts only there and does not collapse. In practice this is unreachable. Either collapse it like the other intents (§8 call 13) or document why not.
+  - **Task 10 (not in the plan, must do):** code-block `transformPasted` (`code-block/src/index.ts:435`) uses `at ?? mainRange(selection)`, so main alone decides the code/plain conversion for every caret. Make paste per range: carets inside code blocks get plain text, carets outside get the rich fragment.
+  - **Task 12 (perf):** `docIds` costs O(ranges × doc) per paste. Compute it once and add each copy's ids.
