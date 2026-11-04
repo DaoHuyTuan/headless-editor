@@ -99,7 +99,8 @@ export function runInputRules(editor: RulesEditor, contextOf: ContextOf): boolea
       if (op.type === 'set_selection') continue
       shared.apply(op)
       ranges.forEach((r, j) => {
-        if (r && j !== i) ranges[j] = transformRange(r, op)
+        // Carets before this one are done: one at the match start stays before the replacement.
+        if (r && j !== i) ranges[j] = transformRange(r, op, j < i ? 'backward' : 'forward')
       })
     }
     Object.assign(shared.meta, tr.meta)

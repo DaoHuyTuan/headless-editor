@@ -298,4 +298,18 @@ describe('input rules with several carets', () => {
     expect(blockTexts(ed)).toEqual(['a!?', 'b!?'])
     expect(ed.state.selection).toEqual(createSelection([at([0, 0], 3), at([1, 0], 3)]))
   })
+
+  it('an earlier caret at a later match start stays before the replacement', () => {
+    const dash: InputRule = {
+      match: /--$/,
+      handler: (_ctx, _m, range, tr) => {
+        tr.insertText('—', range)
+        return true
+      },
+    }
+    const { ed } = setup(doc(p('a-')), createSelection([at([0, 0], 1), at([0, 0], 2)]), [dash])
+    typeAt(ed, '-')
+    expect(blockTexts(ed)).toEqual(['a-—'])
+    expect(ed.state.selection).toEqual(createSelection([at([0, 0], 2), at([0, 0], 3)]))
+  })
 })
