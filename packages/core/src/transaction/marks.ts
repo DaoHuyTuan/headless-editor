@@ -238,7 +238,7 @@ function selectionTargets(tr: Transaction): readonly SelectionRange[] | null {
  */
 function eachTarget(
   tr: Transaction,
-  range: Range | undefined,
+  range: SelectionRange | Range | undefined,
   span: (target: Range) => void,
   carets: (ranges: readonly SelectionRange[]) => void,
 ): boolean {
@@ -273,7 +273,7 @@ function updateStored(tr: Transaction, ranges: readonly SelectionRange[], update
  * with different data. Without an explicit range, collapsed selection ranges update the stored
  * marks (once, for all of them).
  */
-export function addMark(tr: Transaction, mark: Mark, range?: Range): boolean {
+export function addMark(tr: Transaction, mark: Mark, range?: SelectionRange | Range): boolean {
   const valid = validated(tr, mark.type, mark.data)
   if (!valid) return false
   return eachTarget(
@@ -298,7 +298,7 @@ export function addMark(tr: Transaction, mark: Mark, range?: Range): boolean {
  * Removes marks of `type` over the range (default: every selection range; collapsed ones → the
  * stored marks, once).
  */
-export function removeMark(tr: Transaction, type: string, range?: Range): boolean {
+export function removeMark(tr: Transaction, type: string, range?: SelectionRange | Range): boolean {
   return eachTarget(
     tr,
     range,

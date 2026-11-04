@@ -339,7 +339,7 @@ function insertFragmentStep(tr: Transaction, fragment: Fragment, sel: SelectionR
  * deleted). Inside a `forEachRange` callback pass the callback's range as `at` (a call without one
  * throws in dev mode).
  */
-export function insertFragment(tr: Transaction, fragment: Fragment, at?: Range | SelectionRange): boolean {
+export function insertFragment(tr: Transaction, fragment: Fragment, at?: SelectionRange | Range): boolean {
   let failed = false
   const did = runStep(tr, at, (range) => {
     const step = insertFragmentStep(tr, fragment, range, !at)

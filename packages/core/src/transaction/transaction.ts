@@ -264,19 +264,19 @@ export class Transaction {
    * elements fresh ids where theirs already exist; the caret ends after the inserted content. A node
    * selection (without `at`) is replaced in place: the content goes where the node was.
    */
-  insertFragment(fragment: Fragment, at?: Range): this {
+  insertFragment(fragment: Fragment, at?: SelectionRange | Range): this {
     fragmentEdit.insertFragment(this, fragment, at)
     return this
   }
 
   /** Adds `mark` over `range` (default: the selection); a same-type mark with other data is replaced. */
-  addMark(mark: Mark, range?: Range): this {
+  addMark(mark: Mark, range?: SelectionRange | Range): this {
     markEdit.addMark(this, mark, range)
     return this
   }
 
   /** Removes marks of `type` over `range` (default: the selection). */
-  removeMark(type: string, range?: Range): this {
+  removeMark(type: string, range?: SelectionRange | Range): this {
     markEdit.removeMark(this, type, range)
     return this
   }
