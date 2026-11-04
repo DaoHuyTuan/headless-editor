@@ -1,0 +1,66 @@
+# Multi-selection: working digest
+
+The current state of the multi-selection milestone (branch `feat/multi-selection`). Read this instead of re-reading the full spec and plan. Open them only for the section your task cites:
+- spec: `docs/superpowers/specs/2026-11-03-multi-selection-design.md`, whose §8 calls are binding;
+- plan: `docs/superpowers/plans/2026-11-03-multi-selection.md`.
+
+The controller updates this file after each task.
+
+## Status
+| Task | State | Commits |
+|---|---|---|
+| 1 Selection module | done | dd9a029 |
+| 2 Type switch (main range only) | done | befea19 |
+| 3 Map and normalize every range | done | 8c5e1dd, 1c484d8 |
+| 4 `forEachRange` | done | a49902d, 92e9214 |
+| 5 Text editing on every range | done | 68b849e, 31e8b5e, 44cdfab |
+| 6 Marks on every range | done | 9daee41, b899257 |
+| 7 Fragments, paste, drop | in progress | — |
+| 8 Input, IME, input rules, view | todo | |
+| 9 History, rebase | todo | |
+| 10 Code block, font-size | todo | |
+| 11 Mention, image | todo | |
+| 12 Docs, e2e smoke, perf, verification | todo | |
+
+## API built so far (what later tasks use)
+- **`model/selection.ts`**:
+  - `single(range)`;
+  - `createSelection(ranges, main?)`: sorts, merges overlapping and touching ranges, makes a node range the only range, and keeps `main` on the merged range;
+  - `mainRange`, `rangeEquals`, `selectionEquals`, `isNodeRange`.
+- **`ops/transform.ts`**:
+  - `transformSelection` maps each range independently and drops lost ones;
+  - `transformSelectionStrict` returns null if any range fails. History and rebase use it.
+- **`Transaction`**:
+  - `apply` maps the selection op by op through `mapSelection`. With several ranges, a lost range is re-homed to the nearest editable point. A range that lost one point collapses to a caret. The result is null only when nothing is editable. A single range behaves as before.
+  - `setSelection` normalizes.
+  - At commit, a selection with several ranges is normalized again and validated range by range (`rehomeRanges`).
+- **`tr.forEachRange(fn: RangeStep)`**, in `transaction/ranges.ts`. `RangeStep = (range, tr, index) => SelectionRange | null | void`.
+  - It runs in document order on the same tr. Ranges still pending are mapped op by op with forward affinity (a later caret at an insert point ends up after the inserted text). Results already returned map backward.
+  - `null` drops the range; `void` keeps the live range.
+  - It emits one `set_selection` at the end, and `main` is kept.
+  - `tr.inForEachRange` is true during a run.
+  - `flagSwallowed(tr, inside)`: a pending range strictly inside a removal, with real content on both sides, skips its step and is merged afterwards. A range at the edge still runs.
+  - Stored marks: each step starts from the run's initial marks. Afterwards, the marks are null if any step consumed them, otherwise a step's new marks, otherwise the initial ones. A run with no doc change clears them.
+- **Text (`transaction/text.ts`)**: `runStep`, `touchedRange` (prefers main), `touches`.
+  - Converted: `insertText`, `deleteRange` (`SelectionRange | Range`), `deleteBackward`/`deleteForward(unit, at?)`, `splitBlock(at?)`, `insertBlockNode(node, at?)`, `selectAll` (collapses), `replaceSelectedNode`.
+  - At top level, an explicit `at` that touches no range replaces main. This matches single-range behaviour.
+  - Backspace/Delete next to an opaque block with several ranges leaves that caret alone; the others delete. With one range it node-selects.
+  - `insertBlockNode` copies: the first keeps the caller's ids, the rest get fresh ids.
+  - `tr.dev` comes from the editor's `dev` option. A no-range call inside a callback throws when `tr.dev` is set.
+- **Marks (`transaction/marks.ts`)**: edits do not go through `forEachRange`; `tr.apply` maps the selection.
+  - `allHaveMark` decides both the `toggleMark` direction and `isMarkActive`/`editor.isActive`.
+  - Carets count. Ranges that cover no characters are ignored when some other range can change.
+  - Stored marks for carets are the intersection of all carets' marks.
+  - With mixed ranges and carets, the ranges get the mark and the carets get stored marks.
+  - `isActive` for elements requires every range.
+  - `toggleMark` takes no range. Inside a callback, use `addMark`/`removeMark` with the callback's range.
+
+## Carry-overs (owned by a later task)
+- **Task 8:**
+  - `composition.ts:70` calls `marksAt(state)` on the whole selection, which gives the intersection. Collapse to main before it, or use the main range only.
+  - Add "acts on the main range on purpose" comments at the IME sites (spec §5.8, class b).
+- **Task 10:** code-block `codeAt` checks only main, so a no-range `tr.insertText(INDENT / '\n')` now inserts at every caret, including carets outside code blocks. Make it per range.
+- **Task 11:** the image upload tracks one id. `insertBlockNode` copies get fresh ids, so all copies must be tracked.
+- **Task 12 (docs):**
+  - `isNodeSelection` is no longer a type guard.
+  - Document the new optional `at` params, `RangeStep`'s void/index, `tr.dev`, and the `toggleMark`-in-callback rule.
