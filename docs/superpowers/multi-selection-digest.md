@@ -16,8 +16,8 @@ The controller updates this file after each task.
 | 5 Text editing on every range | done | 68b849e, 31e8b5e, 44cdfab |
 | 6 Marks on every range | done | 9daee41, b899257 |
 | 7 Fragments, paste, drop | done | 2b848f5 |
-| 8 Input, IME, input rules, view | in progress | |
-| 9 History, rebase | todo | |
+| 8 Input, IME, input rules, view | done | c5bb316, fa359f4 |
+| 9 History, rebase | in progress | |
 | 10 Code block, font-size | todo | |
 | 11 Mention, image | todo | |
 | 12 Docs, e2e smoke, perf, verification | todo | |
@@ -75,3 +75,18 @@ The controller updates this file after each task.
   - **Task 8:** a paste intent whose range is not main acts only there and does not collapse. In practice this is unreachable. Either collapse it like the other intents (§8 call 13) or document why not.
   - **Task 10 (not in the plan, must do):** code-block `transformPasted` (`code-block/src/index.ts:435`) uses `at ?? mainRange(selection)`, so main alone decides the code/plain conversion for every caret. Make paste per range: carets inside code blocks get plain text, carets outside get the rich fragment.
   - **Task 12 (perf):** `docIds` costs O(ranges × doc) per paste. Compute it once and add each copy's ids.
+
+## Added after Task 8
+- **Intents** (`core-plugin.ts`):
+  - Plain typing goes to every caret. It counts as plain when the intent has no range, or when its range spans main in either direction.
+  - `insertReplacementText` is always targeted. An intent with a target other than main applies only at that target and collapses the selection, keeping stored marks. A paste intent whose target is not main collapses the same way.
+- **Input rules** (`input-rules.ts`): with several carets, each collapsed caret is checked on its own and the first matching rule at that caret wins.
+  - The handler's scratch tr has `single(own caret)` as its selection and the shared doc, so a no-range call acts only at that caret.
+  - When the handler returns true, its doc ops (without its `set_selection` ops) are applied to one shared rule tr, and the other ranges are mapped through them.
+  - A `setSelection` in a handler throws in dev mode. Undo is two steps, as before: the typing, then the rules.
+  - With a single caret the old path runs unchanged.
+- **IME:** `compositionstart` with several ranges collapses to main first (`addToHistory: false`, stored marks kept). Composition takes main's marks.
+- **View:**
+  - The DOM gets only the main range.
+  - A user `selectionchange` that moves away from main collapses to one range.
+  - Known gap, a follow-up: a click exactly on the main caret keeps the secondary ranges.
