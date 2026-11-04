@@ -15,7 +15,9 @@ import { z } from 'zod'
 import {
   applyOp,
   createId,
+  createSelection,
   definePlugin,
+  findPathById,
   getNode,
   isElement,
   isNodeRange,
@@ -26,7 +28,6 @@ import {
   nextPath,
   nodeEntries,
   nodeText,
-  single,
   type Command,
   type Decoration,
   type DeepReadonly,
@@ -42,7 +43,7 @@ import {
   type PluginContext,
   type Point,
   type Registry,
-  type Selection,
+  type SelectionRange,
   type Transaction,
 } from '@hte/core'
 import { defaultHighlighter, type HighlightToken, type Highlighter } from './highlight'
@@ -93,23 +94,28 @@ function inCodeBlock(doc: ReadonlyDoc, registry: Registry, path: Path): boolean 
   return !!block && (getNode(doc as Doc, block) as ElementNode).type === NAME
 }
 
-/** A code block holding the selection, with its (normalized: single, unmarked) text. */
+/** A code block holding a selection range, with its (normalized: single, unmarked) text. */
 interface CodeAt {
   blockPath: Path
   textPath: Path
   text: string
-  /** The selection's ordered offsets into `text`. */
+  /** The range's ordered offsets into `text`. */
   from: number
   to: number
   anchor: number
   focus: number
 }
 
-/** The code block holding the whole selection (not a node selection), or null. */
-function codeAt(tr: Transaction): CodeAt | null {
-  const sel = tr.selection
-  if (!sel || isNodeSelection(sel)) return null
-  const range = mainRange(sel)
+function emptyDefaultBlock(registry: Registry): ElementNode {
+  return { id: createId(), type: registry.defaultBlock, data: {}, children: [{ text: '', marks: [] }] }
+}
+
+/**
+ * The code block holding the whole of `range` (both ends in its single text), or null. Callers pass a
+ * range explicitly: with several ranges each is judged on its own (spec §5.5).
+ */
+function codeAtRange(tr: Transaction, range: SelectionRange): CodeAt | null {
+  if (isNodeRange(range)) return null
   const blockPath = blockPathOf(tr.doc, tr.registry, range.anchor.path)
   if (!blockPath) return null
   const block = getNode(tr.doc, blockPath) as ElementNode
@@ -122,18 +128,44 @@ function codeAt(tr: Transaction): CodeAt | null {
   return { blockPath, textPath, text: kids[0].text, from: Math.min(anchor, focus), to: Math.max(anchor, focus), anchor, focus }
 }
 
-const caret = (path: Path, offset: number): Selection => single({ anchor: { path, offset }, focus: { path, offset } })
-
-function emptyDefaultBlock(registry: Registry): ElementNode {
-  return { id: createId(), type: registry.defaultBlock, data: {}, children: [{ text: '', marks: [] }] }
+/** The selection's ranges that sit in a code block, with their blocks (none without a selection or for a node selection). */
+function codeRanges(tr: Transaction): { range: SelectionRange; code: CodeAt }[] {
+  const sel = tr.selection
+  if (!sel || isNodeSelection(sel)) return []
+  const out: { range: SelectionRange; code: CodeAt }[] = []
+  for (const range of sel.ranges) {
+    const code = codeAtRange(tr, range)
+    if (code) out.push({ range, code })
+  }
+  return out
 }
 
-/** Inserts an empty default block after the code block and puts the caret in it. */
-function exitAfter(tr: Transaction, blockPath: Path): boolean {
+const caretRange = (path: Path, offset: number): SelectionRange => ({ anchor: { path, offset }, focus: { path, offset } })
+
+/**
+ * Runs `onCode` at every range inside a code block and `other` (the editor's default edit) at the
+ * rest, on one tr. False, with nothing done, when no range is in a code block: the key falls through
+ * to the editor. A caret outside a code block never gets code-block behaviour (no indent, no `\n`).
+ */
+function eachRange(
+  tr: Transaction,
+  onCode: (code: CodeAt, range: SelectionRange, t: Transaction) => SelectionRange | null | void,
+  other?: (range: SelectionRange, t: Transaction) => void,
+): boolean {
+  if (codeRanges(tr).length === 0) return false
+  tr.forEachRange((range, t) => {
+    const code = codeAtRange(t, range)
+    if (code) return onCode(code, range, t)
+    other?.(range, t)
+  })
+  return tr.rejected === null
+}
+
+/** Inserts an empty default block after the code block; returns the caret range inside it. */
+function exitAfter(tr: Transaction, blockPath: Path): SelectionRange {
   const at = nextPath(blockPath)
   tr.insertNode(at, emptyDefaultBlock(tr.registry))
-  tr.setSelection(caret([...at, 0], 0))
-  return tr.rejected === null
+  return caretRange([...at, 0], 0)
 }
 
 /**
@@ -146,62 +178,195 @@ function lineStarts(text: string, from: number, to: number): number[] {
   return starts
 }
 
-/** Tab: two spaces at the caret (replacing a selection within one line), or indents every selected line. */
+/** A text edit planned against the doc as it was: remove `remove` at `offset`, then insert `insert`. */
+interface Edit {
+  offset: number
+  remove: string
+  insert: string
+}
+
+type Plan = Map<string, { path: Path; edits: Edit[] }>
+
+function planFor(plan: Plan, code: CodeAt): Edit[] {
+  const key = code.textPath.join()
+  let entry = plan.get(key)
+  if (!entry) plan.set(key, (entry = { path: code.textPath, edits: [] }))
+  return entry.edits
+}
+
+/** Applies the planned edits per text, last offset first so earlier offsets stay valid; every op maps the selection. */
+function applyPlan(tr: Transaction, plan: Plan): void {
+  for (const { path, edits } of plan.values()) {
+    for (const e of edits.sort((a, b) => b.offset - a.offset)) {
+      if (e.remove) tr.apply({ type: 'remove_text', path, offset: e.offset, text: e.remove })
+      if (e.insert) tr.apply({ type: 'insert_text', path, offset: e.offset, text: e.insert })
+    }
+  }
+}
+
+/** Whether a range indents lines (spans two or more) rather than inserting the indent at itself. */
+const indentsLines = (code: CodeAt): boolean => code.from !== code.to && lineStarts(code.text, code.from, code.to).length >= 2
+
+/**
+ * Tab at every range in a code block: two spaces at a caret (replacing a selection within one line),
+ * or an indent of every line a multi-line selection touches. A line touched by several ranges is
+ * indented once: a caret or single-line selection on a line another range indents adds nothing of its
+ * own. Ranges outside a code block are left alone (Tab has no default edit for them).
+ */
 function indent(tr: Transaction): boolean {
-  const code = codeAt(tr)
-  if (!code) return false
-  const starts = code.from === code.to ? [] : lineStarts(code.text, code.from, code.to)
-  if (starts.length < 2) return tr.insertText(INDENT) && true
-  // Last line first, so earlier offsets stay valid; the selection is mapped by every op.
-  for (const start of starts.reverse()) tr.apply({ type: 'insert_text', path: code.textPath, offset: start, text: INDENT })
-  return true
+  const ranges = codeRanges(tr)
+  if (ranges.length === 0) return false
+  // One range: the caret / selection edit exactly as before.
+  if (tr.selection!.ranges.length === 1) {
+    const { code } = ranges[0]!
+    if (!indentsLines(code)) return tr.insertText(INDENT) && true
+    // Last line first, so earlier offsets stay valid; the selection is mapped by every op.
+    for (const start of lineStarts(code.text, code.from, code.to).reverse())
+      tr.apply({ type: 'insert_text', path: code.textPath, offset: start, text: INDENT })
+    return true
+  }
+  // Several ranges: plan every edit against the doc as it is, then apply last offset first.
+  const lines = new Map<string, Set<number>>()
+  for (const { code } of ranges) {
+    if (!indentsLines(code)) continue
+    const set = lines.get(code.textPath.join()) ?? new Set<number>()
+    lineStarts(code.text, code.from, code.to).forEach((s) => set.add(s))
+    lines.set(code.textPath.join(), set)
+  }
+  const plan: Plan = new Map()
+  for (const { code } of ranges) {
+    if (indentsLines(code) || lines.get(code.textPath.join())?.has(lineStarts(code.text, code.from, code.from)[0]!)) continue
+    planFor(plan, code).push({ offset: code.from, remove: code.text.slice(code.from, code.to), insert: INDENT })
+  }
+  for (const [key, set] of lines) {
+    const { code } = ranges.find((r) => r.code.textPath.join() === key)!
+    for (const start of set) planFor(plan, code).push({ offset: start, remove: '', insert: INDENT })
+  }
+  applyPlan(tr, plan)
+  return tr.rejected === null
 }
 
-/** Shift-Tab: removes up to two leading spaces from every line the selection touches. */
+/** Shift-Tab: removes up to two leading spaces from every distinct line the code ranges touch. */
 function dedent(tr: Transaction): boolean {
-  const code = codeAt(tr)
-  if (!code) return false
-  for (const start of lineStarts(code.text, code.from, code.to).reverse()) {
-    let n = 0
-    while (n < INDENT.length && code.text[start + n] === ' ') n++
-    if (n > 0) tr.apply({ type: 'remove_text', path: code.textPath, offset: start, text: code.text.slice(start, start + n) })
+  const ranges = codeRanges(tr)
+  if (ranges.length === 0) return false
+  const lines = new Map<string, { code: CodeAt; starts: Set<number> }>()
+  for (const { code } of ranges) {
+    const entry = lines.get(code.textPath.join()) ?? { code, starts: new Set<number>() }
+    lineStarts(code.text, code.from, code.to).forEach((s) => entry.starts.add(s))
+    lines.set(code.textPath.join(), entry)
   }
+  const plan: Plan = new Map()
+  for (const { code, starts } of lines.values()) {
+    for (const start of starts) {
+      let n = 0
+      while (n < INDENT.length && code.text[start + n] === ' ') n++
+      if (n > 0) planFor(plan, code).push({ offset: start, remove: code.text.slice(start, start + n), insert: '' })
+    }
+  }
+  applyPlan(tr, plan)
   // Consumed even when nothing was removed, so Shift-Tab never moves the focus out of the block.
-  return true
+  return tr.rejected === null
 }
 
-/** Enter: a newline; at the end of a block ending with two newlines, removes them and exits to a new paragraph. */
+/**
+ * Enter at every range: in a code block a newline (a caret at the end of a block ending with two
+ * newlines removes them and exits to a new paragraph); outside one, the editor's default split.
+ */
 function newline(tr: Transaction): boolean {
-  const code = codeAt(tr)
-  if (!code) return false
-  if (code.from === code.to && code.to === code.text.length && code.text.endsWith('\n\n')) {
-    tr.apply({ type: 'remove_text', path: code.textPath, offset: code.text.length - 2, text: '\n\n' })
-    return exitAfter(tr, code.blockPath)
-  }
-  return tr.insertText('\n') && true
+  return eachRange(
+    tr,
+    (code, range, t) => {
+      if (code.from === code.to && code.to === code.text.length && code.text.endsWith('\n\n')) {
+        t.apply({ type: 'remove_text', path: code.textPath, offset: code.text.length - 2, text: '\n\n' })
+        return exitAfter(t, code.blockPath)
+      }
+      t.insertText('\n', range)
+    },
+    (range, t) => void t.splitBlock(range),
+  )
 }
 
-/** Shift-Enter: a newline, never an exit. */
+/** Shift-Enter: a newline in a code block, never an exit; the editor's default split elsewhere. */
 function lineBreak(tr: Transaction): boolean {
-  return !!codeAt(tr) && tr.insertText('\n') && true
+  return eachRange(
+    tr,
+    (_code, range, t) => void t.insertText('\n', range),
+    (range, t) => void t.splitBlock(range),
+  )
 }
 
-/** Swaps the block at `path` for `replacement`, putting the selection at `selection` (paths inside the new block). */
-function replaceBlock(tr: Transaction, path: Path, replacement: ElementNode, selection: (path: Path) => Selection): boolean {
-  // Insert after, move the selection in, then remove the old block: the selection never sits in a removed node.
-  const after = nextPath(path)
-  tr.insertNode(after, replacement)
-  if (tr.rejected !== null) return false
-  tr.setSelection(selection(after))
-  tr.removeNode(path)
-  return true
+/** A block to replace, and the block that replaces it. */
+interface Swap {
+  /** Path of the block to replace (in the doc the swap starts from). */
+  path: Path
+  replacement: ElementNode
 }
 
-/** Backspace at the start of an empty code block: turns it into a paragraph (the default block). */
+/**
+ * Replaces blocks. There is no op that changes a node's type, so each replacement is inserted after
+ * its block, the selection is moved into the new blocks, and then the old blocks are removed: the
+ * selection never sits in a removed node, and one undo step restores everything. `place(i, range)`
+ * says where the selection's range `i` goes: the index into `swaps` and the offsets in that block's
+ * text (null: the range stays where it is). Every swap's replacement holds a single text child.
+ */
+function swapBlocks(
+  tr: Transaction,
+  swaps: Swap[],
+  place: (index: number, range: SelectionRange) => { swap: number; anchor: number; focus: number } | null,
+): boolean {
+  const sel = tr.selection
+  if (!sel || swaps.length === 0) return false
+  const byPath = [...swaps.keys()].sort((a, b) => comparePaths(swaps[b]!.path, swaps[a]!.path))
+  const oldIds = swaps.map((s) => (getNode(tr.doc, s.path) as ElementNode).id)
+  // Last block first: an insert after a block moves only the later siblings.
+  for (const i of byPath) {
+    tr.insertNode(nextPath(swaps[i]!.path), swaps[i]!.replacement)
+    if (tr.rejected !== null) return false
+  }
+  const newPaths = swaps.map((s) => findPathById(tr.doc, s.replacement.id)!)
+  const current = tr.selection!
+  tr.setSelection(
+    createSelection(
+      current.ranges.map((range, i) => {
+        const to = place(i, sel.ranges[i]!)
+        if (!to) return range
+        const text = [...newPaths[to.swap]!, 0]
+        return { anchor: { path: text, offset: to.anchor }, focus: { path: text, offset: to.focus } }
+      }),
+      current.main,
+    ),
+  )
+  const oldPaths = oldIds.map((id) => findPathById(tr.doc, id)!).sort((a, b) => comparePaths(b, a))
+  for (const path of oldPaths) tr.removeNode(path)
+  return tr.rejected === null
+}
+
+/** Document order of two paths. */
+function comparePaths(a: Path, b: Path): number {
+  for (let i = 0; i < Math.min(a.length, b.length); i++) if (a[i] !== b[i]) return a[i]! - b[i]!
+  return a.length - b.length
+}
+
+/**
+ * Backspace at the start of an empty code block: turns it into a paragraph (the default block). With
+ * several ranges, only when every range is such a caret (each distinct block is turned): any other
+ * mix is left to the editor, which deletes backward at every range.
+ */
 function unsetIfEmpty(tr: Transaction): boolean {
-  const code = codeAt(tr)
-  if (!code || code.text !== '' || code.to !== 0) return false
-  return replaceBlock(tr, code.blockPath, emptyDefaultBlock(tr.registry), (p) => caret([...p, 0], 0))
+  const sel = tr.selection
+  const ranges = codeRanges(tr)
+  if (!sel || ranges.length !== sel.ranges.length || !ranges.every(({ code }) => code.text === '' && code.to === 0)) return false
+  const swaps: Swap[] = []
+  const swapOf = new Map<string, number>()
+  for (const { code } of ranges) {
+    const key = code.blockPath.join()
+    if (!swapOf.has(key)) {
+      swapOf.set(key, swaps.length)
+      swaps.push({ path: code.blockPath, replacement: emptyDefaultBlock(tr.registry) })
+    }
+  }
+  return swapBlocks(tr, swaps, (i) => ({ swap: swapOf.get(ranges[i]!.code.blockPath.join())!, anchor: 0, focus: 0 }))
 }
 
 /**
@@ -223,43 +388,52 @@ const editorOptions =
     editor.getPluginOptions(plugin.name)
 
 /**
- * `setCodeBlock`: there is no op that changes a node's type, so the block is replaced: a code block
- * holding the block's plain text (marks dropped, inline atoms as their `renderText`) is inserted after
- * it, the selection is moved into it at the same text offsets, and the block is removed. One undo step
- * restores it.
+ * `setCodeBlock`: a code block holding the block's plain text (marks dropped, inline atoms as their
+ * `renderText`) replaces every block that holds a range (see `swapBlocks`): a block with several
+ * ranges is converted once, and each range keeps its text offsets. Blocks that cannot convert (not
+ * inline content, already code, or a range spanning blocks) are left as they are; false when none can.
  */
 function toCodeBlock(tr: Transaction, editor: Editor, language: string | undefined): boolean {
   const sel = tr.selection
   if (!sel || isNodeSelection(sel)) return false
-  const range = mainRange(sel)
-  const blockPath = blockPathOf(tr.doc, tr.registry, range.anchor.path)
-  const focusBlock = blockPathOf(tr.doc, tr.registry, range.focus.path)
-  if (!blockPath || !focusBlock || blockPath.join() !== focusBlock.join()) return false
-  const block = getNode(tr.doc, blockPath) as ElementNode
-  if (tr.registry.node(block.type)?.content !== 'inline') return false
-  const texts = textsOf(block, tr.registry, editorOptions(editor))
-  const offsetOf = (p: Point): number => {
-    const rel = p.path.slice(blockPath.length).join()
-    let at = 0
-    for (const t of texts) {
-      if (t.path.join() === rel) return at + p.offset
-      at += t.text.length
+  const options = editorOptions(editor)
+  const swaps: Swap[] = []
+  const swapOf = new Map<string, number>()
+  const offsets: ({ swap: number; anchor: number; focus: number } | null)[] = []
+  for (const range of sel.ranges) {
+    const blockPath = blockPathOf(tr.doc, tr.registry, range.anchor.path)
+    const focusBlock = blockPathOf(tr.doc, tr.registry, range.focus.path)
+    const block = blockPath && (getNode(tr.doc, blockPath) as ElementNode)
+    if (!blockPath || !focusBlock || blockPath.join() !== focusBlock.join() || !block || tr.registry.node(block.type)?.content !== 'inline') {
+      offsets.push(null)
+      continue
     }
-    return 0
+    const texts = textsOf(block, tr.registry, options)
+    const offsetOf = (p: Point): number => {
+      const rel = p.path.slice(blockPath.length).join()
+      let at = 0
+      for (const t of texts) {
+        if (t.path.join() === rel) return at + p.offset
+        at += t.text.length
+      }
+      return 0
+    }
+    const key = blockPath.join()
+    if (!swapOf.has(key)) {
+      swapOf.set(key, swaps.length)
+      swaps.push({
+        path: blockPath,
+        replacement: {
+          id: createId(),
+          type: NAME,
+          data: language === undefined ? {} : { language },
+          children: [{ text: texts.map((t) => t.text).join(''), marks: [] }],
+        },
+      })
+    }
+    offsets.push({ swap: swapOf.get(key)!, anchor: offsetOf(range.anchor), focus: offsetOf(range.focus) })
   }
-  const node: ElementNode = {
-    id: createId(),
-    type: NAME,
-    data: language === undefined ? {} : { language },
-    children: [{ text: texts.map((t) => t.text).join(''), marks: [] }],
-  }
-  const [anchor, focus] = [offsetOf(range.anchor), offsetOf(range.focus)]
-  return replaceBlock(tr, blockPath, node, (p) =>
-    single({
-      anchor: { path: [...p, 0], offset: anchor },
-      focus: { path: [...p, 0], offset: focus },
-    }),
-  )
+  return swapBlocks(tr, swaps, (i) => offsets[i]!)
 }
 
 /**
@@ -282,7 +456,9 @@ const isInlineInsert = (op: Operation, registry: Registry): op is Extract<Operat
 /**
  * Whether `tr` must be vetoed: it inserts an inline element into a code block, its marks all land in
  * code blocks (a mark only partly inside one is let through: normalization strips that part), or it
- * stores marks at a caret in a code block (e.g. toggling bold at the caret). Never asked for history
+ * stores marks while every caret is in a code block (e.g. toggling bold at the caret). With carets
+ * elsewhere too, the stored marks are let through: they type rich text at those carets, and
+ * normalization strips them from the code block's text. Never asked for history
  * trs (`meta.origin === 'history'`): the filter lets every undo/redo through.
  */
 function addsFormatting(tr: Transaction): boolean {
@@ -293,7 +469,7 @@ function addsFormatting(tr: Transaction): boolean {
     tr.storedMarks &&
     tr.storedMarks.length > 0 &&
     tr.storedMarks !== tr.before.storedMarks &&
-    inCodeBlock(tr.doc, registry, mainRange(sel).focus.path)
+    sel.ranges.every((r) => inCodeBlock(tr.doc, registry, r.focus.path))
   )
     return true
   // Plain typing has neither: no replay.
@@ -368,6 +544,12 @@ function tokensFor(block: DeepReadonly<ElementNode>, text: string, highlighter: 
  *   ending with `\n\n` it removes them and exits to a new paragraph), Shift-Enter inserts `\n`,
  *   Mod-Enter exits the block to a new paragraph after it, Backspace at the start of an empty block
  *   turns it into a paragraph. `insertParagraph` / `insertLineBreak` intents behave like Enter.
+ * - Several ranges: every key works per range. Code-block behaviour applies only to ranges inside a
+ *   code block; Enter and Shift-Enter give the other ranges the editor's default split, Tab and
+ *   Shift-Tab leave them alone, and Backspace is the editor's unless every range is at the start of an
+ *   empty code block. A line touched by several ranges is indented once. The commands act on every
+ *   distinct block holding a range. A multi-range paste gives plain text to carets inside code blocks
+ *   and the rich fragment to the others.
  * - Marks and inline nodes are blocked: a tr whose added marks all fall in code blocks, that inserts
  *   an inline element into one or that stores marks at a caret in one is filtered out (so
  *   `toggleBold` and `insertMention` return false there); a mark over a paragraph and a code block
@@ -390,24 +572,34 @@ export const codeBlock = definePlugin({
   } as CodeBlockOptions,
   // `commands` comes before every hook taking `ctx`: TypeScript types those hooks in order.
   commands: () => ({
-    /** Turns the block holding the selection (a paragraph or other inline-content block) into a code block. */
+    /** Turns every block holding a range (a paragraph or other inline-content block) into a code block. */
     setCodeBlock:
       (language?: string): Command =>
       ({ tr, editor }) =>
         toCodeBlock(tr, editor, language),
-    /** Sets the language of the code block holding the selection. False outside one or for an unsafe name. */
+    /** Sets the language of every code block holding a range. False outside one or for an unsafe name. */
     setLanguage:
       (language: string): Command =>
       ({ tr }) => {
-        const code = codeAt(tr)
-        if (!code) return false
-        tr.setNodeData(code.blockPath, { language })
+        const blocks = new Map<string, Path>()
+        for (const { code } of codeRanges(tr)) blocks.set(code.blockPath.join(), code.blockPath)
+        if (blocks.size === 0) return false
+        for (const path of blocks.values()) tr.setNodeData(path, { language })
         return tr.rejected === null
       },
-    /** Inserts a paragraph after the code block holding the selection and moves the caret into it. */
+    /**
+     * Inserts a paragraph after every code block holding a range and moves the caret into it; the
+     * ranges of one block become that one caret. Ranges outside a code block stay.
+     */
     exitCodeBlock: (): Command => ({ tr }) => {
-      const code = codeAt(tr)
-      return !!code && exitAfter(tr, code.blockPath)
+      const exited = new Set<string>()
+      return eachRange(tr, (code, _range, t) => {
+        // The block's id: its path moves as earlier blocks get their paragraph.
+        const id = (getNode(t.doc, code.blockPath) as ElementNode).id
+        if (exited.has(id)) return null
+        exited.add(id)
+        return exitAfter(t, code.blockPath)
+      })
     },
   }),
   keymap: (ctx) => ({

@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest'
+import { createSelection } from '@hte/core'
 import { createTestEditor, doc, el, sel, stripIds, txt } from '@hte/core/testing'
 import { paragraph } from '@hte/paragraph'
 import { bold } from '@hte/bold'
@@ -76,5 +77,29 @@ describe('fontSize HTMLAttributes', () => {
       content: '<p><span style="font-size:20px">a</span></p>',
     })
     expect(ed.getHTML()).toBe('<p><span class="fs" style="color: red; font-size: 20px;">a</span></p>')
+  })
+})
+
+describe('fontSize with several ranges', () => {
+  const rng = (path: number[], from: number, to: number) => ({ anchor: { path, offset: from }, focus: { path, offset: to } })
+  const multi = (...ranges: ReturnType<typeof rng>[]) => createSelection(ranges)
+
+  it('reports mixed (no size active) when the ranges have different sizes', () => {
+    const ed = setup(doc(p(txt('ab', fs('18px'))), p(txt('cd', fs('24px')))), multi(rng([0, 0], 0, 2), rng([1, 0], 0, 2)))
+    expect(ed.isActive('fontSize', { size: '18px' })).toBe(false)
+    expect(ed.isActive('fontSize', { size: '24px' })).toBe(false)
+  })
+
+  it('reports the size when every range has it', () => {
+    const ed = setup(doc(p(txt('ab', fs('18px'))), p(txt('cd', fs('18px')))), multi(rng([0, 0], 0, 2), rng([1, 0], 0, 2)))
+    expect(ed.isActive('fontSize', { size: '18px' })).toBe(true)
+  })
+
+  it('setFontSize and unsetFontSize act on every range', () => {
+    const ed = setup(doc(p(txt('ab')), p(txt('cd', fs('24px')))), multi(rng([0, 0], 0, 2), rng([1, 0], 0, 2)))
+    expect(ed.commands.setFontSize('12px')).toBe(true)
+    expect(ed.isActive('fontSize', { size: '12px' })).toBe(true)
+    expect(ed.commands.unsetFontSize()).toBe(true)
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p(txt('ab')), p(txt('cd')))))
   })
 })

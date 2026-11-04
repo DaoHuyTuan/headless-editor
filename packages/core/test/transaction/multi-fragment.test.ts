@@ -131,7 +131,7 @@ describe('paste on every range', () => {
     expect(ed.state.selection).toEqual(start)
   })
 
-  it('transformPasted runs once, with at null (the selection)', () => {
+  it('transformPasted runs once per range, with at set to that range', () => {
     const seen: unknown[] = []
     const spy = definePlugin({
       name: 'spy',
@@ -142,7 +142,7 @@ describe('paste on every range', () => {
     })
     const ed = setup(doc(p('ab'), p('cd')), sel(caret([0, 0], 1), caret([1, 0], 1)), [spy])
     paste(ed, { 'text/plain': 'X' })
-    expect(seen).toEqual([null])
+    expect(seen).toEqual([caret([0, 0], 1), caret([1, 0], 1)])
     expect(texts(ed.state.doc)).toEqual(['aXb', 'cXd'])
   })
 

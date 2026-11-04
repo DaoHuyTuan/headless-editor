@@ -91,15 +91,30 @@ function insertTransfer(intent: InputIntent, editor: Editor): boolean {
   if (!transfer) return false
   const sel = editor.state.selection
   const at = transferTarget(intent, sel)
-  const fragment = parseFromClipboard(
-    editor,
-    {
-      json: transfer.getData(FRAGMENT_MIME),
-      html: transfer.getData('text/html'),
-      text: transfer.getData('text/plain'),
-    },
-    { at },
-  )
+  const data = {
+    json: transfer.getData(FRAGMENT_MIME),
+    html: transfer.getData('text/html'),
+    text: transfer.getData('text/plain'),
+  }
+  // A paste at several ranges parses once per range, each with `info.at` set to that range: a
+  // `transformPasted` that decides by position (the code block: plain text inside a code block, rich
+  // elsewhere) then sees every caret's own context. With one range the selection is the target
+  // (`info.at` as it always was).
+  if (sel && !isNodeSelection(sel) && !at && sel.ranges.length > 1 && intent.inputType === 'insertFromPaste') {
+    const fragments = sel.ranges.map((range) => parseFromClipboard(editor, data, { at: range }))
+    if (fragments.every((f) => f.length === 0)) return true
+    const tr = editor.createTransaction()
+    tr.meta.origin = PASTE_INPUT[intent.inputType]!
+    tr.meta.inputType = intent.inputType
+    let failed = false
+    tr.forEachRange((range, t, i) => {
+      const fragment = fragments[i]!
+      if (fragment.length > 0 && !insertFragment(t, fragment, range)) failed = true
+    })
+    if (!failed && tr.ops.length > 0) editor.dispatch(tr)
+    return true
+  }
+  const fragment = parseFromClipboard(editor, data, { at })
   if (fragment.length === 0) return true
   const tr = editor.createTransaction()
   tr.meta.origin = PASTE_INPUT[intent.inputType]!

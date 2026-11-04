@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it } from 'vitest'
-import { mainRange } from '@hte/core'
+import { createSelection, mainRange } from '@hte/core'
 import { definePlugin, serializeForClipboard, type Doc, type ElementNode, type Node, type Selection, type TextNode } from '@hte/core'
 import { createTestEditor, doc, el, sel, stripIds, txt } from '@hte/core/testing'
 import { bold } from '@hte/bold'
@@ -481,5 +481,161 @@ describe('IME inside a code block', () => {
     expect(ed.state.selection).toEqual(caret([0, 0], 4))
     expect((ed.state.doc.children[0] as ElementNode).children as TextNode[]).toHaveLength(1)
     ed.destroy()
+  })
+})
+
+describe('code block with several ranges', () => {
+  const rng = (path: number[], from: number, to = from) => ({ anchor: { path, offset: from }, focus: { path, offset: to } })
+  const multi = (...ranges: ReturnType<typeof rng>[]) => createSelection(ranges)
+  const texts = (ed: Ed) => blocks(ed).map((b) => b.text)
+
+  it('Tab at two carets in different blocks indents both', () => {
+    const ed = setup(doc(code('ab'), code('cd')), multi(rng([0, 0], 1), rng([1, 0], 1)))
+    expect(ed.runKeymap('Tab')).toBe(true)
+    expect(texts(ed)).toEqual(['a  b', 'c  d'])
+    expect(ed.state.selection).toEqual(multi(rng([0, 0], 3), rng([1, 0], 3)))
+  })
+
+  it('Tab with two ranges on the same line indents it once', () => {
+    // "a\nbb\nc": the ranges 0..3 (lines a, bb) and 4..6 (bb, c) share line bb.
+    const ed = setup(doc(code('a\nbb\nc')), multi(rng([0, 0], 0, 3), rng([0, 0], 4, 6)))
+    expect(ed.runKeymap('Tab')).toBe(true)
+    expect(texts(ed)).toEqual(['  a\n  bb\n  c'])
+  })
+
+  it('Tab at a caret on a line another range indents does not indent it twice', () => {
+    const ed = setup(doc(code('a\nbc\nd')), multi(rng([0, 0], 0, 3), rng([0, 0], 4)))
+    expect(ed.runKeymap('Tab')).toBe(true)
+    expect(texts(ed)).toEqual(['  a\n  bc\nd'])
+  })
+
+  it('Tab with a caret in a code block and a caret in a paragraph leaves the paragraph alone', () => {
+    const ed = setup(doc(code('ab'), p(txt('cd'))), multi(rng([0, 0], 1), rng([1, 0], 1)))
+    expect(ed.runKeymap('Tab')).toBe(true)
+    expect(texts(ed)).toEqual(['a  b', 'cd'])
+    expect(ed.state.selection).toEqual(multi(rng([0, 0], 3), rng([1, 0], 1)))
+  })
+
+  it('Tab with every caret outside a code block is left to the editor', () => {
+    const ed = setup(doc(p(txt('ab')), p(txt('cd'))), multi(rng([0, 0], 1), rng([1, 0], 1)))
+    expect(ed.runKeymap('Tab')).toBe(false)
+    expect(texts(ed)).toEqual(['ab', 'cd'])
+  })
+
+  it('Shift-Tab dedents each distinct line once', () => {
+    const ed = setup(doc(code('  a\n  b'), code('  c')), multi(rng([0, 0], 0, 4), rng([0, 0], 5), rng([1, 0], 3)))
+    expect(ed.runKeymap('Shift-Tab')).toBe(true)
+    expect(texts(ed)).toEqual(['a\nb', 'c'])
+  })
+
+  it('Enter at two carets inserts two newlines', () => {
+    const ed = setup(doc(code('ab'), code('cd')), multi(rng([0, 0], 1), rng([1, 0], 1)))
+    expect(ed.runKeymap('Enter')).toBe(true)
+    expect(texts(ed)).toEqual(['a\nb', 'c\nd'])
+    expect(ed.state.selection).toEqual(multi(rng([0, 0], 2), rng([1, 0], 2)))
+  })
+
+  it('Enter with a caret in a code block and one in a paragraph adds a newline there and splits the paragraph', () => {
+    const ed = setup(doc(code('ab'), p(txt('cd'))), multi(rng([0, 0], 1), rng([1, 0], 1)))
+    expect(ed.runKeymap('Enter')).toBe(true)
+    expect(blocks(ed)).toEqual([
+      { type: 'codeBlock', text: 'a\nb' },
+      { type: 'paragraph', text: 'c' },
+      { type: 'paragraph', text: 'd' },
+    ])
+  })
+
+  it('Shift-Enter at a code caret adds a newline and splits the paragraph for the plain caret', () => {
+    const ed = setup(doc(code('ab'), p(txt('cd'))), multi(rng([0, 0], 1), rng([1, 0], 1)))
+    expect(ed.runKeymap('Shift-Enter')).toBe(true)
+    expect(texts(ed)).toEqual(['a\nb', 'c', 'd'])
+  })
+
+  it('Enter with every caret in a paragraph is left to the editor', () => {
+    const ed = setup(doc(p(txt('ab')), p(txt('cd'))), multi(rng([0, 0], 1), rng([1, 0], 1)))
+    expect(ed.runKeymap('Enter')).toBe(false)
+  })
+
+  it('triple-Enter exits only at the caret at a \\n\\n end', () => {
+    const ed = setup(doc(code('ab\n\n'), code('cd\n\n')), multi(rng([0, 0], 4), rng([1, 0], 1)))
+    expect(ed.runKeymap('Enter')).toBe(true)
+    expect(blocks(ed)).toEqual([
+      { type: 'codeBlock', text: 'ab' },
+      { type: 'paragraph', text: '' },
+      { type: 'codeBlock', text: 'c\nd\n\n' },
+    ])
+    expect(ed.state.selection).toEqual(multi(rng([1, 0], 0), rng([2, 0], 2)))
+  })
+
+  it('the line-break intents take the same per-caret path', () => {
+    const ed = setup(doc(code('ab'), p(txt('cd'))), multi(rng([0, 0], 1), rng([1, 0], 1)))
+    ed.handleIntent({ inputType: 'insertParagraph', data: null, range: null })
+    expect(texts(ed)).toEqual(['a\nb', 'c', 'd'])
+  })
+
+  it('Backspace at the start of two empty code blocks turns both into paragraphs', () => {
+    const ed = setup(doc(code(''), p(txt('x')), code('')), multi(rng([0, 0], 0), rng([2, 0], 0)))
+    expect(ed.runKeymap('Backspace')).toBe(true)
+    expect(blocks(ed).map((b) => b.type)).toEqual(['paragraph', 'paragraph', 'paragraph'])
+    expect(ed.state.selection).toEqual(multi(rng([0, 0], 0), rng([2, 0], 0)))
+  })
+
+  it('Backspace with a code caret not in an empty block is left to the editor', () => {
+    const ed = setup(doc(code(''), p(txt('xy'))), multi(rng([0, 0], 0), rng([1, 0], 1)))
+    expect(ed.runKeymap('Backspace')).toBe(false)
+  })
+
+  it('setCodeBlock converts every block with a range, once per block', () => {
+    const ed = setup(doc(p(txt('ab')), p(txt('cd')), p(txt('ef'))), multi(rng([0, 0], 1), rng([0, 0], 2), rng([2, 0], 1)))
+    expect(ed.commands.setCodeBlock('json')).toBe(true)
+    expect(blocks(ed)).toEqual([
+      { type: 'codeBlock', text: 'ab' },
+      { type: 'paragraph', text: 'cd' },
+      { type: 'codeBlock', text: 'ef' },
+    ])
+    expect((ed.state.doc.children[0] as ElementNode).data).toEqual({ language: 'json' })
+    expect(ed.state.selection).toEqual(multi(rng([0, 0], 1), rng([0, 0], 2), rng([2, 0], 1)))
+    ed.commands.undo()
+    expect(blocks(ed).map((b) => b.type)).toEqual(['paragraph', 'paragraph', 'paragraph'])
+    expect(ed.state.selection).toEqual(multi(rng([0, 0], 1), rng([0, 0], 2), rng([2, 0], 1)))
+  })
+
+  it('setCodeBlock keeps every range at its text offsets', () => {
+    const ed = setup(doc(p(txt('abc')), p(txt('def'))), multi(rng([0, 0], 0, 1), rng([1, 0], 2)))
+    expect(ed.commands.setCodeBlock()).toBe(true)
+    expect(ed.state.selection).toEqual(multi(rng([0, 0], 0, 1), rng([1, 0], 2)))
+  })
+
+  it('setCodeBlock skips a block that is already code', () => {
+    const ed = setup(doc(p(txt('ab')), code('cd')), multi(rng([0, 0], 1), rng([1, 0], 1)))
+    expect(ed.commands.setCodeBlock()).toBe(true)
+    expect(blocks(ed).map((b) => b.type)).toEqual(['codeBlock', 'codeBlock'])
+  })
+
+  it('setLanguage updates every code block with a range', () => {
+    const ed = setup(doc(code('a'), p(txt('x')), code('b'), code('c')), multi(rng([0, 0], 0), rng([1, 0], 0), rng([2, 0], 1)))
+    expect(ed.commands.setLanguage('python')).toBe(true)
+    const langs = ed.state.doc.children.map((b) => (b.type === 'codeBlock' ? (b.data as { language: string }).language : null))
+    expect(langs).toEqual(['python', null, 'python', 'plaintext'])
+  })
+
+  it('exitCodeBlock adds one paragraph after every distinct block holding a range', () => {
+    const ed = setup(doc(code('ab'), code('cd')), multi(rng([0, 0], 0), rng([0, 0], 2), rng([1, 0], 1)))
+    expect(ed.commands.exitCodeBlock()).toBe(true)
+    expect(blocks(ed).map((b) => b.type)).toEqual(['codeBlock', 'paragraph', 'codeBlock', 'paragraph'])
+    expect(ed.state.selection).toEqual(multi(rng([1, 0], 0), rng([3, 0], 0)))
+  })
+
+  it('paste gives plain text to carets in code blocks and the rich fragment to the others', () => {
+    const ed = setup(doc(code('ab'), p(txt('cd'))), multi(rng([0, 0], 1), rng([1, 0], 1)))
+    paste(ed, { 'text/html': '<p>x<strong>y</strong></p><p>z</p>' })
+    expect(blocks(ed)).toEqual([
+      { type: 'codeBlock', text: 'axy\nzb' },
+      { type: 'paragraph', text: 'cxy' },
+      { type: 'paragraph', text: 'zd' },
+    ])
+    const rich = (ed.state.doc.children[1] as ElementNode).children as TextNode[]
+    expect(rich.some((c) => c.marks.length > 0)).toBe(true)
+    expect(((ed.state.doc.children[0] as ElementNode).children as TextNode[])[0]!.marks).toEqual([])
   })
 })

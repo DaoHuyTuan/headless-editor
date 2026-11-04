@@ -32,7 +32,7 @@ export interface ParseRule {
 
 /** What `transformPasted` gets besides the fragment. */
 export interface PasteInfo {
-  /** Where the fragment will be inserted (a drop's drop point); null for the selection. */
+  /** Where the fragment will be inserted (a drop's drop point, or one range of a multi-range paste); null for the selection. */
   at: SelectionRange | null
 }
 
@@ -206,7 +206,8 @@ export interface PluginSpec<
   /**
    * Rewrites a pasted or dropped fragment before it is inserted. `info.at` is where it will be
    * inserted (the drop point of a drop); null means at the selection, so a hook deciding by position
-   * reads `info.at ?? state.selection`.
+   * reads `info.at ?? state.selection`. A paste at several ranges runs the hook once per range, with
+   * `info.at` set to that range, so each range can get its own fragment.
    */
   transformPasted?: (fragment: Fragment, ctx: PluginContext<O, S, C, T>, info: PasteInfo) => Fragment
   /**
