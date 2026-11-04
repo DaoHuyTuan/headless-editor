@@ -24,7 +24,7 @@ afterEach(() => {
   document.body.replaceChildren()
 })
 
-function setup(content: Doc = doc(p(txt(''))), opts: Partial<Parameters<typeof mention.configure>[0]> = {}) {
+function setup(content: Doc = doc(p(txt(''))), opts: Partial<Parameters<typeof mention.configure>[0]> = {}, extra: (typeof code)[] = []) {
   const requests: Request[] = []
   const fetchUsers = vi.fn(
     (query: string) =>
@@ -33,7 +33,7 @@ function setup(content: Doc = doc(p(txt(''))), opts: Partial<Parameters<typeof m
       }),
   )
   const editor = createTestEditor({
-    plugins: [paragraph, code, mention.configure({ fetchUsers, ...opts })],
+    plugins: [paragraph, code, ...extra, mention.configure({ fetchUsers, ...opts })],
     doc: content,
     selection: sel([0, 0], 0),
   })
@@ -563,6 +563,23 @@ describe('mention with several ranges', () => {
     const ids: string[] = []
     for (let i = 0; i < 2; i++) ids.push((blockKids(editor.getJSON(), i)[1] as ElementNode).id)
     expect(new Set(ids).size).toBe(2)
+  })
+
+  it('the space after a bold trigger is bold at every caret, and so is the next typed text', async () => {
+    const bold = definePlugin({ name: 'bold', mark: { render: () => ({ tag: 'strong' }) } })
+    const { editor, last, type } = setup(doc(p(txt('@jo', 'bold')), p(txt('@jo', 'bold'))), {}, [bold as unknown as typeof code])
+    const tr = editor.createTransaction()
+    tr.setSelection(createSelection([at([0, 0], 3), at([1, 0], 3)], 0))
+    editor.dispatch(tr)
+    last().resolve([ann])
+    await flush()
+    editor.commands.acceptSuggestion()
+    type('x')
+    for (const i of [0, 1]) {
+      const kids = blockKids(editor.getJSON(), i) as { text?: string; marks?: { type: string }[] }[]
+      const tail = kids.filter((n) => 'text' in n && n.text).map((n) => [n.text, n.marks!.map((m) => m.type)])
+      expect(tail).toEqual([[' x', ['bold']]])
+    }
   })
 
   it('popup state follows the main caret', () => {

@@ -272,10 +272,13 @@ function insertAtTriggers(ctx: Ctx, tr: Transaction, user: User, query: string):
     const view = { doc: t.doc, selection: single(range) } as unknown as EditorState
     const match = findTrigger(view, { char: ctx.options.trigger })
     if (!match || match.query !== query || inTextOnlyBlock(t.doc, t.registry, match.range.start.path)) return
+    // The space takes the trigger text's marks, as the single-range path's insertText takes the caret's.
+    const lead = getNode(t.doc, match.range.start.path)
+    const marks = isText(lead) ? lead.marks.map((m) => ({ ...m, data: JSON.parse(JSON.stringify(m.data)) })) : []
     t.insertFragment(
       [
         { id: createId(), type: ctx.name, data: { userId: user.id, label }, children: [] },
-        { text: ' ', marks: [] },
+        { text: ' ', marks },
       ],
       match.range,
     )
