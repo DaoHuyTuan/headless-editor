@@ -3,10 +3,9 @@ import { deepEqualJson, getNode, isText, textEntries } from '../model/node'
 import { comparePoint, nextPath, parentPath } from '../model/path'
 import { single } from '../model/selection'
 import type { Data, DeepReadonly, Doc, Json, Mark, Path, Point, Range, SelectionRange, TextNode } from '../model/types'
-import { transformRange } from '../ops/transform'
 import type { Registry } from '../plugin/registry'
 import type { EditorState } from '../state'
-import { currentRange, inForEachRange } from './ranges'
+import { currentRange, inForEachRange, mapSince, ordered } from './ranges'
 import type { Transaction } from './transaction'
 
 /**
@@ -21,12 +20,6 @@ export type MarkStateView = Pick<EditorState, 'doc' | 'selection' | 'storedMarks
 
 function pathEquals(a: Path, b: Path): boolean {
   return a.length === b.length && a.every((v, i) => v === b[i])
-}
-
-/** Orders the two points (callers may pass an unordered range or a backward selection). */
-function ordered(at: Range | SelectionRange): Range {
-  const [a, b] = 'anchor' in at ? [at.anchor, at.focus] : [at.start, at.end]
-  return comparePoint(a, b) <= 0 ? { start: a, end: b } : { start: b, end: a }
 }
 
 function isCollapsedRange(r: Range): boolean {
@@ -202,16 +195,6 @@ function validated(tr: Transaction, type: string, data: unknown): Mark | null {
     return null
   }
   return { type, data: result.data }
-}
-
-/** `range` mapped through the doc ops `tr` got since `from` (null when one of its points was removed). */
-function mapSince(tr: Transaction, range: SelectionRange, from: number): SelectionRange | null {
-  let out: SelectionRange | null = range
-  for (const op of tr.ops.slice(from)) {
-    if (!out) break
-    if (op.type !== 'set_selection') out = transformRange(out, op)
-  }
-  return out
 }
 
 /**

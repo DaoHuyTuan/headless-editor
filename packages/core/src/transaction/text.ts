@@ -4,9 +4,8 @@ import { getNode, isElement, isText, sameMarkSet } from '../model/node'
 import { comparePath, comparePoint, isAncestorPath, nextPath, parentPath, pointEquals, toRange } from '../model/path'
 import { isNodeRange, rangeEquals, single } from '../model/selection'
 import type { ElementNode, Mark, Node, Path, Point, Range, Selection, SelectionRange, TextNode } from '../model/types'
-import { transformRange } from '../ops/transform'
 import { marksAtTr, marksOfRange } from './marks'
-import { currentRange, flagSwallowed, forEachRange, inForEachRange, setCurrentRange } from './ranges'
+import { currentRange, flagSwallowed, forEachRange, inForEachRange, mapSince, setCurrentRange } from './ranges'
 import type { Transaction } from './transaction'
 
 /**
@@ -41,16 +40,6 @@ function caret(point: Point): SelectionRange {
  * (the range stays where it was).
  */
 export type StepResult = SelectionRange | null | false
-
-/** `range` mapped through the doc ops `tr` got since `from` (null when one of its points was removed). */
-export function mapSince(tr: Transaction, range: SelectionRange, from: number): SelectionRange | null {
-  let out: SelectionRange | null = range
-  for (const op of tr.ops.slice(from)) {
-    if (!out) break
-    if (op.type !== 'set_selection') out = transformRange(out, op)
-  }
-  return out
-}
 
 /** Whether two ranges overlap or touch. */
 function touches(a: SelectionRange, b: SelectionRange): boolean {
@@ -262,7 +251,7 @@ function edgeBlockOf(tr: Transaction, path: Path): Path {
  * text at or after it, else the end of the last one before it. With no editable text left, an
  * empty default block is inserted at `at`.
  */
-function nearestEditablePoint(tr: Transaction, at: Path): Point {
+function caretNearRemovedBlock(tr: Transaction, at: Path): Point {
   let before: Point | null = null
   for (const [t, p] of editableTextEntries(tr.doc, tr.registry)) {
     if (comparePath(p, at) >= 0) return { path: p, offset: 0 }
@@ -344,7 +333,7 @@ export function deleteRangeStep(tr: Transaction, range: Range): Point | null {
       })
     }
   }
-  return startOpaque ? nearestEditablePoint(tr, startBlock) : start
+  return startOpaque ? caretNearRemovedBlock(tr, startBlock) : start
 }
 
 function emptyDefaultBlock(tr: Transaction, text = '', marks: Mark[] = []): ElementNode {

@@ -1,10 +1,26 @@
 import { nearestEditablePoint } from '../model/editable'
-import { pointEquals } from '../model/path'
+import { comparePoint, pointEquals } from '../model/path'
 import { createSelection } from '../model/selection'
-import type { Mark, Point, SelectionRange } from '../model/types'
+import type { Mark, Point, Range, SelectionRange } from '../model/types'
 import { transformPoint, transformRange } from '../ops/transform'
 import type { Operation } from '../ops/types'
 import type { Transaction } from './transaction'
+
+/** `range` mapped through the doc ops `tr` got since `from` (null when one of its points was removed). */
+export function mapSince(tr: Transaction, range: SelectionRange, from: number): SelectionRange | null {
+  let out: SelectionRange | null = range
+  for (const op of tr.ops.slice(from)) {
+    if (!out) break
+    if (op.type !== 'set_selection') out = transformRange(out, op)
+  }
+  return out
+}
+
+/** Orders the two points (callers may pass an unordered range or a backward selection). */
+export function ordered(at: Range | SelectionRange): Range {
+  const [a, b] = 'anchor' in at ? [at.anchor, at.focus] : [at.start, at.end]
+  return comparePoint(a, b) <= 0 ? { start: a, end: b } : { start: b, end: a }
+}
 
 /**
  * One step of `forEachRange`: the range (mapped to the current doc) in, the range after this step out

@@ -9,12 +9,12 @@ import {
   deleteRangeStep,
   insertBlockNodeStep,
   isInlineOpaque,
-  mapSince,
   replaceNodeStep,
   runStep,
   splitBlockAt,
   type StepResult,
 } from './text'
+import { mapSince, ordered } from './ranges'
 import type { Transaction } from './transaction'
 
 /**
@@ -31,11 +31,6 @@ function cloneJson<T extends Json>(value: T): T {
 
 function cloneText(node: TextNode, text: string): TextNode {
   return { text, marks: node.marks.map((m) => ({ type: m.type, data: cloneJson(m.data) })) }
-}
-
-function ordered(at: Range | SelectionRange): Range {
-  const [a, b] = 'anchor' in at ? [at.anchor, at.focus] : [at.start, at.end]
-  return comparePoint(a, b) <= 0 ? { start: a, end: b } : { start: b, end: a }
 }
 
 /** A point relative to a node, or null when that side of the node is not cut. */
