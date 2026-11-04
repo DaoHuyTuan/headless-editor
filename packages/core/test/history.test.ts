@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mainRange } from '../src/model/selection'
+import { createSelection, mainRange } from '../src/model/selection'
 import { historyPlugin } from '../src/history'
 import { clearHistory, definePlugin, findPathById, getNode, rewriteHistoryData, Transaction } from '../src/index'
 import type { AnyPlugin } from '../src/plugin/types'
@@ -913,5 +913,245 @@ describe('history fuzz: user steps, an outside structural tr, then undo all and 
       totalUndos += undos
     }
     expect(totalUndos).toBeGreaterThan(300)
+  })
+})
+
+describe('history keeps full selections (several ranges)', () => {
+  const caret = (path: number[], offset: number) => ({ anchor: { path, offset }, focus: { path, offset } })
+  const carets = (main: number, ...points: [number[], number][]): Selection =>
+    createSelection(points.map(([path, offset]) => caret(path, offset)), main)
+  const moveTo = (ed: ReturnType<typeof setup>['ed'], s: Selection) => {
+    const tr = ed.createTransaction()
+    tr.setSelection(s)
+    ed.dispatch(tr)
+  }
+  const outside = (ed: ReturnType<typeof setup>['ed'], fn: (tr: Transaction) => void) => {
+    const tr = ed.createTransaction()
+    tr.meta.origin = 'plugin'
+    tr.meta.addToHistory = false
+    fn(tr)
+    ed.dispatch(tr)
+  }
+
+  it('undo restores every range and main after a two-caret edit', () => {
+    const before = carets(1, [[0, 0], 1], [[1, 0], 1])
+    const { ed, type, text } = setup(doc(p('ab'), p('cd')), before)
+    type('x')
+    expect(text()).toEqual(stripIds(doc(p('axb'), p('cxd'))))
+    moveTo(ed, sel([0, 0], 0))
+    expect(ed.commands.undo()).toBe(true)
+    expect(text()).toEqual(stripIds(doc(p('ab'), p('cd'))))
+    expect(ed.state.selection).toEqual(before)
+  })
+
+  it('redo restores the after-selection', () => {
+    const { ed, type, text } = setup(doc(p('ab'), p('cd')), carets(1, [[0, 0], 1], [[1, 0], 1]))
+    type('x')
+    const after = ed.state.selection
+    expect(after).toEqual(carets(1, [[0, 0], 2], [[1, 0], 2]))
+    expect(ed.commands.undo()).toBe(true)
+    expect(ed.commands.redo()).toBe(true)
+    expect(text()).toEqual(stripIds(doc(p('axb'), p('cxd'))))
+    expect(ed.state.selection).toEqual(after)
+  })
+
+  it('typing at two carets within groupDelay groups into one step', () => {
+    const before = carets(0, [[0, 0], 1], [[1, 0], 1])
+    const { ed, clock, type, text, stacks } = setup(doc(p('ab'), p('cd')), before)
+    type('x')
+    clock.t += 100
+    type('y')
+    expect(text()).toEqual(stripIds(doc(p('axyb'), p('cxyd'))))
+    expect(stacks().undo).toHaveLength(1)
+    const after = ed.state.selection
+    expect(ed.commands.undo()).toBe(true)
+    expect(text()).toEqual(stripIds(doc(p('ab'), p('cd'))))
+    expect(ed.state.selection).toEqual(before)
+    expect(ed.commands.undo()).toBe(false)
+    expect(ed.commands.redo()).toBe(true)
+    expect(ed.state.selection).toEqual(after)
+  })
+
+  it('rebase maps every range through an outside insert', () => {
+    const { ed, type, text } = setup(doc(p('ab'), p('cd')), carets(1, [[0, 0], 1], [[1, 0], 1]))
+    type('x')
+    outside(ed, (tr) => {
+      tr.insertText('!', mainRange(sel([0, 0], 0)))
+      tr.insertNode([0], p('top'))
+    })
+    expect(text()).toEqual(stripIds(doc(p('top'), p('!axb'), p('cxd'))))
+    moveTo(ed, sel([0, 0], 0))
+    expect(ed.commands.undo()).toBe(true)
+    expect(text()).toEqual(stripIds(doc(p('top'), p('!ab'), p('cd'))))
+    expect(ed.state.selection).toEqual(carets(1, [[1, 0], 2], [[2, 0], 1]))
+    expect(ed.commands.redo()).toBe(true)
+    expect(text()).toEqual(stripIds(doc(p('top'), p('!axb'), p('cxd'))))
+    expect(ed.state.selection).toEqual(carets(1, [[1, 0], 3], [[2, 0], 2]))
+  })
+
+  it('rebase drops an entry when one range cannot map', () => {
+    // The entry's own op (a block inserted at the top) rebases fine over the removal; only the
+    // second caret's block is gone, so its selections can't be restored.
+    const make = () => {
+      const s = setup(doc(p('ab'), p('cd'), p('ef')), carets(0, [[0, 0], 1], [[1, 0], 1]))
+      const tr = s.ed.createTransaction()
+      tr.insertNode([0], p('new'))
+      s.ed.dispatch(tr)
+      expect(s.ed.state.selection).toEqual(carets(0, [[1, 0], 1], [[2, 0], 1]))
+      expect(s.stacks().undo).toHaveLength(1)
+      return s
+    }
+    const dropped = make()
+    outside(dropped.ed, (tr) => tr.removeNode([2]))
+    expect(dropped.stacks().undo).toHaveLength(0)
+    expect(dropped.ed.commands.undo()).toBe(false)
+    // Control: removing a block no range is in keeps the entry.
+    const kept = make()
+    outside(kept.ed, (tr) => tr.removeNode([3]))
+    expect(kept.stacks().undo).toHaveLength(1)
+    expect(kept.ed.commands.undo()).toBe(true)
+    expect(kept.text()).toEqual(stripIds(doc(p('ab'), p('cd'))))
+    expect(kept.ed.state.selection).toEqual(carets(0, [[0, 0], 1], [[1, 0], 1]))
+  })
+
+  it('normalization folded into the stacks keeps the full selection', () => {
+    const start = carets(1, [[0, 0], 1], [[1, 0], 1])
+    const { ed, clock, text } = setup(doc(p('a'), p('z')), start)
+    const step = (fn: (tr: Transaction) => void, out = false) => {
+      if (out) outside(ed, fn)
+      else {
+        const tr = ed.createTransaction()
+        fn(tr)
+        ed.dispatch(tr)
+      }
+      clock.t += 600
+    }
+    step((tr) => tr.insertNode([0, 1], txt('b', 'bold')))
+    step((tr) => tr.insertNode([0, 2], txt('c')), true)
+    expect(text()).toEqual(stripIds(doc(p('a', txt('b', 'bold'), 'c'), p('z'))))
+    const top = ed.state.selection
+    expect(top!.ranges).toHaveLength(2)
+    for (let c = 0; c < 2; c++) {
+      // The undo lands on "a" + "c": the merge is folded into the stacks.
+      expect(ed.commands.undo()).toBe(true)
+      expect(text()).toEqual(stripIds(doc(p('ac'), p('z'))))
+      expect(ed.state.selection).toEqual(start)
+      expect(ed.commands.redo()).toBe(true)
+      expect(text()).toEqual(stripIds(doc(p('a', txt('b', 'bold'), 'c'), p('z'))))
+      expect(ed.state.selection).toEqual(top)
+    }
+  })
+
+  it('normalization folded into a redone entry keeps the full selection', () => {
+    const start = carets(1, [[0, 0], 1], [[1, 0], 1])
+    const { ed, clock, text } = setup(doc(p('a', txt('x', 'bold')), p('z')), start)
+    const step = (fn: (tr: Transaction) => void, out = false) => {
+      if (out) outside(ed, fn)
+      else {
+        const tr = ed.createTransaction()
+        fn(tr)
+        ed.dispatch(tr)
+      }
+      clock.t += 600
+    }
+    step((tr) => tr.insertNode([1], p('q')))
+    step((tr) => tr.removeNode([0, 1]))
+    expect(ed.commands.undo()).toBe(true)
+    expect(ed.commands.undo()).toBe(true)
+    step((tr) => tr.insertNode([0, 2], txt('c')), true)
+    const redoAll = () => {
+      expect(ed.commands.redo()).toBe(true)
+      expect(ed.commands.redo()).toBe(true)
+      expect(ed.commands.redo()).toBe(false)
+      // The rebased remove of *x* leaves "a" and "c" adjacent: the merge is folded into the entry.
+      expect(text()).toEqual(stripIds(doc(p('ac'), p('q'), p('z'))))
+    }
+    redoAll()
+    const end = ed.state.selection
+    expect(end!.ranges).toHaveLength(2)
+    for (let c = 0; c < 2; c++) {
+      expect(ed.commands.undo()).toBe(true)
+      expect(ed.commands.undo()).toBe(true)
+      expect(ed.state.selection).toEqual(start)
+      redoAll()
+      expect(ed.state.selection).toEqual(end)
+    }
+  })
+})
+
+describe('history fuzz: several carets, then undo all and redo all', () => {
+  function rng(seed: number) {
+    return () => {
+      seed |= 0
+      seed = (seed + 0x6d2b79f5) | 0
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed)
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+    }
+  }
+
+  it('restores the exact doc and selection at every step', () => {
+    let multiEntries = 0
+    for (let seed = 1; seed <= 300; seed++) {
+      const r = rng(seed)
+      const int = (n: number) => Math.floor(r() * n)
+      const { ed, clock, stacks } = setup(doc(p('abc', txt('de', 'bold')), p('fgh'), p('ij')), sel([0, 0], 0))
+      const texts = () => {
+        const out: [number[], number][] = []
+        ed.state.doc.children.forEach((b, i) =>
+          (b.children ?? []).forEach((t, j) => out.push([[i, j], (t as { text: string }).text.length])),
+        )
+        return out
+      }
+      // Two or three random carets (or ranges inside one text, for marks); touching ones merge.
+      const ranges = (wide: boolean) => {
+        const all = texts()
+        return Array.from({ length: 2 + int(2) }, () => {
+          const [path, len] = all[int(all.length)]!
+          const a = int(len + 1)
+          const b = wide && a < len ? a + 1 + int(len - a) : a
+          return { anchor: { path, offset: a }, focus: { path, offset: b } }
+        })
+      }
+      const moveTo = (s: Selection) => {
+        const tr = ed.createTransaction()
+        tr.setSelection(s)
+        ed.dispatch(tr)
+      }
+      type State = { doc: Doc; selection: Selection | null }
+      const snap = (): State => ({ doc: ed.getJSON(), selection: ed.state.selection })
+      const recorded: { before: State; after: State }[] = []
+      const steps = 2 + int(4)
+      for (let i = 0; i < steps; i++) {
+        const kind = int(5)
+        const rs = ranges(kind === 4)
+        moveTo(createSelection(rs, int(rs.length)))
+        const before = snap()
+        const n = stacks().undo.length
+        if (kind === 0) ed.handleIntent({ inputType: 'insertText', data: 'k', range: null })
+        else if (kind === 1) ed.handleIntent({ inputType: 'deleteContentBackward', data: null, range: null })
+        else if (kind === 2) ed.handleIntent({ inputType: 'deleteContentForward', data: null, range: null })
+        else if (kind === 3) ed.handleIntent({ inputType: 'insertParagraph', data: null, range: null })
+        else ed.commands.toggleMark('bold')
+        clock.t += 600
+        if (stacks().undo.length > n) {
+          recorded.push({ before, after: snap() })
+          if (before.selection!.ranges.length > 1) multiEntries++
+        }
+      }
+      const msg = `seed ${seed}`
+      expect(stacks().undo, msg).toHaveLength(recorded.length)
+      for (let i = recorded.length - 1; i >= 0; i--) {
+        expect(ed.commands.undo(), msg).toBe(true)
+        expect(snap(), `${msg} undo ${i}`).toEqual(recorded[i]!.before)
+      }
+      expect(ed.commands.undo(), msg).toBe(false)
+      for (let i = 0; i < recorded.length; i++) {
+        expect(ed.commands.redo(), msg).toBe(true)
+        expect(snap(), `${msg} redo ${i}`).toEqual(recorded[i]!.after)
+      }
+      expect(ed.commands.redo(), msg).toBe(false)
+    }
+    expect(multiEntries).toBeGreaterThan(500)
   })
 })
