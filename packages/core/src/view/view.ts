@@ -135,6 +135,8 @@ export class EditorView {
    * not placed yet (see `syncSelection`); null otherwise.
    */
   private staleDomSelection: DomSelectionSnapshot | null = null
+  /** A primary button press in the root, until its `mouseup`: the click then picks one range. */
+  private pressed = false
 
   constructor(
     readonly editor: Editor,
@@ -162,6 +164,16 @@ export class EditorView {
     // Already focused (e.g. a remount on the same root): no onFocus now, but leaving is a blur.
     const active = root.ownerDocument.activeElement
     this.focusInside = !!active && root.contains(active)
+    // A click on the main caret moves no DOM selection, so no selectionchange collapses the other
+    // ranges: the click's mouseup does (spec §5.6).
+    this.listen(root, 'mousedown', (e) => {
+      if ((e as MouseEvent).button === 0) this.pressed = true
+    })
+    this.listen(root, 'mouseup', () => {
+      if (!this.pressed) return
+      this.pressed = false
+      this.syncSelection(true)
+    })
     this.listen(root, 'focusin', (e) => this.onFocusIn(e as FocusEvent))
     this.listen(root, 'focusout', (e) => this.onFocusOut(e as FocusEvent))
 
@@ -280,8 +292,10 @@ export class EditorView {
    * Makes the model selection match the DOM selection when it is inside the root, dispatching a
    * selection-only tr if they differ. Input handlers call it first: `selectionchange` is async. A
    * DOM selection away from the main range replaces the selection with that one range (spec §5.6).
+   * With `click` (the end of a click in the root), a selection of several ranges collapses to the
+   * DOM one even when it is the main range.
    */
-  syncSelection(): void {
+  syncSelection(click = false): void {
     if (this.destroyed || this.composing || this.focusIgnored()) return
     const domSel = this.domSelection()
     const anchor = domSel?.anchorNode
@@ -299,7 +313,8 @@ export class EditorView {
     }
     const sel = readDomSelection(this.renderer, domSel)
     // Also covers the async selectionchange fired after our own writes: it maps back to the model.
-    if (!sel || sameSelection(sel, this.editor.state.selection)) return
+    const current = this.editor.state.selection
+    if (!sel || (sameSelection(sel, current) && !(click && current && current.ranges.length > 1))) return
     const tr = this.editor.createTransaction()
     tr.setSelection(sel).setMeta('origin', 'selection').setMeta('addToHistory', false)
     this.editor.dispatch(tr)

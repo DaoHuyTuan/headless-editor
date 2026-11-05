@@ -176,6 +176,31 @@ describe('view with several ranges', () => {
     expect(ed.state.selection).toEqual(single(caret([1, 0], 2)))
   })
 
+  it('a click exactly on the main caret collapses to it', async () => {
+    const ed = setup(doc(p('ab'), p('cd')), sel(caret([0, 0], 1), caret([1, 0], 1)))
+    mount(ed)
+    const before = main(ed)
+    const leaf = ed.view!.renderer.leafAt(before.anchor.path)!
+    // The browser leaves the DOM selection where it is (the main caret): no selectionchange.
+    leaf.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }))
+    leaf.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }))
+    await flush()
+    expect(ed.state.selection).toEqual(single(before))
+  })
+
+  it('a click with the main caret moved still collapses once, to the new place', async () => {
+    const ed = setup(doc(p('ab'), p('cd')), sel(caret([0, 0], 1), caret([1, 0], 1)))
+    mount(ed)
+    const leaf = ed.view!.renderer.leafAt([1, 0])!
+    const text = leaf.ownerDocument.createTreeWalker(leaf, 4).nextNode() as Text
+    leaf.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }))
+    document.getSelection()!.collapse(text, 2)
+    fire(document, 'selectionchange')
+    leaf.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }))
+    await flush()
+    expect(ed.state.selection).toEqual(single(caret([1, 0], 2)))
+  })
+
   it('a plugin can draw secondary ranges from state.selection.ranges via decorations', () => {
     const carets = definePlugin({
       name: 'carets',

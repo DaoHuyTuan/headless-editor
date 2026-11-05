@@ -99,7 +99,7 @@ Items that cannot be acted on here (other machines, decisions, rulings already r
 ## Batch 5: DOM view (renderer, selection, input, composition, decorations, node views)
 | # | Item | Src | Kind | Pri | Status |
 |---|---|---|---|---|---|
-| 5.1 | A click exactly on the main caret keeps the secondary ranges (flag `pointerdown`, collapse on next sync). | ms | bug | P1 | open |
+| 5.1 | ✅ A click exactly on the main caret keeps the secondary ranges (flag `pointerdown`, collapse on next sync). | ms | bug | P1 | open |
 | 5.2 | The renderer replaces the Text node instead of updating `.data`, which churns the caret. | m1 | bug | P1 | open |
 | 5.3 | Composition: text written outside the composing leaf is lost; composing with no leaf or resuming after blur fights the IME; a nested dispatch can map ops out of order; static or atom DOM mutations are not reverted. | m1 | bug | P1 | open |
 | 5.4 | ✅ node-select's `mousedown` blocks shift-click (fixed). Native drag out of the editor is unsupported anyway (`dragstart` is prevented). | m2 | bug | P1 | open |
