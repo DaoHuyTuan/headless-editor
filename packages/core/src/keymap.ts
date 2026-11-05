@@ -49,10 +49,11 @@ export function eventToKeyName(e: KeyboardEvent): string {
   const mods: Mods = { ctrl: e.ctrlKey, alt: e.altKey, shift: e.shiftKey, meta: e.metaKey }
   // With a command modifier, a non-latin character (other layouts, Alt on mac) maps to the physical letter.
   if ((e.ctrlKey || e.altKey || e.metaKey) && key.length === 1 && !/^[A-Za-z]$/.test(key)) {
-    const m = /^Key([A-Z])$/.exec(e.code ?? '')
-    if (m) key = m[1]!
+    const m = /^(?:Key([A-Z])|Digit([0-9]))$/.exec(e.code ?? '')
+    if (m) key = m[1] ?? m[2]!
   }
-  // Shift is already part of a shifted punctuation character such as `?`.
-  if (key.length === 1 && key !== ' ' && !/^[A-Za-z]$/.test(key)) mods.shift = false
+  // Shift is already part of a shifted punctuation character such as `?`. A digit only gets here
+  // from the physical-key fallback above, so its Shift is real (`Mod-Shift-1`).
+  if (key.length === 1 && key !== ' ' && !/^[A-Za-z0-9]$/.test(key)) mods.shift = false
   return format(mods, normalizeKey(key))
 }

@@ -27,7 +27,7 @@ Items that cannot be acted on here (other machines, decisions, rulings already r
 | 1.3 | The constructor ignores `contentTransaction`'s `rejected`. | m1 | bug | P2 | confirmed |
 | 1.4 | `setContent` normalizes twice (in `contentTransaction` and in `applyTransaction`). | m1 | perf | P3 | confirmed |
 | 1.5 | `isActive(type, { k: undefined })` returns false. Decide: `undefined` means "any value" or "absent", and document it. | m1 | bug | P2 | confirmed |
-| 1.6 | `eventToKeyName` drops Shift for non-letters, so `Mod-Shift-1` never matches. | m1 | bug | P1 | confirmed |
+| 1.6 | ✅ `eventToKeyName` drops Shift for non-letters, so `Mod-Shift-1` never matches. | m1 | bug | P1 | confirmed |
 | 1.7 | `INPUT_ACTIONS` is a plain object, so inherited keys count as handled (use `Object.hasOwn` or a `Map`). | m1 | bug | P3 | confirmed |
 | 1.8 | Only the first destroy-hook error is rethrown (use `AggregateError`). | m2 | bug | P2 | open |
 | 1.9 | A throwing `onCreate` leaks the resources of earlier plugins. | m3 | bug | P2 | open |

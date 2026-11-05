@@ -52,4 +52,12 @@ describe('eventToKeyName', () => {
     expect(eventToKeyName(ev('∫', { altKey: true }, 'KeyB'))).toBe('Alt-b')
     expect(eventToKeyName(ev('и', {}, 'KeyB'))).toBe('и')
   })
+
+  it('keeps Shift on digit keys with a command modifier, so Mod-Shift-1 can match', () => {
+    expect(eventToKeyName(ev('!', { ctrlKey: true, shiftKey: true }, 'Digit1'))).toBe('Ctrl-Shift-1')
+    expect(eventToKeyName(ev('#', { metaKey: true, shiftKey: true }, 'Digit3'))).toBe('Shift-Meta-3')
+    expect(normalizeKeyName('Mod-Shift-1', 'other')).toBe('Ctrl-Shift-1')
+    // Without a command modifier, Shift+1 is still the typed character.
+    expect(eventToKeyName(ev('!', { shiftKey: true }, 'Digit1'))).toBe('!')
+  })
 })
