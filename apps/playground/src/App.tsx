@@ -43,12 +43,10 @@ export function App() {
   }, [editor])
 
   // `useEditor` already got the first story's content; later switches replace it.
-  const first = useRef(true)
+  const applied = useRef(story)
   useEffect(() => {
-    if (first.current) {
-      first.current = false
-      return
-    }
+    if (story === applied.current) return
+    applied.current = story
     editor.setContent(story.content)
   }, [editor, story]) // a story is a module-level constant, so this runs once per switch
 

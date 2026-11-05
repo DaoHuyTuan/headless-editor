@@ -5,7 +5,7 @@ import { dataAttrs } from '@hte/react'
 
 export type ImageViewKind = 'default' | 'custom'
 
-/** Which image view the playground shows (set per scenario by App.tsx). */
+/** Which image view the playground shows (set per story by App.tsx). */
 export const ImageViewKindContext = createContext<ImageViewKind>('default')
 
 const RESIZE_CLASS = 'image-resize'
@@ -37,13 +37,13 @@ function HooksOnlyImageView(props: ImageProps) {
         {uploading ? <span className="mr-1.5 rounded-sm bg-amber-300 px-1">uploading…</span> : null}
         <span data-testid="custom-alt-caption">{alt === '' ? '(no alt)' : alt}</span>
       </figcaption>
-      <input {...inputProps} className="rounded-sm border border-neutral-300 px-1 py-0.5 text-[13px]" placeholder="Describe the image" />
+      <input {...inputProps} placeholder="Describe the image" />
       <span {...handleProps} className={`${RESIZE_CLASS} ${RESIZE_UTILS}`} />
     </figure>
   )
 }
 
-/** The `nodeViews.image` of the playground: the default view, or the hooks-only one in the `customImage` scenario. */
+/** The `nodeViews.image` of the playground: the default view, or the hooks-only one in the `customImage` story. */
 export function PlaygroundImageView(props: ImageProps) {
   return useContext(ImageViewKindContext) === 'custom' ? <HooksOnlyImageView {...props} /> : <DefaultImageView {...props} />
 }

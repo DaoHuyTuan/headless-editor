@@ -67,6 +67,7 @@ test('typing after choosing a size at the caret uses that size', async ({ page }
 
 test('the fontSizes scenario loads sizes as marks, and the select follows the caret', async ({ page }) => {
   await page.getByTestId('story-fontSizes').click()
+  await expect(page.getByTestId('story-fontSizes')).toHaveAttribute('aria-current', 'page')
   const doc = await getDoc(page)
   const marks = doc.children.flatMap((b) => ((b as ElementNode).children ?? []).flatMap((c) => ('text' in c ? c.marks : [])))
   expect(marks).toEqual(expect.arrayContaining([size('12px'), size('16px'), size('24px'), size('32px')]))

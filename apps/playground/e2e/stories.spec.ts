@@ -20,6 +20,7 @@ test('a deep link opens its story', async ({ page }) => {
 test('clicking a story updates the URL and the content', async ({ page }) => {
   await openPlayground(page)
   await current(page, 'bold').click()
+  await expect(current(page, 'bold')).toHaveAttribute('aria-current', 'page')
   await page.waitForURL(/#\/bold\/basic$/)
   expect(page.url().endsWith('#/bold/basic')).toBe(true)
   const doc = await getDoc(page)
@@ -43,6 +44,12 @@ test('back and forward switch stories and the toolbar follows', async ({ page })
   await page.goForward()
   await expect(current(page, 'paragraphs')).toHaveAttribute('aria-current', 'page')
   expect(await getText(page)).toBe(paragraphsText)
+  await setCaret(page, [0, 0], 1)
+  await expect(page.getByTestId('bold')).toHaveAttribute('aria-pressed', 'false')
+  await page.goBack()
+  await expect(current(page, 'bold')).toHaveAttribute('aria-current', 'page')
+  await setCaret(page, [0, 1], 2)
+  await expect(page.getByTestId('bold')).toHaveAttribute('aria-pressed', 'true')
 })
 
 test('clicking the open story restores its content', async ({ page }) => {
