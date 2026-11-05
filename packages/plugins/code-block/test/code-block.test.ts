@@ -185,6 +185,17 @@ describe('code block line-break intents (beforeinput without keydown)', () => {
     })
   }
 
+  it('a vetoed newline in a code block is still consumed: the core does not split the block', () => {
+    const veto = definePlugin({ name: 'veto', filterTransaction: (tr) => tr.meta.origin !== 'command' })
+    const vetoed = createTestEditor({
+      plugins: [paragraph, bold, codeBlock, veto],
+      doc: doc(code('ab')),
+      selection: caret([0, 0], 1),
+    })
+    expect(intent(vetoed as unknown as Ed, 'insertParagraph')).toBe(true)
+    expect(blocks(vetoed as unknown as Ed)).toEqual([{ type: 'codeBlock', text: 'ab' }])
+  })
+
   it('outside a code block the intent is left to the core (splits the paragraph)', () => {
     const ed = setup(doc(p(txt('ab'))), caret([0, 0], 1))
     intent(ed, 'insertParagraph')
@@ -378,6 +389,18 @@ describe('code block paste', () => {
     const ed = setup(doc(p(txt('pq')), code('ab')), caret([1, 0], 1))
     drop(ed, caret([0, 0], 1), '<p>x<b>y</b></p><p>z</p>')
     expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p(txt('px'), txt('y', 'bold')), p(txt('zq')), code('ab'))))
+  })
+
+  it('nested blocks (a list of paragraphs) pasted inside keep a newline per block', () => {
+    const list = definePlugin({ name: 'list', node: { kind: 'block' } })
+    const ed = createTestEditor({
+      plugins: [paragraph, bold, list, codeBlock],
+      doc: doc(code('')),
+      selection: caret([0, 0], 0),
+    })
+    const json = JSON.stringify([el('list', p(txt('a')), p(txt('b'))), p(txt('c'))])
+    paste(ed as unknown as Ed, { 'application/x-hte-fragment': json })
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(code('a\nb\nc'))))
   })
 
   it('multi-line plain text pasted inside stays in the block', () => {

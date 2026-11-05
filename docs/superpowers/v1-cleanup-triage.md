@@ -130,7 +130,7 @@ Items that cannot be acted on here (other machines, decisions, rulings already r
 | 6.4 | Image: width parsing accepts unsafe integers; resize handle has no `lostpointercapture` fallback and no role/label. | m2 | bug | P2 | open |
 | 6.5 | Mention: popup coords don't follow scroll or resize; no `aria-activedescendant` / option ids. | m3 | bug | P1 | open |
 | 6.6 | Mention: hopping between triggers with the same query clears `dismissedAt`; the cache is written during render; `useMention` re-renders every chip while the popup is open; `insertAtTriggers` fakes an `EditorState`. | m3, ms | bug | P2 | open |
-| 6.7 | Code block: nested blocks lose newlines when pasted in (`plainText` joins with `""`); a vetoed line-break tr falls through to core `splitBlock`. | m3 | bug | P1 | open |
+| 6.7 | ✅ Code block: nested blocks lose newlines when pasted in (`plainText` joins with `""`); a vetoed line-break tr falls through to core `splitBlock`. | m3 | bug | P1 | open |
 | 6.8 | Code block: the `decorations` hook walks the whole doc on every view update. | m3 | perf | P2 | open |
 | 6.9 | Code block: `onBeforeInput` `insertParagraph` overlaps with the mention popup (registration order decides); Tab with a selection ending at a line start next to another indented range maps over the indent; hard-coded `aria-label` "Language"; `useCodeBlock` is not memoized. | m3, ms | bug | P3 | open |
 | 6.10 | Input rules: `findTrigger` false positive when the trigger text is the first child of a link; `runAt` vs `findTrigger` mismatch; a rule without `$` matches only the leftmost match; move `toBlockOffset` inside the try. | m3 | bug | P2 | open |
