@@ -38,7 +38,7 @@ Items that cannot be acted on here (other machines, decisions, rulings already r
 | 1.14 | ✅ The result of `onInvalidData` is not validated again. | m1 | bug | P2 | fixed |
 | 1.15 | Readonly typing gaps: `getNode`, `nodeEntries`, `textEntries` return mutable types; `tr.doc` is typed mutable. | m1 | api | P3 | open |
 | 1.16 | `PluginOverrides` types `state.apply` / `mark.render` as `any` in `extend`. | m3 | api | P3 | open |
-| 1.17 | `Transaction.setSelection` accepts a `node` path that isn't opaque; `nodeSelection` accepts inline atoms programmatically. | m2, m4 | bug | P2 | open |
+| 1.17 | ✅ `Transaction.setSelection` accepts a `node` path that isn't opaque (now throws in dev mode). Kept: `nodeSelection` of an inline atom, which `MentionView`'s `data-selected` relies on. | m2, m4 | bug | P2 | fixed |
 
 ## Batch 2: History
 | # | Item | Src | Kind | Pri | Status |

@@ -1,6 +1,6 @@
 import { createId } from '../model/id'
 import { getNode, isElement, isText } from '../model/node'
-import { nearestEditablePoint } from '../model/editable'
+import { isOpaqueAt, nearestEditablePoint } from '../model/editable'
 import { createSelection, selectionEquals } from '../model/selection'
 import type { Data, Doc, ElementNode, Mark, Node, Path, Point, Range, Selection, SelectionRange, TextNode } from '../model/types'
 import { applyOp } from '../ops/apply'
@@ -139,6 +139,11 @@ export class Transaction {
     const lock = this.dev ? selectionLock(this) : null
     if (lock) throw new Error(lock)
     if (sel) sel = createSelection(sel.ranges, sel.main)
+    // A node range must name an opaque element (an atom or unknown type): a bug in dev mode.
+    if (this.dev && sel)
+      for (const r of sel.ranges)
+        if (r.node && !isOpaqueAt(this._doc, this.registry, r.node))
+          throw new Error(`setSelection: the node [${r.node}] is not an opaque element`)
     if (selectionEquals(sel, this._selection)) return this
     this.apply({ type: 'set_selection', selection: sel, prevSelection: this._selection })
     this._storedMarks = null

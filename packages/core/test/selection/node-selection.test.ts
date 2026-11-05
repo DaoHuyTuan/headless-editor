@@ -54,6 +54,14 @@ describe('nodeSelection / isNodeSelection / findPathById', () => {
     expect(() => nodeSelection(ed.state.doc, ed.registry, [5])).toThrow()
   })
 
+  it('tr.setSelection with a node that is not an opaque element throws in dev mode', () => {
+    const ed = setup(doc(p('a'), atom()))
+    const tr = ed.createTransaction()
+    expect(() => tr.setSelection(nodeSel([0], [0, 0], 1))).toThrow(/not an opaque element/)
+    expect(() => tr.setSelection(nodeSel([7], [0, 0], 1))).toThrow(/not an opaque element/)
+    expect(() => tr.setSelection(nodeSel([1], [0, 0], 1))).not.toThrow()
+  })
+
   it('isNodeSelection', () => {
     expect(isNodeSelection(caret([0, 0], 0))).toBe(false)
     expect(isNodeSelection(nodeSel([1], [0, 0], 0))).toBe(true)
