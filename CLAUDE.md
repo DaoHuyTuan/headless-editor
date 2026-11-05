@@ -75,6 +75,22 @@ Longer docs:
 - TDD: write a failing test first. Never weaken an assertion to make a test pass.
 - Match the surrounding code's style and comment density. JSDoc states contracts, including "acts on the main range on purpose" where that applies.
 
-## Navigating code cheaply
-- If the Serena MCP tools are available, prefer them: symbol overview, find symbol, find referencing symbols. Use them instead of reading whole files; the core files are long (`text.ts`, `editor.ts`, `history.ts`).
-- Otherwise, grep for the symbol, then read only the relevant line range.
+## Navigating code cheaply: Serena by default
+This repo is set up for the Serena MCP server. Its config is `.serena/project.yml`, which uses the TypeScript language server and ignores `.superpowers/`, `dist/` and the Playwright output.
+
+**Use Serena first for code reading and edits.** The core files are long (`text.ts`, `editor.ts`, `history.ts`), so read single symbols instead of whole files.
+
+1. Call `initial_instructions` once per session. It gives the session id.
+2. Call `activate_project` with `headless-text-editor`, or with the repo path.
+3. Work through `serena_repl`:
+   - `s.lsp.get_symbols_overview(path)` to see what a file contains;
+   - `s.lsp.find_symbol(name, relative_path=..., include_body=True)` to read one symbol;
+   - `s.lsp.find_referencing_symbols(...)` to find who uses it;
+   - `s.edit.replace_content` / `replace_symbol_body` for edits;
+   - `s.lsp.rename_symbol` for renames.
+4. Batch independent Serena calls in one turn.
+5. Remember that Serena's line numbers are 0-based.
+
+Serena's own project memory (`.serena/memories`) only points back to this file. Keep project knowledge here, not in Serena memories.
+
+If Serena isn't available in a session, grep for the symbol and read only the relevant line range.
