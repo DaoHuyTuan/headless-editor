@@ -2,7 +2,7 @@ import { useRef, type ChangeEvent, type MouseEvent } from 'react'
 import { useEditorState } from '@hte/react'
 import type { PlaygroundEditor } from './editor'
 
-/** The font sizes offered by the toolbar; `''` is the default (no fontSize mark). */
+/** Toolbar button: bordered, filled when `data-active`, dimmed when disabled. */
 const BUTTON =
   'cursor-pointer rounded border border-neutral-300 bg-white px-2.5 py-1 data-[active=true]:bg-neutral-900 data-[active=true]:text-white disabled:opacity-40'
 

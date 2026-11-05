@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* Page background and text on the whole page, not just the centred column. */
+body {
+  @apply bg-neutral-50 text-neutral-900;
+}
+
 /* Only rules for DOM the plugins render inside `.editor`; the playground's own elements use utility classes.
    Preflight zeroes margins, borders and list styles, so everything here sets them explicitly. */
 .editor p {
