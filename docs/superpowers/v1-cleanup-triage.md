@@ -43,9 +43,9 @@ Items that cannot be acted on here (other machines, decisions, rulings already r
 ## Batch 2: History
 | # | Item | Src | Kind | Pri | Status |
 |---|---|---|---|---|---|
-| 2.1 | A selection change between keystrokes doesn't break the typing group. | m1 | bug | P1 | open |
-| 2.2 | Cut merges with a previous Backspace. | m1 | bug | P1 | open |
-| 2.3 | A drop within 500 ms of typing joins the typing undo step; a drop moves the caret even when nothing was inserted. | m2 | bug | P1 | open |
+| 2.1 | ✅ A selection change between keystrokes doesn't break the typing group. | m1 | bug | P1 | open |
+| 2.2 | ✅ Cut merges with a previous Backspace. | m1 | bug | P1 | open |
+| 2.3 | ✅ A drop within 500 ms of typing joins the typing undo step; a drop moves the caret even when nothing was inserted. | m2 | bug | P1 | open |
 | 2.4 | No stack depth limit. | m1 | bug | P2 | confirmed |
 | 2.5 | `runHistory` returns true even when the dispatch is dropped. | m1 | bug | P3 | confirmed |
 | 2.6 | `-Infinity` time sentinel for "closed group"; replace with an explicit flag. | m1 | api | P3 | confirmed |

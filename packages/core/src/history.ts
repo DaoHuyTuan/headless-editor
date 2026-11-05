@@ -1,5 +1,6 @@
 import type { Editor } from './editor'
 import { findPathById } from './model/find'
+import { selectionEquals } from './model/selection'
 import { deepEqualJson, getNode, isElement } from './model/node'
 import type { Data, Doc, ElementNode, Node, Selection } from './model/types'
 import { applyOp } from './ops/apply'
@@ -40,6 +41,8 @@ function entryKind(tr: Transaction): string {
   // A fired input rule is its own step: never merged into the typing before or after it.
   if (tr.meta.origin !== 'input' || tr.meta.inputRule === true) return 'other'
   const inputType = tr.meta.inputType ?? ''
+  // Paste, drop, cut and drag (`insertFrom*`, `deleteBy*`) are steps of their own.
+  if (inputType.startsWith('insertFrom') || inputType.startsWith('deleteBy')) return 'other'
   if (inputType.startsWith('insert')) return 'insert'
   if (inputType.startsWith('delete')) return 'delete'
   return 'other'
@@ -273,6 +276,10 @@ function applyHistory(prev: HistoryState, tr: Transaction, options: HistoryOptio
       return rewriteStacks(prev, tr.doc, [{ id: rewrite.id, patch: { set: rewrite.data, unset: [] } }])
     // A selection-only append still moves the selection the joined step restores.
     if (appended) return joinAppended(prev, tr)
+    // Moving the selection away from where the last step left it ends that step's typing group.
+    const top = prev.undo[prev.undo.length - 1]
+    if (top && top.time !== -Infinity && !selectionEquals(top.selectionAfter, tr.selection))
+      return { undo: [...prev.undo.slice(0, -1), { ...top, time: -Infinity }], redo: prev.redo }
     return prev
   }
 

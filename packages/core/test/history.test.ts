@@ -62,6 +62,54 @@ describe('history plugin', () => {
     expect(text()).toEqual(stripIds(doc(p('ab'))))
   })
 
+  it('a selection move between keystrokes starts a new step', () => {
+    const { ed, type, text } = setup(doc(p('xy')), sel([0, 0], 2))
+    type('a')
+    const tr = ed.createTransaction()
+    tr.setSelection(sel([0, 0], 0))
+    ed.dispatch(tr)
+    type('b')
+    expect(text()).toEqual(stripIds(doc(p('bxya'))))
+    ed.commands.undo()
+    expect(text()).toEqual(stripIds(doc(p('xya'))))
+  })
+
+  it('a selection-only tr that leaves the caret where typing put it keeps the group', () => {
+    const { ed, type, text } = setup()
+    type('a')
+    const tr = ed.createTransaction()
+    tr.setSelection(sel([0, 0], 1))
+    ed.dispatch(tr)
+    type('b')
+    ed.commands.undo()
+    expect(text()).toEqual(stripIds(doc(p(''))))
+  })
+
+  it('a cut does not merge with the Backspace before it', () => {
+    const { ed, backspace, text } = setup(doc(p('abcd')), sel([0, 0], 4))
+    backspace()
+    const tr = ed.createTransaction()
+    tr.setMeta('origin', 'input').setMeta('inputType', 'deleteByCut')
+    tr.deleteRange({ anchor: { path: [0, 0], offset: 0 }, focus: { path: [0, 0], offset: 2 } })
+    ed.dispatch(tr)
+    expect(text()).toEqual(stripIds(doc(p('c'))))
+    ed.commands.undo()
+    expect(text()).toEqual(stripIds(doc(p('abc'))))
+  })
+
+  it('a paste or a drop does not merge with the typing before it', () => {
+    for (const inputType of ['insertFromPaste', 'insertFromDrop']) {
+      const { ed, type, text } = setup()
+      type('a')
+      const tr = ed.createTransaction()
+      tr.setMeta('origin', 'input').setMeta('inputType', inputType)
+      tr.insertText('XY')
+      ed.dispatch(tr)
+      ed.commands.undo()
+      expect(text()).toEqual(stripIds(doc(p('a'))))
+    }
+  })
+
   it('does not group non-input changes', () => {
     const { ed, text } = setup()
     ed.commands.insertText('a')
