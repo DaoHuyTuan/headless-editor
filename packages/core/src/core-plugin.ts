@@ -205,7 +205,7 @@ export const corePlugin = definePlugin({
   // doc start), so the browser never edits the DOM on its own; the tr is dispatched only if it has ops.
   onBeforeInput: (intent, ctx) => {
     if (Object.hasOwn(PASTE_INPUT, intent.inputType)) return insertTransfer(intent, ctx.editor)
-    const action = INPUT_ACTIONS[intent.inputType]
+    const action = Object.hasOwn(INPUT_ACTIONS, intent.inputType) ? INPUT_ACTIONS[intent.inputType] : undefined
     if (!action) return false
     // An insert intent without any text is left unhandled, so nothing is deleted.
     if (action === insertIntentText && intentText(intent) === null) return false

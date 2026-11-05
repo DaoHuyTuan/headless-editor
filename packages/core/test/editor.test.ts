@@ -709,3 +709,49 @@ describe('dropped transactions outside dev mode', () => {
     warn.mockRestore()
   })
 })
+
+describe('setContent', () => {
+  it('normalizes the new content once, as the constructor does', () => {
+    let calls = 0
+    const counter = definePlugin({ name: 'counter', normalize: () => void calls++ })
+    const content = doc(el('paragraph', txt('a')), el('paragraph', txt('b')))
+    const editor = createTestEditor({ plugins: [testParagraph, counter], doc: content })
+    const once = calls
+    calls = 0
+    editor.setContent(content)
+    expect(calls).toBe(once)
+  })
+})
+
+describe('isActive with an undefined data value', () => {
+  it('treats an undefined value as "any value", like a key left out', () => {
+    const heading = definePlugin({ name: 'heading', node: { kind: 'block', content: 'inline' } })
+    const editor = createTestEditor({
+      plugins: [testParagraph, heading],
+      doc: doc(el('heading', { level: 1 }, txt('a'))),
+      selection: sel([0, 0], 0),
+    })
+    expect(editor.isActive('heading', { level: undefined })).toBe(editor.isActive('heading', {}))
+    expect(editor.isActive('heading', { level: undefined })).toBe(true)
+  })
+})
+
+describe('isActive with an undefined mark data value', () => {
+  it('ignores it for marks too', () => {
+    const editor = createTestEditor({
+      plugins: [testParagraph, testBold],
+      doc: doc(el('paragraph', txt('ab', 'bold'))),
+      selection: sel([0, 0], 1),
+    })
+    expect(editor.isActive('bold', { x: undefined })).toBe(true)
+  })
+})
+
+describe('handleIntent with an inputType named like an Object.prototype key', () => {
+  it('leaves it unhandled', () => {
+    const editor = createTestEditor({ plugins: [testParagraph], doc: doc(el('paragraph', txt('ab'))), selection: sel([0, 0], 1) })
+    for (const inputType of ['toString', 'constructor', 'hasOwnProperty'])
+      expect(editor.handleIntent({ inputType, data: null, range: null })).toBe(false)
+    expect(editor.getHTML()).toBe('<p>ab</p>')
+  })
+})

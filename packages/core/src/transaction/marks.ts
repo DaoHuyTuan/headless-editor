@@ -26,12 +26,15 @@ function isCollapsedRange(r: Range): boolean {
   return comparePoint(r.start, r.end) === 0
 }
 
-/** True when `mark` has `type` and every given data entry deep-equals the mark's. */
+/**
+ * True when `mark` has `type` and every given data entry deep-equals the mark's (`undefined`
+ * entries are ignored, like a missing key).
+ */
 function matches(mark: Mark, type: string, data?: Partial<Data>): boolean {
   if (mark.type !== type) return false
   if (!data) return true
   return Object.entries(data).every(
-    ([k, v]) => v !== undefined && k in mark.data && deepEqualJson(mark.data[k]!, v as Json),
+    ([k, v]) => v === undefined || (k in mark.data && deepEqualJson(mark.data[k]!, v as Json)),
   )
 }
 

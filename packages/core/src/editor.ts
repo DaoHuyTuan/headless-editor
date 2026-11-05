@@ -90,6 +90,9 @@ function detectPlatform(): Platform {
 }
 
 /** Rethrows the first collected error, if any. */
+/** Trs `contentTransaction` already normalized: the pipeline doesn't normalize them again. */
+const normalizedContent = new WeakSet<Transaction>()
+
 function throwFirst(errors: unknown[]): void {
   if (errors.length > 0) throw errors[0]
 }
@@ -391,7 +394,8 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
 
   /**
    * True only when every selection range has it (spec §5.4). Marks: `isMarkActive`. Elements: per
-   * range, the block containing the range's start.
+   * range, the block containing the range's start. `data` entries must deep-equal the node's; an
+   * `undefined` entry is ignored, like a missing key.
    */
   isActive(type: string, data?: Partial<Data>): boolean {
     if (this.registry.mark(type)) return isMarkActive(this._state, type, data, this.registry)
@@ -402,7 +406,7 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
       const block = this.blockAt(start.path)
       if (!block || block.type !== type) return false
       if (!data) return true
-      return Object.entries(data).every(([k, v]) => v !== undefined && k in block.data && deepEqualJson(block.data[k]!, v))
+      return Object.entries(data).every(([k, v]) => v === undefined || (k in block.data && deepEqualJson(block.data[k]!, v)))
     })
   }
 
@@ -548,6 +552,7 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     } else if (!sel || !isEditableRange(tr.doc, this.registry, mainRange(sel))) {
       tr.setSelection(firstEditableCaret(tr.doc, this.registry))
     }
+    normalizedContent.add(tr)
     return tr
   }
 
@@ -565,7 +570,7 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
       return null
     }
     if (!this.passesFilters(tr)) return null
-    if (tr.docChanged) normalize(tr, this.contextFn)
+    if (tr.docChanged && !normalizedContent.has(tr)) normalize(tr, this.contextFn)
     // Several ranges: each one not at an editable point moves to its nearest one (dropped only when
     // there is none). Applied as an op so stored marks are kept. A single range is left as it was.
     const sel = tr.selection
