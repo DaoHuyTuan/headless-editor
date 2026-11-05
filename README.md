@@ -35,15 +35,13 @@ pnpm install
 
 ## Run the playground
 
-The playground is a small React app for trying the editor. It has two tabs:
-- **View**: the live editor, with a toolbar and a set of example scenarios.
-- **Code**: the document as JSON and HTML.
+The playground is a small story browser for trying the editor. The sidebar lists the stories (mention, code block, image, custom image view, and others), grouped by plugin. Each story has its own URL, e.g. `#/code-block/javascript`, so you can deep-link to one; clicking the open story resets its content. Under the editor, the **Document** panel (collapsed by default) shows the document as JSON and HTML.
 
 ```bash
 pnpm --filter playground dev
 ```
 
-Open the URL Vite prints (default `http://localhost:5173`). Pick a scenario from the **Scenario** menu: mention, code block, image, custom image view, and others.
+Open the URL Vite prints (default `http://localhost:5173`).
 
 ## Use the editor in React
 

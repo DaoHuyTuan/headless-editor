@@ -27,7 +27,7 @@ test('the customImage scenario renders the hooks-only view; other scenarios the 
   await expect(custom(page).locator('.image-resize')).toHaveAttribute('data-editor-ignore', '')
   // The src went through safeSrc: the data URL is kept.
   await expect(img(page)).toHaveAttribute('src', /^data:image\/png;base64,/)
-  await page.getByTestId('scenario').selectOption('image')
+  await page.getByTestId('story-image').click()
   await expect(custom(page)).toHaveCount(0)
   await expect(page.locator('[data-testid=editor] [data-hte-image]')).toHaveCount(1)
 })

@@ -17,7 +17,7 @@ test.beforeEach(async ({ page }) => {
     if (m.type() === 'error') errors.push(m.text())
   })
   await openPlayground(page)
-  await page.getByTestId('scenario').selectOption('unknownBlock')
+  await page.getByTestId('story-unknownBlock').click()
   await expect.poll(() => getText(page)).toBe('Title\nBody text')
   // The initial caret skips the unknown block's text (it is not rendered).
   expect(await getSelection(page)).toEqual({ anchor: { path: [1, 0], offset: 0 }, focus: { path: [1, 0], offset: 0 } })

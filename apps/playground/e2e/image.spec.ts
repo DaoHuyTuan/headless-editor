@@ -72,7 +72,7 @@ const srcOf = async (page: Page, index = 0) => images(await getDoc(page))[index]
 async function openImageScenario(page: Page): Promise<void> {
   trackErrors(page)
   await openPlayground(page)
-  await page.getByTestId('scenario').selectOption('image')
+  await page.getByTestId('story-image').click()
   await expect.poll(() => types(page)).toEqual(['paragraph', 'image', 'paragraph'])
 }
 

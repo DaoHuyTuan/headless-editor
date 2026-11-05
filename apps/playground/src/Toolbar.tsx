@@ -44,7 +44,7 @@ export function Toolbar({ editor }: { editor: PlaygroundEditor }) {
   }
 
   return (
-    <div className="mb-2 flex gap-1" role="toolbar">
+    <div className="mb-2 flex flex-wrap gap-1" role="toolbar">
       <button
         type="button"
         className={BUTTON}

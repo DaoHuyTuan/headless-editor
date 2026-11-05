@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test'
+import { expect, type Page } from '@playwright/test'
 import type { Doc, ElementNode, Node, SelectionRange } from '@hte/core'
 
 /** Opens the playground (at `path`, e.g. `/?uploadFail=1`) and waits for the dev `window.editor` to be mounted. */
@@ -66,8 +66,8 @@ export async function setCaret(page: Page, path: number[], offset: number): Prom
 /** Opens the playground and switches to `scenario`, waiting until its content is in the editor. */
 export async function openScenario(page: Page, scenario: string, path = '/'): Promise<void> {
   await openPlayground(page, path)
-  await page.getByTestId('scenario').selectOption(scenario)
-  await page.waitForFunction((s) => (document.querySelector('[data-testid=scenario]') as HTMLSelectElement).value === s, scenario)
+  await page.getByTestId(`story-${scenario}`).click()
+  await expect(page.getByTestId(`story-${scenario}`)).toHaveAttribute('aria-current', 'page')
 }
 
 /** Collects page errors and console errors; assert the list is empty after the test. */
