@@ -27,7 +27,7 @@ Items that cannot be acted on here (other machines, decisions, rulings already r
 | 1.3 | The constructor ignores `contentTransaction`'s `rejected`. | m1 | bug | P2 | confirmed |
 | 1.4 | `setContent` normalizes twice (in `contentTransaction` and in `applyTransaction`). | m1 | perf | P3 | confirmed |
 | 1.5 | `isActive(type, { k: undefined })` returns false. Decide: `undefined` means "any value" or "absent", and document it. | m1 | bug | P2 | confirmed |
-| 1.6 | ✅ `eventToKeyName` drops Shift for non-letters, so `Mod-Shift-1` never matches. | m1 | bug | P1 | confirmed |
+| 1.6 | ✅ `eventToKeyName` drops Shift for non-letters, so `Mod-Shift-1` never matches. | m1 | bug | P1 | fixed |
 | 1.7 | `INPUT_ACTIONS` is a plain object, so inherited keys count as handled (use `Object.hasOwn` or a `Map`). | m1 | bug | P3 | confirmed |
 | 1.8 | Only the first destroy-hook error is rethrown (use `AggregateError`). | m2 | bug | P2 | open |
 | 1.9 | A throwing `onCreate` leaks the resources of earlier plugins. | m3 | bug | P2 | open |
@@ -43,9 +43,9 @@ Items that cannot be acted on here (other machines, decisions, rulings already r
 ## Batch 2: History
 | # | Item | Src | Kind | Pri | Status |
 |---|---|---|---|---|---|
-| 2.1 | ✅ A selection change between keystrokes doesn't break the typing group. | m1 | bug | P1 | open |
-| 2.2 | ✅ Cut merges with a previous Backspace. | m1 | bug | P1 | open |
-| 2.3 | ✅ A drop within 500 ms of typing joins the typing undo step; a drop moves the caret even when nothing was inserted. | m2 | bug | P1 | open |
+| 2.1 | ✅ A selection change between keystrokes doesn't break the typing group. | m1 | bug | P1 | fixed |
+| 2.2 | ✅ Cut merges with a previous Backspace. | m1 | bug | P1 | fixed |
+| 2.3 | ✅ A drop within 500 ms of typing joins the typing undo step; a drop moves the caret even when nothing was inserted. | m2 | bug | P1 | fixed |
 | 2.4 | No stack depth limit. | m1 | bug | P2 | confirmed |
 | 2.5 | `runHistory` returns true even when the dispatch is dropped. | m1 | bug | P3 | confirmed |
 | 2.6 | `-Infinity` time sentinel for "closed group"; replace with an explicit flag. | m1 | api | P3 | confirmed |
@@ -61,8 +61,9 @@ Items that cannot be acted on here (other machines, decisions, rulings already r
 ## Batch 3: Text, marks, fragments and normalize
 | # | Item | Src | Kind | Pri | Status |
 |---|---|---|---|---|---|
-| 3.1 | ✅ Pasting `[h, p]` into an empty paragraph loses the heading type; a lone non-opaque block pasted over a node selection becomes a paragraph. | m1, m4 | bug | P1 | open |
-| 3.2 | Pasting several blocks with an atom at an edge leaves an empty paragraph next to it; a hoisted atom next to empty texts leaves a stray empty paragraph (rule 9 before rule 4). | m2 | bug | P1 | open |
+| 3.1 | ✅ Pasting `[h, p]` into an empty paragraph loses the heading type; a lone non-opaque block pasted over a node selection becomes a paragraph. | m1, m4 | bug | P1 | fixed |
+| 3.2 | ✅ Pasting several blocks with an atom at an edge leaves an empty paragraph next to it (leading edge fixed; a trailing atom keeps the empty right half on purpose: the caret goes there). | m2 | bug | P1 | fixed |
+| 3.2b | A hoisted atom next to empty texts leaves a stray empty paragraph (normalize rule 9 runs before rule 4). | m2 | bug | P2 | open |
 | 3.3 | `insertText('')` clears stored marks, and the intent path doesn't dispatch a stored-marks-only change. | m1 | bug | P2 | open |
 | 3.4 | `toggleMark`: on a range covering no characters it does nothing and stays on "add"; it checks activity with raw data, not validated data; caret toggles always allocate a new array (no-op dispatches); an explicit collapsed range returns true but does nothing. | m1, ms | bug | P2 | open |
 | 3.5 | Fragments: the inline-ancestor split doesn't check `createId` against used ids; an empty-string id is kept; nested containers are flattened. | m1 | bug | P2 | open |
@@ -82,12 +83,12 @@ Items that cannot be acted on here (other machines, decisions, rulings already r
 ## Batch 4: HTML parse/serialize and clipboard
 | # | Item | Src | Kind | Pri | Status |
 |---|---|---|---|---|---|
-| 4.1 | ✅ A pasted trailing newline adds an empty block. | m1 | bug | P1 | open |
-| 4.2 | ✅ Plain-text paste doesn't take the surrounding marks. | m1 | bug | P1 | open |
+| 4.1 | ✅ A pasted trailing newline adds an empty block. | m1 | bug | P1 | fixed |
+| 4.2 | ✅ Plain-text paste doesn't take the surrounding marks. | m1 | bug | P1 | fixed |
 | 4.3 | A throw in `transformPasted` after `preventDefault` loses the paste. | m1 | bug | P2 | open |
 | 4.4 | A paste with no model selection is swallowed. | m1 | bug | P2 | open |
 | 4.5 | Malformed payloads spam warnings. | m1 | bug | P3 | open |
-| 4.6 | ✅ Parse doesn't skip iframe, object, svg, select, textarea, button. | m1 | bug | P1 | open |
+| 4.6 | ✅ Parse doesn't skip iframe, object, svg, select, textarea, button. | m1 | bug | P1 | fixed |
 | 4.7 | Text inside inline elements is not whitespace-collapsed. | m1 | bug | P2 | open |
 | 4.8 | Mark styles on node-rule elements are ignored. | m1 | bug | P2 | open |
 | 4.9 | Edge cases: `<div></div>` vs `<div> </div>`; `<pre>` content is trimmed; a void tag drops its content hole. | m1 | bug | P2 | open |
@@ -99,10 +100,11 @@ Items that cannot be acted on here (other machines, decisions, rulings already r
 ## Batch 5: DOM view (renderer, selection, input, composition, decorations, node views)
 | # | Item | Src | Kind | Pri | Status |
 |---|---|---|---|---|---|
-| 5.1 | ✅ A click exactly on the main caret keeps the secondary ranges (flag `pointerdown`, collapse on next sync). | ms | bug | P1 | open |
-| 5.2 | ✅ The renderer replaces the Text node instead of updating `.data`, which churns the caret. | m1 | bug | P1 | open |
-| 5.3 | Composition: text written outside the composing leaf is lost; composing with no leaf or resuming after blur fights the IME; a nested dispatch can map ops out of order; static or atom DOM mutations are not reverted. | m1 | bug | P1 | open |
-| 5.4 | ✅ node-select's `mousedown` blocks shift-click (fixed). Native drag out of the editor is unsupported anyway (`dragstart` is prevented). | m2 | bug | P1 | open |
+| 5.1 | ✅ A click exactly on the main caret keeps the secondary ranges (flag `pointerdown`, collapse on next sync). | ms | bug | P1 | fixed |
+| 5.2 | ✅ The renderer replaces the Text node instead of updating `.data`, which churns the caret. | m1 | bug | P1 | fixed |
+| 5.3 | ✅ Composition: text written outside the composing leaf is lost (bare Text nodes beside the leaf are now read in). | m1 | bug | P1 | fixed |
+| 5.3b | Composition: composing with no leaf or resuming after blur fights the IME; a nested dispatch can map ops out of order; static or atom DOM mutations are not reverted. Needs a repro with a real IME (or CDP IME in Chromium e2e) before a fix. | m1 | bug | P2 | open |
+| 5.4 | ✅ node-select's `mousedown` blocks shift-click (fixed). Native drag out of the editor is unsupported anyway (`dragstart` is prevented). | m2 | bug | P1 | fixed |
 | 5.5 | Input: delete intents ignore the target range; `targetRange` drops the direction; a plugin `beforeinput` handler returning true does not prevent the event (keydown does). | m1 | bug | P2 | open |
 | 5.6 | Renderer: a throw mid-render leaves the id map inconsistent and still clears `invalidated`; `getPluginOptions` returns the live object; the initial render doesn't pass the node selection. | m1, m2 | bug | P2 | open |
 | 5.7 | dom-selection: the no-op write can leave the selection in a stray node; non-editable positions ignore the offset. | m1 | bug | P2 | open |
@@ -124,13 +126,13 @@ Items that cannot be acted on here (other machines, decisions, rulings already r
 ## Batch 6: Input rules and plugins
 | # | Item | Src | Kind | Pri | Status |
 |---|---|---|---|---|---|
-| 6.1 | ✅ Image: a failed upload after the user changed the original's `src` lets undo restore the dead `blob:` src; failing the last block's image leaves a trailing empty paragraph. | m2 | bug | P1 | open |
-| 6.2 | ✅ Image: a drop ignores the drop point while a node is selected, so the file can replace the selected image. | m2 | bug | P1 | open |
+| 6.1 | ✅ Image: a failed upload after the user changed the original's `src` lets undo restore the dead `blob:` src; failing the last block's image leaves a trailing empty paragraph. | m2 | bug | P1 | fixed |
+| 6.2 | ✅ Image: a drop ignores the drop point while a node is selected, so the file can replace the selected image. | m2 | bug | P1 | fixed |
 | 6.3 | Image: blob URLs are revoked only on `destroy`; a copy pasted into another editor keeps the blob URL; a pending blob src set via `setNodeData` is not tracked; pending state is briefly only the main id with several copies; an image-file paste with a non-main targeted range goes to every range. | m2, ms | bug | P2 | open |
 | 6.4 | Image: width parsing accepts unsafe integers; resize handle has no `lostpointercapture` fallback and no role/label. | m2 | bug | P2 | open |
-| 6.5 | ✅ Mention: popup coords don't follow scroll or resize; no `aria-activedescendant` / option ids. | m3 | bug | P1 | open |
+| 6.5 | ✅ Mention: popup coords don't follow scroll or resize; no `aria-activedescendant` / option ids. | m3 | bug | P1 | fixed |
 | 6.6 | Mention: hopping between triggers with the same query clears `dismissedAt`; the cache is written during render; `useMention` re-renders every chip while the popup is open; `insertAtTriggers` fakes an `EditorState`. | m3, ms | bug | P2 | open |
-| 6.7 | ✅ Code block: nested blocks lose newlines when pasted in (`plainText` joins with `""`); a vetoed line-break tr falls through to core `splitBlock`. | m3 | bug | P1 | open |
+| 6.7 | ✅ Code block: nested blocks lose newlines when pasted in (`plainText` joins with `""`); a vetoed line-break tr falls through to core `splitBlock`. | m3 | bug | P1 | fixed |
 | 6.8 | Code block: the `decorations` hook walks the whole doc on every view update. | m3 | perf | P2 | open |
 | 6.9 | Code block: `onBeforeInput` `insertParagraph` overlaps with the mention popup (registration order decides); Tab with a selection ending at a line start next to another indented range maps over the indent; hard-coded `aria-label` "Language"; `useCodeBlock` is not memoized. | m3, ms | bug | P3 | open |
 | 6.10 | Input rules: `findTrigger` false positive when the trigger text is the first child of a link; `runAt` vs `findTrigger` mismatch; a rule without `$` matches only the leftmost match; move `toBlockOffset` inside the try. | m3 | bug | P2 | open |

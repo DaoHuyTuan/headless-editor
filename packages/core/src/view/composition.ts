@@ -24,6 +24,22 @@ function leafDomText(leaf: HTMLElement): string {
   return leaf.hasAttribute('data-hte-zw') ? text.split('​').join('') : text
 }
 
+/**
+ * Text an IME wrote right beside the leaf instead of inside it (bare Text nodes next to it, e.g. a
+ * caret at the leaf's edge), in document order; nodes in `known` (there at `compositionstart`, e.g.
+ * a static text of the block's `renderHTML`) are not. The nodes are removed: the leaf's text now has
+ * it, and the render that follows does not know them.
+ */
+function strayText(leaf: HTMLElement, side: 'previousSibling' | 'nextSibling', known: ReadonlySet<globalThis.Node>): string {
+  const parts: string[] = []
+  for (let n = leaf[side]; n && n.nodeType === 3 && !known.has(n); n = leaf[side]) {
+    parts.push((n as Text).data)
+    n.remove()
+  }
+  if (side === 'previousSibling') parts.reverse()
+  return parts.join('')
+}
+
 function isHighSurrogate(code: number): boolean {
   return code >= 0xd800 && code <= 0xdbff
 }
@@ -49,6 +65,9 @@ function commonEnds(a: string, b: string): { prefix: number; suffix: number } {
  * marks, else the marks of the first replaced character, else the marks at the caret.
  */
 const compositionMarks = new WeakMap<EditorView, Mark[]>()
+
+/** The composing leaf's siblings at `compositionstart`: never read as stray IME text. */
+const startSiblings = new WeakMap<EditorView, Set<globalThis.Node>>()
 
 function onCompositionStart(view: EditorView): void {
   if (view.composing) return
@@ -94,6 +113,7 @@ function onCompositionStart(view: EditorView): void {
   const leaf = focus && renderer.leafAt(focus.path)
   if (!focus || !leaf) return
   view.composition = { leaf, path: [...focus.path] }
+  startSiblings.set(view, new Set(leaf.parentNode ? [...leaf.parentNode.childNodes] : []))
   // Make sure the IME writes into that leaf (not next to it, e.g. when the caret sits in the block).
   const domSel = view.root.ownerDocument.getSelection()
   if (domSel && domSel.isCollapsed && !(domSel.anchorNode && leaf.contains(domSel.anchorNode))) {
@@ -112,6 +132,7 @@ function onCompositionEnd(view: EditorView): void {
   const stateBefore = editor.state
   if (target) commit(view, target.leaf, target.path)
   compositionMarks.delete(view)
+  startSiblings.delete(view)
   // Nothing dispatched (no change, or the tr was filtered out): still rebuild the leaf and show the selection.
   if (editor.state === stateBefore) view.update(editor.state)
 }
@@ -126,7 +147,8 @@ function commit(view: EditorView, leaf: HTMLElement, path: Path): void {
   }
   if (!isText(node)) return
   const before = node.text
-  const after = leafDomText(leaf)
+  const known = startSiblings.get(view) ?? new Set()
+  const after = strayText(leaf, 'previousSibling', known) + leafDomText(leaf) + strayText(leaf, 'nextSibling', known)
   if (after === before) return
   const { prefix, suffix } = commonEnds(before, after)
   const removed = before.slice(prefix, before.length - suffix)

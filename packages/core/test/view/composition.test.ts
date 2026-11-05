@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { mainRange, single } from '../../src/model/selection'
 import type { ElementNode, Node, Selection, TextNode } from '../../src/model/types'
-import { modelToDom } from '../../src/index'
+import { definePlugin, modelToDom } from '../../src/index'
 import { createTestEditor, doc, txt } from '../../src/testing/index'
 import { testBold, testParagraph } from '../fixtures'
 
@@ -90,6 +90,35 @@ describe('composition', () => {
     fire(root, 'compositionend')
     expect(texts(editor)).toEqual(['你好'])
     expect(editor.state.selection).toEqual(caret([0, 0], 2))
+  })
+
+  it('keeps text the IME wrote next to the composing leaf instead of inside it', () => {
+    const { editor, root, view } = mount([p('p1', txt('ab'))], caret([0, 0], 2))
+    fire(root, 'compositionstart')
+    const leaf = view.renderer.leafAt([0, 0])!
+    leaf.after(leaf.ownerDocument.createTextNode('xy'))
+    leaf.before(leaf.ownerDocument.createTextNode('<'))
+    fire(root, 'compositionend')
+    expect(texts(editor)).toEqual(['<abxy'])
+    expect(root.querySelectorAll('p > :not([data-hte-leaf])').length + [...root.querySelector('p')!.childNodes].filter((n) => n.nodeType === 3).length).toBe(0)
+  })
+
+  it('does not take a static text of the block renderHTML beside the leaf as IME text', () => {
+    const label = definePlugin({ name: 'label', node: { kind: 'block', content: 'inline' }, renderHTML: () => ['p', 'L:', 0] })
+    const editor = createTestEditor({
+      plugins: [testParagraph, testBold, label],
+      doc: doc({ id: 'l1', type: 'label', data: {}, children: [txt('ab')] }),
+      selection: caret([0, 0], 2),
+    })
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    editor.mount(root)
+    editor.view!.focus()
+    fire(root, 'compositionstart')
+    imeWrite(editor.view!, [0, 0], 'abc')
+    fire(root, 'compositionend')
+    expect(editor.state.doc.children[0]!.children).toEqual([txt('abc')])
+    expect(root.textContent).toBe('L:abc')
   })
 
   it('treats a leaf left with only its <br> as empty', () => {
