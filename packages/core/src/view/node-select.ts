@@ -15,7 +15,8 @@ function opaqueBlockAround(view: EditorView, target: globalThis.Node): Path | nu
 }
 
 function onMouseDown(view: EditorView, e: MouseEvent): void {
-  if (e.button !== 0 || isIgnoredEvent(view, e)) return
+  // Shift-click extends the selection: left to the browser (the selection sync maps it).
+  if (e.button !== 0 || e.shiftKey || isIgnoredEvent(view, e)) return
   const target = e.target as globalThis.Node | null
   if (!target || typeof target.nodeType !== 'number') return
   const path = opaqueBlockAround(view, target)
@@ -37,7 +38,7 @@ function onMouseDown(view: EditorView, e: MouseEvent): void {
 }
 
 /**
- * Click-to-select: a primary `mousedown` on an opaque block (atom or unknown type), or inside it but
+ * Click-to-select: a primary `mousedown` (without Shift) on an opaque block (atom or unknown type), or inside it but
  * not in an ignored region, node-selects it instead of placing a caret. Inline opaque elements are
  * left to the browser.
  */
