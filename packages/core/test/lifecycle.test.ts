@@ -182,6 +182,22 @@ describe('lifecycle hooks: onUpdate / onSelectionUpdate', () => {
     expect(editor.getHTML()).toBe('<p>axbcd</p>')
   })
 
+  it('a throwing editor.on listener does not stop the other listeners or the hooks; its error is rethrown', () => {
+    const calls: string[] = []
+    const boom = new Error('listener')
+    const hook = definePlugin({ name: 'hook', onUpdate: () => void calls.push('hook:update') })
+    const editor = createTestEditor({ plugins: [testParagraph, hook], doc: content(), selection: sel([0, 0], 1) })
+    editor.on('update', () => {
+      calls.push('first')
+      throw boom
+    })
+    editor.on('update', () => void calls.push('second'))
+    editor.on('selectionUpdate', () => void calls.push('selection'))
+    expect(() => editor.commands.insertText('x')).toThrow(boom)
+    expect(calls).toEqual(['first', 'second', 'hook:update', 'selection'])
+    expect(editor.getHTML()).toBe('<p>axbcd</p>')
+  })
+
   it('no hook runs once the editor is destroyed by an earlier hook', () => {
     const calls: string[] = []
     const destroyer = definePlugin({

@@ -240,17 +240,17 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     } finally {
       this.computing = false
     }
-    // Lifecycle hook errors are collected over the whole loop, so one throwing hook neither stops the
-    // other hooks nor the events of later trs; listener errors propagate as before.
+    // Listener and lifecycle hook errors are collected over the whole loop, so one throw stops neither
+    // the other listeners and hooks nor the events of later trs; the first is rethrown at the end.
     const errors: unknown[] = []
     for (const { tr: t, selectionChanged } of committed) {
-      this.emit('transaction', t)
+      errors.push(...this.emit('transaction', t))
       if (t.docChanged) {
-        this.emit('update', t)
+        errors.push(...this.emit('update', t))
         errors.push(...this.runHooks((plugin, ctx) => plugin.spec.onUpdate?.(ctx, { tr: t })))
       }
       if (selectionChanged) {
-        this.emit('selectionUpdate', t)
+        errors.push(...this.emit('selectionUpdate', t))
         errors.push(...this.runHooks((plugin, ctx) => plugin.spec.onSelectionUpdate?.(ctx, { tr: t })))
       }
     }
@@ -589,11 +589,20 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     return true
   }
 
-  private emit(event: EditorEventName, tr: Transaction): void {
+  /** Calls every listener of `event`; returns what they threw (a throw does not skip the others). */
+  private emit(event: EditorEventName, tr: Transaction): unknown[] {
     const set = this.listeners.get(event)
-    if (!set) return
+    if (!set) return []
     const e: EditorEvent = { editor: this as unknown as Editor, tr }
-    for (const fn of [...set]) fn(e)
+    const errors: unknown[] = []
+    for (const fn of [...set]) {
+      try {
+        fn(e)
+      } catch (error) {
+        errors.push(error)
+      }
+    }
+    return errors
   }
 
   private bindCommands(

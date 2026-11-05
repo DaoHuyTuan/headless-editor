@@ -22,7 +22,7 @@ Items that cannot be acted on here (other machines, decisions, rulings already r
 ## Batch 1: Editor core, events and lifecycle
 | # | Item | Src | Kind | Pri | Status |
 |---|---|---|---|---|---|
-| 1.1 | A throwing event listener skips the remaining listeners (`editor.ts` `emit`); also cuts hook isolation. Wrap each, rethrow after all ran. | m1, m3 | bug | P2 | confirmed |
+| 1.1 | ✅ A throwing event listener skips the remaining listeners (`editor.ts` `emit`); also cuts hook isolation. Wrap each, rethrow after all ran. | m1, m3 | bug | P2 | fixed |
 | 1.2 | The stale-tr guard drops silently in prod; add a warning. | m1 | bug | P2 | confirmed |
 | 1.3 | The constructor ignores `contentTransaction`'s `rejected`. | m1 | bug | P2 | confirmed |
 | 1.4 | `setContent` normalizes twice (in `contentTransaction` and in `applyTransaction`). | m1 | perf | P3 | confirmed |
