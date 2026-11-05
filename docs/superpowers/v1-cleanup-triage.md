@@ -128,7 +128,7 @@ Items that cannot be acted on here (other machines, decisions, rulings already r
 | 6.2 | ✅ Image: a drop ignores the drop point while a node is selected, so the file can replace the selected image. | m2 | bug | P1 | open |
 | 6.3 | Image: blob URLs are revoked only on `destroy`; a copy pasted into another editor keeps the blob URL; a pending blob src set via `setNodeData` is not tracked; pending state is briefly only the main id with several copies; an image-file paste with a non-main targeted range goes to every range. | m2, ms | bug | P2 | open |
 | 6.4 | Image: width parsing accepts unsafe integers; resize handle has no `lostpointercapture` fallback and no role/label. | m2 | bug | P2 | open |
-| 6.5 | Mention: popup coords don't follow scroll or resize; no `aria-activedescendant` / option ids. | m3 | bug | P1 | open |
+| 6.5 | ✅ Mention: popup coords don't follow scroll or resize; no `aria-activedescendant` / option ids. | m3 | bug | P1 | open |
 | 6.6 | Mention: hopping between triggers with the same query clears `dismissedAt`; the cache is written during render; `useMention` re-renders every chip while the popup is open; `insertAtTriggers` fakes an `EditorState`. | m3, ms | bug | P2 | open |
 | 6.7 | ✅ Code block: nested blocks lose newlines when pasted in (`plainText` joins with `""`); a vetoed line-break tr falls through to core `splitBlock`. | m3 | bug | P1 | open |
 | 6.8 | Code block: the `decorations` hook walks the whole doc on every view update. | m3 | perf | P2 | open |

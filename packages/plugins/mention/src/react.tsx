@@ -1,4 +1,4 @@
-import { createContext, useContext, type ComponentType, type MouseEvent, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useId, useReducer, type ComponentType, type MouseEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { AnyPlugin, Editor, NodeViewPropsOf } from '@hte/core'
 import { dataAttrs, resolveParts, usePluginState, type ViewCustomization } from '@hte/react'
@@ -130,9 +130,10 @@ export interface SuggestionApi {
   select(i: number): void
   /** Closes the popup; its trigger stays closed. */
   close(): void
-  listProps: { role: 'listbox' }
+  listProps: { role: 'listbox'; id: string }
   itemProps(i: number): {
     role: 'option'
+    id: string
     'aria-selected': boolean
     'data-selected'?: ''
     onMouseDown(e: MouseEvent): void
@@ -141,14 +142,39 @@ export interface SuggestionApi {
 
 /**
  * The suggestion popup's behaviour for an editor that has the mention plugin. Re-renders on mention
- * plugin state changes. `coords` are read at render; they do not follow scrolling while the state
- * is unchanged. Item `mousedown` selects and prevents its default, so the editor keeps the focus
- * (a blur would close the popup).
+ * plugin state changes, and while open on any scroll (of the page or a scrolling ancestor) or window
+ * resize, so `coords` follow the trigger. While open, the editor root gets `aria-controls` (the list)
+ * and `aria-activedescendant` (the highlighted option). Item `mousedown` selects and prevents its
+ * default, so the editor keeps the focus (a blur would close the popup).
  * @experimental Level 4 customization API; may change after M3 without a deprecation cycle.
  */
 export function useSuggestion(editor: AnyEditor): SuggestionApi {
   const st: MentionState = usePluginState(editor, mention)
   remember(editor, st.items)
+  const [, reposition] = useReducer((n: number) => n + 1, 0)
+  const listId = useId()
+  const optionId = (i: number) => `${listId}-option-${i}`
+  const active = st.open && st.items.length > 0 ? optionId(st.index) : null
+  useEffect(() => {
+    if (!st.open || typeof window === 'undefined') return
+    // Capture: scroll events don't bubble, and a scrolling ancestor of the editor moves it too.
+    window.addEventListener('scroll', reposition, true)
+    window.addEventListener('resize', reposition)
+    return () => {
+      window.removeEventListener('scroll', reposition, true)
+      window.removeEventListener('resize', reposition)
+    }
+  }, [st.open])
+  useEffect(() => {
+    const root = editor.view?.root
+    if (!root || !active) return
+    root.setAttribute('aria-controls', listId)
+    root.setAttribute('aria-activedescendant', active)
+    return () => {
+      root.removeAttribute('aria-controls')
+      root.removeAttribute('aria-activedescendant')
+    }
+  }, [editor, listId, active])
   const commands = (editor as unknown as MentionEditor).commands
   const select = (i: number) => {
     const user = st.items[i]
@@ -163,9 +189,10 @@ export function useSuggestion(editor: AnyEditor): SuggestionApi {
     close: () => {
       commands.closeSuggestion()
     },
-    listProps: { role: 'listbox' },
+    listProps: { role: 'listbox', id: listId },
     itemProps: (i) => ({
       role: 'option',
+      id: optionId(i),
       'aria-selected': i === st.index,
       ...dataAttrs({ selected: i === st.index }),
       onMouseDown: (e) => {

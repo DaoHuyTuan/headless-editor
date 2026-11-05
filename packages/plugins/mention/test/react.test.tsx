@@ -186,6 +186,45 @@ describe('MentionSuggestion', () => {
     expect(t.popup()).toBeNull()
   })
 
+  it('follows the trigger when the page scrolls or resizes', async () => {
+    const t = setup()
+    t.type('@')
+    await t.resolve([ann, bob])
+    expect(t.popup()!.style.top).toBe('118px')
+    vi.spyOn(t.editor(), 'coordsAt').mockReturnValue({ left: 40, top: 60, bottom: 78 })
+    act(() => {
+      document.dispatchEvent(new Event('scroll'))
+    })
+    expect(t.popup()!.style.top).toBe('78px')
+    vi.spyOn(t.editor(), 'coordsAt').mockReturnValue({ left: 10, top: 60, bottom: 90 })
+    act(() => {
+      window.dispatchEvent(new Event('resize'))
+    })
+    expect(t.popup()!.style.left).toBe('10px')
+    expect(t.popup()!.style.top).toBe('90px')
+  })
+
+  it('the editor root points at the highlighted option (aria-activedescendant) while open', async () => {
+    const t = setup()
+    t.type('@')
+    await t.resolve([ann, bob])
+    const list = t.popup()!.querySelector('[role="listbox"]')!
+    const options = [...list.querySelectorAll('[role="option"]')]
+    expect(list.id).not.toBe('')
+    expect(new Set(options.map((o) => o.id)).size).toBe(2)
+    expect(t.root.getAttribute('aria-controls')).toBe(list.id)
+    expect(t.root.getAttribute('aria-activedescendant')).toBe(options[0]!.id)
+    act(() => {
+      t.editor().commands.moveSuggestion(1)
+    })
+    expect(t.root.getAttribute('aria-activedescendant')).toBe(options[1]!.id)
+    act(() => {
+      t.editor().commands.closeSuggestion()
+    })
+    expect(t.root.hasAttribute('aria-activedescendant')).toBe(false)
+    expect(t.root.hasAttribute('aria-controls')).toBe(false)
+  })
+
   it('clicking an item inserts the mention and the editor keeps focus', async () => {
     const t = setup()
     t.type('@')
