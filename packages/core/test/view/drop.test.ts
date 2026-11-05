@@ -86,6 +86,17 @@ describe('drop module', () => {
     expect(metas).toContainEqual(expect.objectContaining({ origin: 'input', inputType: 'insertFromDrop' }))
   })
 
+  it('a drop with nothing to insert leaves the selection alone', () => {
+    const editor = setup(sel([0, 0], 1))
+    const root = mount(editor)
+    stubCaretRange(textNodeOf(root, 'cdef'), 2)
+    const trs: unknown[] = []
+    editor.on('transaction', ({ tr }) => trs.push(tr))
+    root.dispatchEvent(dragEvent('drop', transfer({ 'application/x-other': 'x' })))
+    expect(editor.state.selection).toEqual(sel([0, 0], 1))
+    expect(trs).toHaveLength(0)
+  })
+
   it('uses caretPositionFromPoint when available', () => {
     const editor = setup(sel([0, 0], 0))
     const root = mount(editor)

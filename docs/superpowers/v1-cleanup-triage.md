@@ -125,7 +125,7 @@ Items that cannot be acted on here (other machines, decisions, rulings already r
 | # | Item | Src | Kind | Pri | Status |
 |---|---|---|---|---|---|
 | 6.1 | Image: a failed upload after the user changed the original's `src` lets undo restore the dead `blob:` src; failing the last block's image leaves a trailing empty paragraph. | m2 | bug | P1 | open |
-| 6.2 | Image: a drop ignores the drop point while a node is selected, so the file can replace the selected image. | m2 | bug | P1 | open |
+| 6.2 | ✅ Image: a drop ignores the drop point while a node is selected, so the file can replace the selected image. | m2 | bug | P1 | open |
 | 6.3 | Image: blob URLs are revoked only on `destroy`; a copy pasted into another editor keeps the blob URL; a pending blob src set via `setNodeData` is not tracked; pending state is briefly only the main id with several copies; an image-file paste with a non-main targeted range goes to every range. | m2, ms | bug | P2 | open |
 | 6.4 | Image: width parsing accepts unsafe integers; resize handle has no `lostpointercapture` fallback and no role/label. | m2 | bug | P2 | open |
 | 6.5 | Mention: popup coords don't follow scroll or resize; no `aria-activedescendant` / option ids. | m3 | bug | P1 | open |

@@ -352,8 +352,8 @@ export const image = definePlugin({
     const files = Array.from(intent.dataTransfer?.files ?? [])
     // Without an upload function there is nowhere to put the files: let the default insert the rest.
     if (!files.some(isImageFile) || typeof ctx.options.upload !== 'function') return false
-    if (intent.inputType === 'insertFromDrop' && intent.range && !isNodeSelection(ctx.editor.state.selection))
-      uploadFiles(ctx, files, intent.range)
+    // A drop goes to its drop point, even while a node is selected (it never replaces that node).
+    if (intent.inputType === 'insertFromDrop' && intent.range) uploadFiles(ctx, files, intent.range)
     else ctx.storage.upload(files)
     return true
   },

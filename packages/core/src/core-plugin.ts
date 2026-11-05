@@ -66,8 +66,8 @@ const PASTE_INPUT: Record<string, 'paste' | 'input'> = { insertFromPaste: 'paste
 
 /**
  * Where a paste / drop goes: null for the selection, else a range (passed to `transformPasted` too).
- * - A node selection: null, the fragment replaces the node in place, as typing does.
- * - A drop: its drop point (`intent.range`).
+ * - A drop: its drop point (`intent.range`), also while a node is selected.
+ * - A paste over a node selection: null, the fragment replaces the node in place, as typing does.
  * - A paste with several ranges: null (the same fragment at every range, spec §5.4) when the intent
  *   targets the main range or nothing; a paste at another range goes only there (and collapses,
  *   as any intent with its own target: spec §8 call 13). With one range
@@ -75,6 +75,8 @@ const PASTE_INPUT: Record<string, 'paste' | 'input'> = { insertFromPaste: 'paste
  */
 function transferTarget(intent: InputIntent, sel: Selection | null): SelectionRange | null {
   if (!sel) return intent.range
+  // A drop goes to its drop point, even while a node is selected (it never replaces that node).
+  if (intent.inputType === 'insertFromDrop' && intent.range) return intent.range
   if (isNodeSelection(sel)) return null
   if (intent.inputType !== 'insertFromPaste' || sel.ranges.length === 1) return intent.range
   return targetsMain(intent, sel) ? null : intent.range
@@ -121,7 +123,8 @@ function insertTransfer(intent: InputIntent, editor: Editor): boolean {
   tr.meta.inputType = intent.inputType
   // A drop, or a paste with its own target, goes to one place: the selection collapses there (a
   // drop with no point: to the main range). A paste at the selection goes to every range.
-  if (sel && sel.ranges.length > 1 && (at || intent.inputType === 'insertFromDrop')) collapseTo(tr, at ?? mainRange(sel))
+  if (sel && (sel.ranges.length > 1 || isNodeSelection(sel)) && (at || intent.inputType === 'insertFromDrop'))
+    collapseTo(tr, at ?? mainRange(sel))
   if (insertFragment(tr, fragment, at ?? undefined) && tr.ops.length > 0) editor.dispatch(tr)
   return true
 }

@@ -392,6 +392,33 @@ describe('Review Focus 4: paste / drop', () => {
     expect((editor.state.doc as Doc).children[0]!.type).toBe('image')
   })
 
+  it('a drop while an image is node-selected goes to the drop point and keeps the selected image', () => {
+    const { editor } = setup()
+    const tr = editor.createTransaction()
+    tr.insertNode([1], el('image', { src: 'https://x/a.png', alt: 'old' }))
+    tr.insertNode([2], p(txt('cd')))
+    tr.setSelection(nodeSelection(tr.doc, editor.registry, [1]))
+    editor.dispatch(tr)
+    editor.handleIntent({ ...intent('insertFromDrop', transfer([png()], {})), range: mainRange(sel([2, 0], 2)) })
+    const imgs = images(editor.state.doc as Doc)
+    expect(imgs).toHaveLength(2)
+    expect(imgs[0]!.data.alt).toBe('old')
+    expect(text(editor.state.doc as Doc)).toBe('abcd')
+  })
+
+  it('a text drop while a node is selected inserts at the drop point and keeps the node', () => {
+    const { editor } = setup()
+    const tr = editor.createTransaction()
+    tr.insertNode([1], el('image', { src: 'https://x/a.png', alt: 'old' }))
+    tr.insertNode([2], p(txt('cd')))
+    tr.setSelection(nodeSelection(tr.doc, editor.registry, [1]))
+    editor.dispatch(tr)
+    editor.handleIntent({ ...intent('insertFromDrop', transfer([], { 'text/plain': 'XY' })), range: mainRange(sel([2, 0], 1)) })
+    expect(images(editor.state.doc as Doc)).toHaveLength(1)
+    expect(text(editor.state.doc as Doc)).toBe('abcXYd')
+    expect(editor.state.selection).toEqual(sel([2, 0], 3))
+  })
+
   it('an upload resolving with an unsafe URL is treated as a failure', async () => {
     const { editor, uploads, onUploadError } = setup()
     editor.storage.image.upload([png()])
