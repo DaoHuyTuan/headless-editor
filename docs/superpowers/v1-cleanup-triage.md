@@ -61,7 +61,7 @@ Items that cannot be acted on here (other machines, decisions, rulings already r
 ## Batch 3: Text, marks, fragments and normalize
 | # | Item | Src | Kind | Pri | Status |
 |---|---|---|---|---|---|
-| 3.1 | Pasting `[h, p]` into an empty paragraph loses the heading type; a lone non-opaque block pasted over a node selection becomes a paragraph. | m1, m4 | bug | P1 | open |
+| 3.1 | ✅ Pasting `[h, p]` into an empty paragraph loses the heading type; a lone non-opaque block pasted over a node selection becomes a paragraph. | m1, m4 | bug | P1 | open |
 | 3.2 | Pasting several blocks with an atom at an edge leaves an empty paragraph next to it; a hoisted atom next to empty texts leaves a stray empty paragraph (rule 9 before rule 4). | m2 | bug | P1 | open |
 | 3.3 | `insertText('')` clears stored marks, and the intent path doesn't dispatch a stored-marks-only change. | m1 | bug | P2 | open |
 | 3.4 | `toggleMark`: on a range covering no characters it does nothing and stays on "add"; it checks activity with raw data, not validated data; caret toggles always allocate a new array (no-op dispatches); an explicit collapsed range returns true but does nothing. | m1, ms | bug | P2 | open |

@@ -1,6 +1,6 @@
 import { isOpaque, type NodeTypes } from '../model/editable'
 import { createId } from '../model/id'
-import { getNode, isElement, isText, nodeEntries } from '../model/node'
+import { deepEqualJson, getNode, isElement, isText, nodeEntries } from '../model/node'
 import { comparePoint, parentPath, toRange } from '../model/path'
 import { isNodeRange } from '../model/selection'
 import type { DeepReadonly, Doc, ElementNode, Json, Node, Path, Point, Range, SelectionRange, TextNode } from '../model/types'
@@ -217,29 +217,63 @@ export function insertInlineNode(tr: Transaction, node: ElementNode): boolean {
   return inserted && tr.rejected === null
 }
 
+/** Whether `node` is a block with no content: only empty texts. */
+function isEmptyBlock(node: DeepReadonly<Node>): boolean {
+  return isElement(node) && (node.children ?? []).every((c) => isText(c) && c.text === '')
+}
+
 /**
  * Splits the caret's block (the right half gets `rightId`), appends the first block's children to
  * the left half, inserts the middle blocks whole after it, and puts the last block's children in
  * front of the right half's. Returns the end of the inserted content.
+ *
+ * An edge block goes in whole instead of merging, as a middle block, when it is opaque, or when the
+ * half it would merge into is empty and of another type or data (a heading pasted into an empty
+ * paragraph stays a heading). An empty half left beside a whole edge block is removed, except the
+ * right half after an opaque last block: the caret goes there.
  */
-function insertBlocks(tr: Transaction, point: Point, blocks: Node[], rightId: string): Point {
+function insertBlocks(tr: Transaction, point: Point, fragment: Node[], rightId: string): Point {
   const blockPath = blockPathOf(tr, point.path)
   const block = getNode(tr.doc, blockPath) as ElementNode
   const rightStart = splitBlockAt(tr, point, blockPath, { id: rightId, type: block.type, data: block.data })
+  const parent = parentPath(blockPath)
+  const blockIndex = blockPath[blockPath.length - 1]!
+  const leftEmpty = isEmptyBlock(getNode(tr.doc, blockPath))
+  const rightEmpty = isEmptyBlock(getNode(tr.doc, [...parent, blockIndex + 1]))
+  const opaque = (n: Node): boolean => isElement(n) && isOpaque(n, tr.registry)
+  const sameKind = (n: Node): boolean => isElement(n) && n.type === block.type && deepEqualJson(n.data, block.data)
+  const first = fragment[0]!
+  const lastNode = fragment[fragment.length - 1]!
+  const wholeFirst = opaque(first) || (leftEmpty && !sameKind(first))
+  const wholeLast = opaque(lastNode) || (rightEmpty && !sameKind(lastNode))
+  // Edge blocks that go in whole get a childless block to merge on their side instead.
+  const pad: ElementNode = { id: '', type: '', data: {}, children: [] }
+  const blocks = [...(wholeFirst ? [pad] : []), ...fragment, ...(wholeLast ? [pad] : [])]
   const childrenOf = (n: Node): Node[] => (isElement(n) ? (n.children ?? []) : [n])
 
   const firstKids = childrenOf(blocks[0]!)
   const leftLength = ((getNode(tr.doc, blockPath) as ElementNode).children ?? []).length
   firstKids.forEach((n, i) => tr.insertNode([...blockPath, leftLength + i], n))
 
-  const parent = parentPath(blockPath)
-  const blockIndex = blockPath[blockPath.length - 1]!
   const middle = blocks.slice(1, -1)
   middle.forEach((b, i) => tr.insertNode([...parent, blockIndex + 1 + i], b))
 
-  const rightPath = [...parent, blockIndex + 1 + middle.length]
+  let rightPath = [...parent, blockIndex + 1 + middle.length]
   const lastKids = childrenOf(blocks[blocks.length - 1]!)
   lastKids.forEach((n, i) => tr.insertNode([...rightPath, i], n))
+  // Empty halves beside whole edge blocks would stay behind as stray empty blocks.
+  let shift = 0
+  if (wholeFirst && leftEmpty) {
+    tr.removeNode(blockPath)
+    shift = 1
+    rightPath = [...parent, blockIndex + middle.length]
+  }
+  // The caret then goes to the end of the last whole block (kept when it has no editable text).
+  const end = wholeLast && rightEmpty && !opaque(lastNode) && endOfInserted(middle, parent, blockIndex + 1 - shift, tr.registry)
+  if (end) {
+    tr.removeNode(rightPath)
+    return end
+  }
   // The right half's first text, shifted past the children inserted in front of it.
   const remainder: Point = {
     path: [...rightPath, lastKids.length, ...rightStart.path.slice(blockPath.length + 1)],
@@ -312,16 +346,18 @@ function insertFragmentStep(tr: Transaction, fragment: Fragment, sel: SelectionR
   const opaque = (n: Node): boolean => isElement(n) && isOpaque(n, tr.registry)
   if (nodes.length === 1) {
     // A lone opaque block (e.g. a copied node selection) goes in whole, as a block of its own.
-    if (!opaque(first)) return { out: caret(insertInline(tr, point, (first as ElementNode).children ?? [])) }
-    const out = insertBlockNodeStep(tr, first as ElementNode, caret(point))
-    return out === false ? { out: caret(point), failed: true } : { out }
+    if (opaque(first)) {
+      const out = insertBlockNodeStep(tr, first as ElementNode, caret(point))
+      return out === false ? { out: caret(point), failed: true } : { out }
+    }
+    // Into an empty block of another type or data, it goes in whole in that block's place
+    // (`insertBlocks`); otherwise its content is inline content at the caret.
+    const target = getNode(tr.doc, blockPathOf(tr, point.path))
+    const own = first as ElementNode
+    if (!(isEmptyBlock(target) && isElement(target) && (target.type !== own.type || !deepEqualJson(target.data, own.data))))
+      return { out: caret(insertInline(tr, point, own.children ?? [])) }
   }
-  // Opaque edge blocks have no children to merge into the split halves: pad the fragment with a
-  // childless block on that side, so they are inserted whole as middle blocks.
-  const pad: ElementNode = { id: '', type: '', data: {}, children: [] }
-  const last = nodes[nodes.length - 1]!
-  const blocks = [...(opaque(first) ? [pad] : []), ...nodes, ...(opaque(last) ? [pad] : [])]
-  return { out: caret(insertBlocks(tr, point, blocks, freshId(used))) }
+  return { out: caret(insertBlocks(tr, point, nodes, freshId(used))) }
 }
 
 /**
