@@ -695,3 +695,17 @@ describe('keymap factory and storage', () => {
     expect(seen).toEqual({ n: 1 })
   })
 })
+
+describe('dropped transactions outside dev mode', () => {
+  it('a tr created from an outdated state is dropped with a warning', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const editor = new Editor({ plugins: [testParagraph], content: doc(el('paragraph', txt('ab'))), dev: false })
+    const stale = editor.createTransaction()
+    editor.commands.insertText('x')
+    stale.insertText('y')
+    editor.dispatch(stale)
+    expect(editor.getHTML()).not.toContain('y')
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/outdated state/))
+    warn.mockRestore()
+  })
+})

@@ -558,7 +558,10 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
       return null
     }
     if (tr.before !== this._state) {
-      if (this.dev) throw new Error('Transaction was created from an outdated state')
+      const message = 'Transaction was created from an outdated state'
+      if (this.dev) throw new Error(message)
+      // Dropped: a stale tr would overwrite the changes made since it was created.
+      console.warn(`@hte/core: ${message}; it was dropped`)
       return null
     }
     if (!this.passesFilters(tr)) return null
