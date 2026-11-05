@@ -219,7 +219,8 @@ export function insertInlineNode(tr: Transaction, node: ElementNode): boolean {
 
 /** Whether `node` is a block with no content: only empty texts. */
 function isEmptyBlock(node: DeepReadonly<Node>): boolean {
-  return isElement(node) && (node.children ?? []).every((c) => isText(c) && c.text === '')
+  const el = node as Node
+  return isElement(el) && (el.children ?? []).every((c) => isText(c) && c.text === '')
 }
 
 /**
