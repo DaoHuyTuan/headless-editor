@@ -231,6 +231,10 @@ export interface PluginSpec<
    * the new state on every view update. They are never part of the doc, `getJSON()` or `getHTML()`.
    */
   decorations?: (state: EditorState, ctx: PluginContext<O, S, C, T>) => Decoration[]
+  /**
+   * Repairs data that failed validation while loading or sanitizing content. The result is
+   * validated again; null, still-invalid data or a throw drops the node (with a warning).
+   */
   onInvalidData?: (raw: unknown) => Data | null
   /** `apply` gets the final (normalized) tr; `ctx.getState()` still returns `prev` there. */
   state?: { init: () => S; apply: (tr: Transaction, prev: S, ctx: PluginContext<O, S, C, T>) => S }

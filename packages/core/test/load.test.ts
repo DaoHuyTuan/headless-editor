@@ -149,6 +149,15 @@ describe('load (coerceDoc + normalize)', () => {
       expect(warn).not.toHaveBeenCalled()
     })
 
+    it('validates what onInvalidData returns: still invalid data drops the node', () => {
+      const heading = definePlugin({ name: 'heading', node: { kind: 'block' }, data: schema, onInvalidData: () => ({ level: 'y' }) })
+      const d = load(new Registry([testParagraph, heading]), {
+        children: [{ type: 'heading', data: { level: 'x' }, children: [{ text: 'h' }] }],
+      })
+      expect(stripIds(d)).toEqual(stripIds(doc(el('paragraph', txt('')))))
+      expect(warn).toHaveBeenCalledTimes(1)
+    })
+
     it('drops the node with one console.warn when onInvalidData returns null', () => {
       const heading = definePlugin({ name: 'heading', node: { kind: 'block' }, data: schema, onInvalidData: () => null })
       const d = load(new Registry([testParagraph, heading]), {

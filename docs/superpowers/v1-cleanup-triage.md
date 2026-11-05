@@ -35,7 +35,7 @@ Items that cannot be acted on here (other machines, decisions, rulings already r
 | 1.11 | `ctx.commands` is empty during the initial normalize, and `editor.storage` is undefined while storage factories run. | m2 | doc | P3 | open |
 | 1.12 | Commands that dispatch internally become stale. | m1 | doc | P3 | open |
 | 1.13 | Lifecycle docs: unmount fires no `onBlur`, mount on a focused root fires no `onFocus`; `editor.view` is null during `onMount`; `onCreate` must be side-effect-free under StrictMode. | m3 | doc | P3 | open |
-| 1.14 | The result of `onInvalidData` is not validated again. | m1 | bug | P2 | open |
+| 1.14 | ✅ The result of `onInvalidData` is not validated again. | m1 | bug | P2 | fixed |
 | 1.15 | Readonly typing gaps: `getNode`, `nodeEntries`, `textEntries` return mutable types; `tr.doc` is typed mutable. | m1 | api | P3 | open |
 | 1.16 | `PluginOverrides` types `state.apply` / `mark.render` as `any` in `extend`. | m3 | api | P3 | open |
 | 1.17 | `Transaction.setSelection` accepts a `node` path that isn't opaque; `nodeSelection` accepts inline atoms programmatically. | m2, m4 | bug | P2 | open |
