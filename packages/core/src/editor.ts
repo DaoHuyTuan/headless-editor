@@ -375,6 +375,13 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     return fragment
   }
 
+  /**
+   * Subscribes to an editor event; returns the unsubscribe function. Events of a dispatch run after
+   * its state is committed. A listener may dispatch (a nested dispatch, committed at once): later
+   * listeners and hooks of the outer tr then see `editor.state` already past it, so read what the
+   * outer tr changed from `e.tr`, not by comparing with `editor.state`. A throwing listener does not
+   * stop the others; its error is rethrown once the dispatch's events all ran.
+   */
   on(event: 'options', fn: (e: OptionsEvent) => void): () => void
   on(event: EditorEventName, fn: (e: EditorEvent) => void): () => void
   on(event: EditorEventName | 'options', fn: (e: any) => void): () => void {
