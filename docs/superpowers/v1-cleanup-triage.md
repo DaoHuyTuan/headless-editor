@@ -36,8 +36,8 @@ Items that cannot be acted on here (other machines, decisions, rulings already r
 | 1.12 | ✅ Commands that dispatch internally become stale. | m1 | doc | P3 | fixed |
 | 1.13 | ✅ Lifecycle docs: unmount fires no `onBlur`, mount on a focused root fires no `onFocus`; `editor.view` is null during `onMount`; `onCreate` must be side-effect-free under StrictMode. | m3 | doc | P3 | fixed |
 | 1.14 | ✅ The result of `onInvalidData` is not validated again. | m1 | bug | P2 | fixed |
-| 1.15 | Readonly typing gaps: `getNode`, `nodeEntries`, `textEntries` return mutable types; `tr.doc` is typed mutable. | m1 | api | P3 | open |
-| 1.16 | `PluginOverrides` types `state.apply` / `mark.render` as `any` in `extend`. | m3 | api | P3 | open |
+| 1.15 | Readonly typing gaps: `getNode`, `nodeEntries`, `textEntries` return mutable types; `tr.doc` is typed mutable. Deferred: a breaking type change across the core; do it with the API review before publishing. | m1 | api | P3 | open |
+| 1.16 | ✅ `PluginOverrides` types `state.apply` / `mark.render` as `any` in `extend`. By design: an override may change the data and state types (commented in `PluginOverrides`). Closed. | m3 | api | P3 | fixed |
 | 1.17 | ✅ `Transaction.setSelection` accepts a `node` path that isn't opaque (now throws in dev mode). Kept: `nodeSelection` of an inline atom, which `MentionView`'s `data-selected` relies on. | m2, m4 | bug | P2 | fixed |
 
 ## Batch 2: History
