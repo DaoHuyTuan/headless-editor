@@ -186,9 +186,9 @@ test.describe('inserting', () => {
     await expect(editorImg(page)).toHaveCount(1)
     await page.evaluate(() => window.editor.storage.image.whenIdle())
     await expect(editorImg(page)).toHaveCount(0)
-    // Only the image is removed; the paragraph inserted after it for the caret stays.
-    expect(await types(page)).toEqual(['paragraph', 'paragraph'])
-    expect(await getText(page)).toBe('text\n')
+    // The image goes, and so does the empty paragraph its insert added for the caret.
+    expect(await types(page)).toEqual(['paragraph'])
+    expect(await getText(page)).toBe('text')
     // Undo does not bring the dead preview back.
     await page.getByTestId('undo').click()
     expect(images(await getDoc(page))).toHaveLength(0)
