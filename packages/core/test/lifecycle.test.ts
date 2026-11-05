@@ -75,6 +75,30 @@ describe('lifecycle hooks: onCreate', () => {
     expect(() => createTestEditor({ plugins: [testParagraph, p3, p2, p1], doc: content() })).toThrow(first)
     expect(calls).toEqual(['p1', 'p2', 'p3'])
   })
+
+  it('a throwing onCreate destroys the editor first, so earlier plugins release what they set up', () => {
+    const calls: string[] = []
+    const boom = new Error('boom')
+    const owner = definePlugin({
+      name: 'owner',
+      priority: 300,
+      onCreate: () => void calls.push('owner:create'),
+      destroy: () => void calls.push('owner:destroy'),
+    })
+    const thrower = definePlugin({
+      name: 'thrower',
+      priority: 100,
+      onCreate: () => {
+        throw boom
+      },
+      destroy: () => {
+        calls.push('thrower:destroy')
+        throw new Error('ignored')
+      },
+    })
+    expect(() => createTestEditor({ plugins: [testParagraph, owner, thrower], doc: content() })).toThrow(boom)
+    expect(calls).toEqual(['owner:create', 'thrower:destroy', 'owner:destroy'])
+  })
 })
 
 describe('lifecycle hooks: onUpdate / onSelectionUpdate', () => {

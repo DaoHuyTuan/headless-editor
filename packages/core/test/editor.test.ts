@@ -651,6 +651,30 @@ describe('plugin storage', () => {
     expect(calls).toEqual(['other', 'reentrant', 'first'])
   })
 
+  it('several throwing destroy hooks: an AggregateError carries every error, the first first', () => {
+    const errA = new Error('a failed')
+    const errB = new Error('b failed')
+    const a = definePlugin({ name: 'a', priority: 300, destroy: () => { throw errA } })
+    const b = definePlugin({ name: 'b', priority: 200, destroy: () => { throw errB } })
+    const ed = createTestEditor({ plugins: [testParagraph, a, b] })
+    let caught: unknown
+    try {
+      ed.destroy()
+    } catch (e) {
+      caught = e
+    }
+    expect(caught).toBeInstanceOf(AggregateError)
+    expect((caught as AggregateError).errors).toEqual([errB, errA])
+    expect((caught as AggregateError).message).toContain('b failed')
+  })
+
+  it('one throwing destroy hook: its own error is rethrown', () => {
+    const err = new Error('only')
+    const a = definePlugin({ name: 'a', destroy: () => { throw err } })
+    const ed = createTestEditor({ plugins: [testParagraph, a] })
+    expect(() => ed.destroy()).toThrow(err)
+  })
+
   it('a throwing destroy hook does not stop the others; the first error is rethrown', () => {
     const calls: string[] = []
     const a = definePlugin({ name: 'a', priority: 300, destroy: () => void calls.push('a') })

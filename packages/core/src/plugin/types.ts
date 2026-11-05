@@ -250,7 +250,11 @@ export interface PluginSpec<
    * hooks. A throwing hook does not stop the others: errors are collected and the first is rethrown
    * once all ran.
    */
-  /** Called once at the end of the editor constructor, after every plugin's storage exists (no DOM). */
+  /**
+   * Called once at the end of the editor constructor, after every plugin's storage exists (no DOM).
+   * When one throws, the constructor destroys the editor (every `destroy` hook runs) before rethrowing.
+   * Must be side-effect-free under StrictMode's double invoke (React builds a throwaway editor).
+   */
   onCreate?: (ctx: PluginContext<O, S, C, T>) => void
   /**
    * Called each time a view is attached to a DOM root, at the end of the view constructor. A returned

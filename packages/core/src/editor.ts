@@ -169,7 +169,17 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
       }
     }
 
-    throwFirst(this.runHooks((plugin, ctx) => plugin.spec.onCreate?.(ctx)))
+    const createErrors = this.runHooks((plugin, ctx) => plugin.spec.onCreate?.(ctx))
+    if (createErrors.length > 0) {
+      // The caller never gets this editor: destroy it now, so what the hooks set up is released.
+      // Destroy errors are dropped; the onCreate error is the one to report.
+      try {
+        this.destroy()
+      } catch {
+        // ignored
+      }
+      throwFirst(createErrors)
+    }
   }
 
   /** The mounted DOM view, or null when not mounted. */
@@ -452,8 +462,9 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
 
   /**
    * Unmounts, then runs every plugin's `destroy` hook in reverse priority order. A throwing hook
-   * does not stop the others; the first error is rethrown once all ran. Idempotent, including when
-   * called again from a destroy hook (the nested call returns immediately).
+   * does not stop the others; once all ran, its error is rethrown, or with several, an
+   * `AggregateError` of all of them (in run order, its message naming the first). Idempotent,
+   * including when called again from a destroy hook (the nested call returns immediately).
    */
   destroy(): void {
     if (this.destroyed || this.destroying) return
@@ -475,7 +486,11 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     }
     this.destroyed = true
     this.listeners.clear()
-    if (errors.length > 0) throw errors[0]
+    if (errors.length === 1) throw errors[0]
+    if (errors.length > 1) {
+      const first = errors[0] instanceof Error ? errors[0].message : String(errors[0])
+      throw new AggregateError(errors, `${errors.length} destroy hooks failed; the first: ${first}`)
+    }
   }
 
   // --- internals ---

@@ -29,8 +29,8 @@ Items that cannot be acted on here (other machines, decisions, rulings already r
 | 1.5 | ✅ `isActive(type, { k: undefined })` returns false. Decided: an `undefined` entry is ignored, like a missing key (elements and marks), documented on `isActive`. | m1 | bug | P2 | fixed |
 | 1.6 | ✅ `eventToKeyName` drops Shift for non-letters, so `Mod-Shift-1` never matches. | m1 | bug | P1 | fixed |
 | 1.7 | ✅ `INPUT_ACTIONS` is a plain object, so inherited keys count as handled (use `Object.hasOwn` or a `Map`). | m1 | bug | P3 | fixed |
-| 1.8 | Only the first destroy-hook error is rethrown (use `AggregateError`). | m2 | bug | P2 | open |
-| 1.9 | A throwing `onCreate` leaks the resources of earlier plugins. | m3 | bug | P2 | open |
+| 1.8 | ✅ Only the first destroy-hook error is rethrown (use `AggregateError`). | m2 | bug | P2 | fixed |
+| 1.9 | ✅ A throwing `onCreate` leaks the resources of earlier plugins. | m3 | bug | P2 | fixed |
 | 1.10 | A nested dispatch leaves state ahead of the tr. | m3 | bug | P2 | open |
 | 1.11 | `ctx.commands` is empty during the initial normalize, and `editor.storage` is undefined while storage factories run. | m2 | doc | P3 | open |
 | 1.12 | Commands that dispatch internally become stale. | m1 | doc | P3 | open |
