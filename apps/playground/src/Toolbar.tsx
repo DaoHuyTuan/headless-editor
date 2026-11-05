@@ -3,6 +3,10 @@ import { useEditorState } from '@hte/react'
 import type { PlaygroundEditor } from './editor'
 
 /** The font sizes offered by the toolbar; `''` is the default (no fontSize mark). */
+const BUTTON =
+  'cursor-pointer rounded border border-neutral-300 bg-white px-2.5 py-1 data-[active=true]:bg-neutral-900 data-[active=true]:text-white disabled:opacity-40'
+
+/** The font sizes offered by the toolbar; `''` is the default (no fontSize mark). */
 const FONT_SIZES = ['12px', '16px', '24px', '32px'] as const
 
 const isBold = (_: unknown, editor: PlaygroundEditor) => editor.isActive('bold')
@@ -40,9 +44,10 @@ export function Toolbar({ editor }: { editor: PlaygroundEditor }) {
   }
 
   return (
-    <div className="toolbar" role="toolbar">
+    <div className="mb-2 flex gap-1" role="toolbar">
       <button
         type="button"
+        className={BUTTON}
         data-testid="bold"
         data-active={bold}
         aria-pressed={bold}
@@ -52,7 +57,9 @@ export function Toolbar({ editor }: { editor: PlaygroundEditor }) {
       >
         <strong>B</strong>
       </button>
-      <select data-testid="font-size" aria-label="Font size" value={fontSize} onChange={changeFontSize}>
+      <select
+        className="rounded border border-neutral-300 bg-white"
+        data-testid="font-size" aria-label="Font size" value={fontSize} onChange={changeFontSize}>
         <option value="">Default</option>
         {FONT_SIZES.map((size) => (
           <option key={size} value={size}>
@@ -62,6 +69,7 @@ export function Toolbar({ editor }: { editor: PlaygroundEditor }) {
       </select>
       <button
         type="button"
+        className={BUTTON}
         data-testid="code-block"
         data-active={code}
         aria-pressed={code}
@@ -71,7 +79,7 @@ export function Toolbar({ editor }: { editor: PlaygroundEditor }) {
       >
         Code
       </button>
-      <button type="button" data-testid="image" onMouseDown={keepFocus} onClick={() => fileInput.current?.click()}>
+      <button type="button" className={BUTTON} data-testid="image" onMouseDown={keepFocus} onClick={() => fileInput.current?.click()}>
         Image
       </button>
       <input
@@ -83,10 +91,10 @@ export function Toolbar({ editor }: { editor: PlaygroundEditor }) {
         data-testid="image-file"
         onChange={pickImages}
       />
-      <button type="button" data-testid="undo" onMouseDown={keepFocus} onClick={() => editor.commands.undo()}>
+      <button type="button" className={BUTTON} data-testid="undo" onMouseDown={keepFocus} onClick={() => editor.commands.undo()}>
         Undo
       </button>
-      <button type="button" data-testid="redo" onMouseDown={keepFocus} onClick={() => editor.commands.redo()}>
+      <button type="button" className={BUTTON} data-testid="redo" onMouseDown={keepFocus} onClick={() => editor.commands.redo()}>
         Redo
       </button>
     </div>

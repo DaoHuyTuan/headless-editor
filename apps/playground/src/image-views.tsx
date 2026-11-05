@@ -9,10 +9,12 @@ export type ImageViewKind = 'default' | 'custom'
 export const ImageViewKindContext = createContext<ImageViewKind>('default')
 
 const RESIZE_CLASS = 'image-resize'
+/** Utilities for the handle; the position offsets live in styles.css (they differ per view). */
+const RESIZE_UTILS = 'absolute -right-1.25 size-2.5 cursor-ew-resize rounded-xs border border-white bg-blue-500'
 
 /** The default image view (level 2: `classNames`), its resize handle classed for styles.css and the e2e tests. */
 function DefaultImageView(props: ImageProps) {
-  return <ImageView {...props} classNames={{ resizeHandle: RESIZE_CLASS }} />
+  return <ImageView {...props} classNames={{ resizeHandle: `${RESIZE_CLASS} ${RESIZE_UTILS}` }} />
 }
 
 /**
@@ -26,14 +28,17 @@ function HooksOnlyImageView(props: ImageProps) {
   const { inputProps } = useAltDraft(props)
   const { src, alt } = props.node.data
   return (
-    <figure data-hte-image="" data-custom-image="" {...dataAttrs({ selected, uploading, resizing })}>
+    <figure
+      className="rounded-md border border-neutral-200 bg-blue-50 p-1.5"
+      data-hte-image=""
+      data-custom-image="" {...dataAttrs({ selected, uploading, resizing })}>
       <img src={safeSrc(src) ?? undefined} alt={alt} width={width} draggable={false} />
-      <figcaption>
-        {uploading ? <span className="badge">uploading…</span> : null}
+      <figcaption className="text-xs text-neutral-600">
+        {uploading ? <span className="mr-1.5 rounded-sm bg-amber-300 px-1">uploading…</span> : null}
         <span data-testid="custom-alt-caption">{alt === '' ? '(no alt)' : alt}</span>
       </figcaption>
-      <input {...inputProps} placeholder="Describe the image" />
-      <span {...handleProps} className={RESIZE_CLASS} />
+      <input {...inputProps} className="rounded-sm border border-neutral-300 px-1 py-0.5 text-[13px]" placeholder="Describe the image" />
+      <span {...handleProps} className={`${RESIZE_CLASS} ${RESIZE_UTILS}`} />
     </figure>
   )
 }

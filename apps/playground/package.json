@@ -25,9 +25,11 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.55.0",
+    "@tailwindcss/vite": "^4.3.4",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "@vitejs/plugin-react": "^5.0.0",
+    "tailwindcss": "^4.3.4",
     "vite": "^7.1.0"
   }
 }
