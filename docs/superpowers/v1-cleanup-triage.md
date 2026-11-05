@@ -82,12 +82,12 @@ Items that cannot be acted on here (other machines, decisions, rulings already r
 ## Batch 4: HTML parse/serialize and clipboard
 | # | Item | Src | Kind | Pri | Status |
 |---|---|---|---|---|---|
-| 4.1 | A pasted trailing newline adds an empty block. | m1 | bug | P1 | open |
-| 4.2 | Plain-text paste doesn't take the surrounding marks. | m1 | bug | P1 | open |
+| 4.1 | ✅ A pasted trailing newline adds an empty block. | m1 | bug | P1 | open |
+| 4.2 | ✅ Plain-text paste doesn't take the surrounding marks. | m1 | bug | P1 | open |
 | 4.3 | A throw in `transformPasted` after `preventDefault` loses the paste. | m1 | bug | P2 | open |
 | 4.4 | A paste with no model selection is swallowed. | m1 | bug | P2 | open |
 | 4.5 | Malformed payloads spam warnings. | m1 | bug | P3 | open |
-| 4.6 | Parse doesn't skip iframe, object, svg, select, textarea, button. | m1 | bug | P1 | open |
+| 4.6 | ✅ Parse doesn't skip iframe, object, svg, select, textarea, button. | m1 | bug | P1 | open |
 | 4.7 | Text inside inline elements is not whitespace-collapsed. | m1 | bug | P2 | open |
 | 4.8 | Mark styles on node-rule elements are ignored. | m1 | bug | P2 | open |
 | 4.9 | Edge cases: `<div></div>` vs `<div> </div>`; `<pre>` content is trimmed; a void tag drops its content hole. | m1 | bug | P2 | open |

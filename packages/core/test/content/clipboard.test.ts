@@ -192,3 +192,39 @@ describe('serializeForClipboard / parseFromClipboard', () => {
     expect(parseFromClipboard(editor, { json, text: 'plain' })).toEqual([txt('plain')])
   })
 })
+
+describe('plain-text paste', () => {
+  it('drops one trailing newline instead of adding an empty block', () => {
+    const editor = setup(doc(p('p1', txt(''))), caret([0, 0], 0))
+    expect(stripIds(parseFromClipboard(editor, { text: 'a\nb\n' }))).toEqual([
+      { type: 'paragraph', data: {}, children: [txt('a')] },
+      { type: 'paragraph', data: {}, children: [txt('b')] },
+    ])
+    expect(parseFromClipboard(editor, { text: 'a\r\n' })).toEqual([txt('a')])
+    // Only one: a blank last line the user copied is kept.
+    expect(stripIds(parseFromClipboard(editor, { text: 'a\n\n' }))).toHaveLength(2)
+  })
+
+  it('takes the marks at the caret, as typing does', () => {
+    const editor = setup(doc(p('p1', txt('ab', 'bold'))), caret([0, 0], 1))
+    expect(parseFromClipboard(editor, { text: 'x' })).toEqual([txt('x', 'bold')])
+    expect(stripIds(parseFromClipboard(editor, { text: 'x\ny' }))).toEqual([
+      { type: 'paragraph', data: {}, children: [txt('x', 'bold')] },
+      { type: 'paragraph', data: {}, children: [txt('y', 'bold')] },
+    ])
+  })
+
+  it('takes the marks at its own target (a drop point), not at the selection', () => {
+    const editor = setup(doc(p('p1', txt('ab', 'bold'), txt('cd'))), caret([0, 0], 1))
+    const at = mainRange(caret([0, 1], 1))
+    expect(parseFromClipboard(editor, { text: 'x' }, { at })).toEqual([txt('x')])
+  })
+
+  it('html and json flavors keep their own marks', () => {
+    const editor = setup(doc(p('p1', txt('ab', 'bold'))), caret([0, 0], 1))
+    expect(stripIds(parseFromClipboard(editor, { html: '<p>x</p>' }))).toEqual([
+      { type: 'paragraph', data: {}, children: [txt('x')] },
+    ])
+    expect(parseFromClipboard(editor, { json: JSON.stringify([txt('x')]) })).toEqual([txt('x')])
+  })
+})

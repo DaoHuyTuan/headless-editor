@@ -15,7 +15,11 @@ const BLOCK_TAGS = new Set([
   'section', 'table', 'tbody', 'td', 'tfoot', 'th', 'thead', 'tr', 'ul',
 ])
 /** Elements whose content is never parsed. */
-const SKIP_TAGS = new Set(['head', 'link', 'meta', 'noscript', 'script', 'style', 'template', 'title'])
+/** Skipped with their content: document metadata, scripts, embedded content and form controls. */
+const SKIP_TAGS = new Set([
+  'head', 'link', 'meta', 'noscript', 'script', 'style', 'template', 'title',
+  'iframe', 'object', 'embed', 'svg', 'select', 'textarea', 'button',
+])
 
 const BOUNDARY = { kind: 'boundary' } as const
 const BREAK = { kind: 'break' } as const
