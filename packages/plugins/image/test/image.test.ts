@@ -10,7 +10,7 @@ import {
   type ElementNode,
   type InputIntent,
 } from '@hte/core'
-import { createTestEditor, doc, el, sel, txt } from '@hte/core/testing'
+import { createTestEditor, doc, el, sel, stripIds, txt } from '@hte/core/testing'
 import { paragraph } from '@hte/paragraph'
 import { image, safeSrc } from '../src/index'
 
@@ -121,6 +121,41 @@ describe('image upload', () => {
     expect(onUploadError).toHaveBeenCalledWith(err, file)
     expect(editor.storage.image.isUploading()).toBe(false)
     expect(text(editor.state.doc as Doc)).toBe('ab')
+  })
+
+  it('a failed upload after the user changed the src: undo never brings the dead blob back', async () => {
+    const { editor, uploads } = setup()
+    editor.storage.image.upload([png()])
+    const path = [1]
+    const tr = editor.createTransaction()
+    tr.setNodeData(path, { src: 'https://x/mine.png' })
+    editor.dispatch(tr)
+    uploads[0]!.reject(new Error('boom'))
+    await editor.storage.image.whenIdle()
+    expect(images(editor.state.doc as Doc).map((i) => i.data.src)).toEqual(['https://x/mine.png'])
+    while (editor.commands.undo()) {
+      expect(images(editor.state.doc as Doc).map((i) => i.data.src)).not.toContain('blob:test/1')
+    }
+  })
+
+  it('a failed upload at the end of the last block leaves no trailing empty paragraph', async () => {
+    const { editor, uploads } = setup()
+    editor.storage.image.upload([png()])
+    expect((editor.state.doc as Doc).children.map((b) => b.type)).toEqual(['paragraph', 'image', 'paragraph'])
+    uploads[0]!.reject(new Error('boom'))
+    await editor.storage.image.whenIdle()
+    expect(stripIds(editor.state.doc as Doc)).toEqual(stripIds(doc(p(txt('ab')))))
+    expect(editor.state.selection).toEqual(sel([0, 0], 2))
+  })
+
+  it('a failed upload keeps an empty paragraph the user typed into meanwhile', async () => {
+    const { editor, uploads } = setup()
+    editor.storage.image.upload([png()])
+    editor.commands.insertText('x')
+    uploads[0]!.reject(new Error('boom'))
+    await editor.storage.image.whenIdle()
+    expect(text(editor.state.doc as Doc)).toBe('abx')
+    expect((editor.state.doc as Doc).children).toHaveLength(2)
   })
 
   it('Review Focus 1: undo before the upload resolves, then redo restores the uploaded URL', async () => {
