@@ -193,6 +193,30 @@ describe('Renderer: keyed patching', () => {
     )
   })
 
+  it('updates the Text node of a leaf in place when only its text changes', () => {
+    const { renderer, root } = ctx
+    renderer.render(doc(p('p1', 'a', txt('b', 'bold'))))
+    const [plain, marked] = [...root.querySelectorAll('[data-hte-leaf]')]
+    const plainText = plain!.firstChild
+    const markedText = marked!.querySelector('strong')!.firstChild
+    renderer.render(doc(p('p1', 'ax', txt('by', 'bold'))))
+    expect(plain!.firstChild).toBe(plainText)
+    expect(marked!.querySelector('strong')!.firstChild).toBe(markedText)
+    expect(root.innerHTML).toBe(
+      '<p data-hte-id="p1"><span data-hte-leaf="">ax</span><span data-hte-leaf=""><strong>by</strong></span></p>',
+    )
+  })
+
+  it('still rebuilds a leaf whose marks change', () => {
+    const { renderer, root } = ctx
+    renderer.render(doc(p('p1', 'a')))
+    const leaf = root.querySelector('[data-hte-leaf]')!
+    const before = leaf.firstChild
+    renderer.render(doc(p('p1', txt('a', 'bold'))))
+    expect(leaf.firstChild).not.toBe(before)
+    expect(leaf.innerHTML).toBe('<strong>a</strong>')
+  })
+
   it('reuses both elements when reordered', () => {
     const { renderer, root } = ctx
     renderer.render(doc(p('p1', 'a'), p('p2', 'b')))

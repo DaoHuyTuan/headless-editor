@@ -607,7 +607,10 @@ export class Renderer {
       old !== undefined &&
       leaf.childNodes.length === content.length &&
       content.every((n, i) => n === leaf.childNodes[i] || leaf.childNodes[i]!.isEqualNode(n))
-    if (!same) leaf.replaceChildren(...content)
+    // Same shape with other text (typing): the old Text nodes take the new data, so the DOM caret
+    // and an IME composition in them survive. Anything else is rebuilt.
+    if (!same && !(old !== undefined && sameShapes(leaf.childNodes, content) && patchTexts(leaf.childNodes, content)))
+      leaf.replaceChildren(...content)
     this.leafText.set(leaf, text)
     this.leafDecos.set(leaf, signature)
     this.leafShape.set(leaf, parts)
@@ -724,4 +727,39 @@ export class Renderer {
 
 function samePath(a: Path, b: Path): boolean {
   return a.length === b.length && a.every((v, i) => v === b[i])
+}
+
+/**
+ * Whether `old` and `next` are the same DOM shape: Text nodes pair with Text nodes, elements with
+ * elements of the same tag and attributes and the same shape inside. A widget pairs only with itself.
+ */
+function sameShapes(old: NodeListOf<ChildNode> | readonly globalThis.Node[], next: readonly globalThis.Node[]): boolean {
+  if (old.length !== next.length) return false
+  for (let i = 0; i < next.length; i++) {
+    const a = old[i]!
+    const b = next[i]!
+    if (a === b) continue
+    if (a.nodeType === 3 && b.nodeType === 3) continue
+    if (a.nodeType !== 1 || b.nodeType !== 1) return false
+    const ea = a as Element
+    const eb = b as Element
+    if (ea.hasAttribute(WIDGET_ATTR) || eb.hasAttribute(WIDGET_ATTR) || ea.tagName !== eb.tagName) return false
+    if (ea.attributes.length !== eb.attributes.length) return false
+    for (const attr of eb.attributes) if (ea.getAttribute(attr.name) !== attr.value) return false
+    if (!sameShapes(ea.childNodes, [...eb.childNodes])) return false
+  }
+  return true
+}
+
+/** Copies the text of `next`'s Text nodes into `old`'s (same shapes, see `sameShapes`). True. */
+function patchTexts(old: NodeListOf<ChildNode> | readonly globalThis.Node[], next: readonly globalThis.Node[]): boolean {
+  for (let i = 0; i < next.length; i++) {
+    const a = old[i]!
+    const b = next[i]!
+    if (a === b) continue
+    if (a.nodeType === 3) {
+      if ((a as Text).data !== (b as Text).data) (a as Text).data = (b as Text).data
+    } else patchTexts(a.childNodes, [...b.childNodes])
+  }
+  return true
 }
