@@ -8,12 +8,22 @@ const DATA_IMAGE_RE = /^data:image\/(png|jpeg|gif|webp|avif);base64,/i
  * stripping leading/trailing C0 controls and spaces and removing tabs and newlines anywhere.
  */
 export function safeSrc(src: string): string | null {
-  // eslint-disable-next-line no-control-regex
-  const url = src.replace(/^[\u0000- ]+|[\u0000- ]+$/g, '').replace(/[\t\n\r]/g, '')
+  const url = normalize(src)
   if (url === '') return null
   const scheme = SCHEME_RE.exec(url)?.[1]?.toLowerCase()
   if (scheme === undefined) return src
   if (scheme === 'https' || scheme === 'http' || scheme === 'blob') return src
   if (scheme === 'data' && DATA_IMAGE_RE.test(url)) return src
   return null
+}
+
+/** Whether `src` is a `blob:` URL, its scheme read like `safeSrc` reads it. */
+export function isBlobSrc(src: string): boolean {
+  return SCHEME_RE.exec(normalize(src))?.[1]?.toLowerCase() === 'blob'
+}
+
+/** The URL as browsers read its scheme: leading/trailing C0 controls and spaces stripped, tabs and newlines removed. */
+function normalize(src: string): string {
+  // eslint-disable-next-line no-control-regex
+  return src.replace(/^[\u0000- ]+|[\u0000- ]+$/g, '').replace(/[\t\n\r]/g, '')
 }

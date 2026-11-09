@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createSelection, mainRange } from '@hte/core'
 import {
+  clearHistory,
   FRAGMENT_MIME,
   nodeSelection,
   serializeForClipboard,
@@ -508,6 +509,31 @@ describe('image HTML and commands', () => {
     expect(imgs[0]!.data).toEqual({ src: 'https://x/a.png', alt: 'A', width: 120 })
   })
 
+  it.each(['99999999999999999999', '9007199254740992', '1'.repeat(400), '0', ' 12px', '1e3'])(
+    'parses an <img width="%s"> without a width, keeping the image',
+    (width) => {
+      const warn = vi.spyOn(console, 'warn')
+      try {
+        const editor = createTestEditor({ plugins: [paragraph, image], content: `<img src="https://x/a.png" width="${width}">` })
+        expect(images(editor.state.doc as Doc).map((i) => i.data)).toEqual([{ src: 'https://x/a.png', alt: '' }])
+        expect(warn).not.toHaveBeenCalled()
+      } finally {
+        warn.mockRestore()
+      }
+    },
+  )
+
+  it('parses the largest safe integer width', () => {
+    const editor = createTestEditor({ plugins: [paragraph, image], content: '<img src="https://x/a.png" width=" 9007199254740991 ">' })
+    expect(images(editor.state.doc as Doc)[0]!.data.width).toBe(Number.MAX_SAFE_INTEGER)
+  })
+
+  it.each([2 ** 53, Infinity, NaN, 1.5, -1])('setNodeData with width %s is rejected', (width) => {
+    const editor = createTestEditor({ plugins: [paragraph, image], doc: doc(el('image', { src: 'https://x/a.png', alt: '' })) })
+    expect(editor.commands.setNodeData([0], { width })).toBe(false)
+    expect(images(editor.state.doc as Doc)[0]!.data.width).toBeUndefined()
+  })
+
   it('parses no image from a javascript: src alone', () => {
     const editor = createTestEditor({ plugins: [paragraph, image], content: '<img src="javascript:alert(1)">' })
     expect(images(editor.state.doc as Doc)).toHaveLength(0)
@@ -872,5 +898,167 @@ describe('image with several ranges', () => {
     uploads[1]!.resolve('https://x/b.png')
     await editor.storage.image.whenIdle()
     expect(srcs(editor).sort()).toEqual(['https://x/a.png', 'https://x/a.png', 'https://x/b.png', 'https://x/b.png'])
+  })
+
+  it('every copy is pending from the first state that shows them', () => {
+    const { editor } = setupMulti()
+    const seen: string[][] = []
+    editor.on('transaction', () => {
+      const shown = images(editor.state.doc as Doc).map((i) => i.id)
+      if (shown.length > 0) seen.push(shown.filter((id) => !editor.storage.image.isPending(id)))
+    })
+    editor.storage.image.upload([png()])
+    expect(seen.length).toBeGreaterThan(0)
+    expect(seen.every((notPending) => notPending.length === 0)).toBe(true)
+  })
+
+  it('an image-file paste targeted at a range that is not the main one goes to that range only', () => {
+    const { editor, uploads } = setupMulti()
+    editor.handleIntent({ ...intent('insertFromPaste', transfer([png()], {})), range: caret([1, 0], 2) })
+    expect(uploads).toHaveLength(1)
+    expect((editor.state.doc as Doc).children.map((b) => b.type)).toEqual(['paragraph', 'paragraph', 'image', 'paragraph'])
+    // The selection collapsed to that one place, as for any targeted paste.
+    expect(editor.state.selection!.ranges).toHaveLength(1)
+  })
+
+  it('an image-file paste targeted at the main range goes to every range', () => {
+    const { editor } = setupMulti()
+    const main = mainRange(editor.state.selection!)
+    editor.handleIntent({ ...intent('insertFromPaste', transfer([png()], {})), range: main })
+    expect(images(editor.state.doc as Doc)).toHaveLength(2)
+  })
+})
+
+describe('blob URL lifetime', () => {
+  /** The clipboard flavours of the node-selected image at `path` in `editor`. */
+  function copyImage(editor: ReturnType<typeof setup>['editor'], path: number[]): DataTransfer {
+    const select = editor.createTransaction()
+    select.setSelection(nodeSelection(editor.state.doc, editor.registry, path))
+    editor.dispatch(select)
+    const { json, html, text } = serializeForClipboard(editor, toRange(mainRange(editor.state.selection!)), path)
+    const end = editor.createTransaction()
+    end.setSelection(sel([0, 0], 2))
+    editor.dispatch(end)
+    return transfer([], { [FRAGMENT_MIME]: json, 'text/html': html, 'text/plain': text })
+  }
+
+  const paste = (editor: ReturnType<typeof setup>['editor'], dt: DataTransfer) => editor.handleIntent(intent('insertFromPaste', dt))
+  const json = (editor: ReturnType<typeof setup>['editor']) => JSON.stringify(editor.getJSON())
+
+  it('a preview is revoked once its upload succeeded and every copy shows the uploaded URL', async () => {
+    const { editor, uploads } = setup()
+    editor.storage.image.upload([png()])
+    paste(editor, copyImage(editor, [1]))
+    expect(images(editor.state.doc as Doc)).toHaveLength(2)
+    expect(revoked).toEqual([])
+    uploads[0]!.resolve('https://x/a.png')
+    await editor.storage.image.whenIdle()
+    expect(revoked).toEqual(['blob:test/1'])
+    editor.destroy()
+    expect(revoked).toEqual(['blob:test/1'])
+  })
+
+  it('a preview is revoked once its upload failed and the images were removed', async () => {
+    const { editor, uploads } = setup()
+    editor.storage.image.upload([png()])
+    uploads[0]!.reject(new Error('boom'))
+    await editor.storage.image.whenIdle()
+    expect(revoked).toEqual(['blob:test/1'])
+  })
+
+  it('a preview history can still bring back is revoked only when history lets go of it', async () => {
+    const { editor, uploads } = setup()
+    editor.storage.image.upload([png()])
+    // The user's own src change: undoing it brings back the preview, so it must stay alive.
+    expect(editor.commands.setNodeData([1], { src: 'https://x/other.png' })).toBe(true)
+    uploads[0]!.resolve('https://x/a.png')
+    await editor.storage.image.whenIdle()
+    expect(revoked).toEqual([])
+    clearHistory(editor)
+    expect(revoked).toEqual(['blob:test/1'])
+  })
+
+  it('a copy pasted after the upload succeeded gets the uploaded URL', async () => {
+    const { editor, uploads } = setup()
+    editor.storage.image.upload([png()])
+    const dt = copyImage(editor, [1])
+    uploads[0]!.resolve('https://x/a.png')
+    await editor.storage.image.whenIdle()
+    paste(editor, dt)
+    expect(images(editor.state.doc as Doc).map((i) => i.data.src)).toEqual(['https://x/a.png', 'https://x/a.png'])
+  })
+
+  it('a copy pasted after the upload failed inserts no image', async () => {
+    const { editor, uploads } = setup()
+    editor.storage.image.upload([png()])
+    const dt = copyImage(editor, [1])
+    uploads[0]!.reject(new Error('boom'))
+    await editor.storage.image.whenIdle()
+    paste(editor, dt)
+    expect(images(editor.state.doc as Doc)).toHaveLength(0)
+    expect(json(editor)).not.toContain('blob:')
+    expect(text(editor.state.doc as Doc)).toBe('ab')
+  })
+
+  it.each([FRAGMENT_MIME, 'text/html'])('a pending copy pasted into another editor (%s) inserts no image', (flavour) => {
+    const a = setup()
+    a.editor.storage.image.upload([png()])
+    const dt = copyImage(a.editor, [1])
+    const b = setup()
+    paste(b.editor, transfer([], { [flavour]: dt.getData(flavour), 'text/plain': dt.getData('text/plain') }))
+    expect(images(b.editor.state.doc as Doc)).toHaveLength(0)
+    expect(json(b.editor)).not.toContain('blob:')
+  })
+
+  it('a blob src an image in the doc already shows is kept when pasted', () => {
+    const editor = createTestEditor({
+      plugins: [paragraph, image],
+      doc: doc(p(txt('ab')), el('image', { src: 'blob:http://app/1', alt: '' })),
+      selection: sel([0, 0], 0),
+    })
+    paste(editor, copyImage(editor, [1]))
+    expect(images(editor.state.doc as Doc).map((i) => i.data.src)).toEqual(['blob:http://app/1', 'blob:http://app/1'])
+  })
+
+  it('a pending preview src set with setNodeData is tracked: a failure after its removal clears history', async () => {
+    const { editor, uploads } = setup()
+    const tr = editor.createTransaction()
+    tr.insertNode([1], el('image', { src: 'https://x/b.png', alt: 'b' }))
+    editor.dispatch(tr)
+    editor.storage.image.upload([png()])
+    const blob = images(editor.state.doc as Doc)[0]!.data.src
+    const other = images(editor.state.doc as Doc).find((i) => i.data.alt === 'b')!
+    const at = () => (editor.state.doc as Doc).children.findIndex((n) => n.id === other.id)
+    expect(editor.commands.setNodeData([at()], { src: blob })).toBe(true)
+    expect(editor.storage.image.isPending(other.id)).toBe(true)
+    const remove = editor.createTransaction()
+    remove.meta.origin = 'command'
+    remove.removeNode([at()])
+    editor.dispatch(remove)
+    uploads[0]!.reject(new Error('boom'))
+    await editor.storage.image.whenIdle()
+    while (editor.commands.undo()) expect(json(editor)).not.toContain('blob:')
+    expect(revoked).toEqual([blob])
+  })
+
+  it('a pending preview src set with setNodeData is tracked: a success after its removal rewrites history', async () => {
+    const { editor, uploads } = setup()
+    const tr = editor.createTransaction()
+    tr.insertNode([1], el('image', { src: 'https://x/b.png', alt: 'b' }))
+    editor.dispatch(tr)
+    editor.storage.image.upload([png()])
+    const blob = images(editor.state.doc as Doc)[0]!.data.src
+    const other = images(editor.state.doc as Doc).find((i) => i.data.alt === 'b')!
+    const at = () => (editor.state.doc as Doc).children.findIndex((n) => n.id === other.id)
+    expect(editor.commands.setNodeData([at()], { src: blob })).toBe(true)
+    const remove = editor.createTransaction()
+    remove.meta.origin = 'command'
+    remove.removeNode([at()])
+    editor.dispatch(remove)
+    uploads[0]!.resolve('https://x/a.png')
+    await editor.storage.image.whenIdle()
+    expect(editor.commands.undo()).toBe(true)
+    expect(images(editor.state.doc as Doc).find((i) => i.id === other.id)!.data.src).toBe('https://x/a.png')
+    expect(revoked).toEqual([blob])
   })
 })
