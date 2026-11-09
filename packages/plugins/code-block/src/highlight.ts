@@ -15,8 +15,9 @@ export interface HighlightToken {
 }
 
 /**
- * Tokenizes `code` written in `language`. Must be pure (it runs on every view update) and return
- * no tokens for a language it does not know. Offsets are UTF-16 offsets into `code`.
+ * Tokenizes `code` written in `language`. Must be pure: its tokens are cached per code block node, so
+ * it runs again only for a block that changed (its text or language) or when the highlighter option
+ * changes. Returns no tokens for a language it does not know. Offsets are UTF-16 offsets into `code`.
  */
 export type Highlighter = (code: string, language: string) => HighlightToken[]
 

@@ -26,7 +26,6 @@ import {
   mainRange,
   mergeAttrs,
   nextPath,
-  nodeEntries,
   nodeText,
   type Command,
   type Decoration,
@@ -513,22 +512,55 @@ function linesToBlocks(fragment: Fragment, registry: Registry): Fragment {
   }))
 }
 
-/** Per code block node (nodes are immutable), the tokens last computed and the highlighter that made them. */
-const tokenCache = new WeakMap<object, { highlighter: Highlighter; tokens: HighlightToken[] }>()
+/** A valid highlight token of a code block below some subtree root: `path` is its text's, relative to that root. */
+interface SubtreeToken {
+  path: Path
+  from: number
+  to: number
+  className: string
+}
 
-function tokensFor(block: DeepReadonly<ElementNode>, text: string, highlighter: Highlighter): HighlightToken[] {
-  const cached = tokenCache.get(block)
-  if (cached && cached.highlighter === highlighter) return cached.tokens
+/**
+ * Per element node (nodes are immutable and unchanged subtrees keep their identity), the highlight
+ * tokens of the code blocks below it and the highlighter and code block type that made them. An
+ * update walks only the elements that changed: an unchanged subtree, code block or not, is reused
+ * without being walked or highlighted again.
+ */
+const subtreeCache = new WeakMap<object, { highlighter: Highlighter; name: string; tokens: readonly SubtreeToken[] }>()
+
+/** The valid tokens `highlighter` gives a code block with a single non-empty text (others have none). */
+function blockTokens(block: ElementNode, highlighter: Highlighter): SubtreeToken[] {
+  const kids = block.children ?? []
+  const only = kids[0]
+  if (kids.length !== 1 || !only || !isText(only) || only.text === '') return []
+  const text = only.text
   const language = typeof block.data.language === 'string' ? block.data.language : 'plaintext'
-  let tokens: HighlightToken[] = []
+  let raw: HighlightToken[] = []
   try {
-    const raw = highlighter(text, language)
-    tokens = Array.isArray(raw) ? raw : []
+    const result = highlighter(text, language)
+    raw = Array.isArray(result) ? result : []
   } catch (error) {
     // A throwing highlighter only loses the highlighting, never the render.
     console.error('@hte/code-block:', error)
   }
-  tokenCache.set(block, { highlighter, tokens })
+  const out: SubtreeToken[] = []
+  for (const t of raw) {
+    const ok = Number.isInteger(t.from) && Number.isInteger(t.to) && t.from >= 0 && t.to > t.from && t.to <= text.length
+    if (ok && typeof t.className === 'string') out.push({ path: [0], from: t.from, to: t.to, className: t.className })
+  }
+  return out
+}
+
+/** The tokens of the code blocks (type `name`) in the subtree of `node`, in document order, cached per node. */
+function subtreeTokens(node: Node, name: string, highlighter: Highlighter): readonly SubtreeToken[] {
+  if (!isElement(node)) return []
+  const cached = subtreeCache.get(node)
+  if (cached && cached.highlighter === highlighter && cached.name === name) return cached.tokens
+  const tokens: SubtreeToken[] = node.type === name ? blockTokens(node, highlighter) : []
+  ;(node.children ?? []).forEach((child, i) => {
+    for (const t of subtreeTokens(child, name, highlighter)) tokens.push({ ...t, path: [i, ...t.path] })
+  })
+  subtreeCache.set(node, { highlighter, name, tokens })
   return tokens
 }
 
@@ -664,18 +696,14 @@ export const codeBlock = definePlugin({
     const out: Decoration[] = []
     const highlighter = ctx.options.highlighter
     if (typeof highlighter !== 'function') return out
-    for (const [node, path] of nodeEntries(state.doc)) {
-      if (!isElement(node) || node.type !== ctx.name) continue
-      const kids = node.children ?? []
-      const only = kids[0]
-      if (kids.length !== 1 || !only || !isText(only) || only.text === '') continue
-      const text = only.text
-      const at = (offset: number): Point => ({ path: [...path, 0], offset })
-      for (const t of tokensFor(node, text, highlighter)) {
-        const ok = Number.isInteger(t.from) && Number.isInteger(t.to) && t.from >= 0 && t.to > t.from && t.to <= text.length
-        if (ok && typeof t.className === 'string') out.push({ type: 'inline', from: at(t.from), to: at(t.to), attrs: { class: t.className } })
+    // Only the top-level blocks are visited on every update; below them, `subtreeTokens` reuses
+    // every subtree that did not change.
+    ;(state.doc as Doc).children.forEach((block, i) => {
+      for (const t of subtreeTokens(block, ctx.name, highlighter)) {
+        const at = (offset: number): Point => ({ path: [i, ...t.path], offset })
+        out.push({ type: 'inline', from: at(t.from), to: at(t.to), attrs: { class: t.className } })
       }
-    }
+    })
     return out
   },
 })

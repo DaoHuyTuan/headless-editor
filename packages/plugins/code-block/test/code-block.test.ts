@@ -468,6 +468,82 @@ describe('code block decorations', () => {
       { type: 'inline', from: { path: [0, 0], offset: 0 }, to: { path: [0, 0], offset: 2 }, attrs: { class: 'hljs-x' } },
     ])
   })
+
+  /** A highlighter recording each call, giving one token over the whole text. */
+  function counting() {
+    const calls: string[] = []
+    const plugin = codeBlock.configure({
+      highlighter: (text, lang) => {
+        calls.push(text)
+        return [{ from: 0, to: text.length, className: `hljs-${lang}` }]
+      },
+    })
+    return { calls, plugin }
+  }
+  const tok = (path: number[], to: number, lang: string) => ({
+    type: 'inline',
+    from: { path, offset: 0 },
+    to: { path, offset: to },
+    attrs: { class: `hljs-${lang}` },
+  })
+
+  it('an edit outside the code blocks re-highlights none; an edit in one re-highlights only it', () => {
+    const { calls, plugin } = counting()
+    const ed = setup(doc(code('ab', 'x'), p(txt('p')), code('cd', 'y')), caret([1, 0], 1), plugin)
+    expect(inline(ed)).toEqual([tok([0, 0], 2, 'x'), tok([2, 0], 2, 'y')])
+    expect(calls).toEqual(['ab', 'cd'])
+    calls.length = 0
+    ed.commands.insertText('q')
+    expect(inline(ed)).toEqual([tok([0, 0], 2, 'x'), tok([2, 0], 2, 'y')])
+    expect(calls).toEqual([])
+    ed.dispatch(ed.createTransaction().insertText('e', { start: { path: [0, 0], offset: 2 }, end: { path: [0, 0], offset: 2 } }))
+    expect(inline(ed)).toEqual([tok([0, 0], 3, 'x'), tok([2, 0], 2, 'y')])
+    expect(calls).toEqual(['abe'])
+  })
+
+  it('a block inserted before the code blocks shifts their decorations without re-highlighting', () => {
+    const { calls, plugin } = counting()
+    const ed = setup(doc(p(txt('p')), code('ab', 'x')), caret([0, 0], 0), plugin)
+    expect(inline(ed)).toEqual([tok([1, 0], 2, 'x')])
+    calls.length = 0
+    ed.commands.splitBlock()
+    expect(inline(ed)).toEqual([tok([2, 0], 2, 'x')])
+    expect(calls).toEqual([])
+  })
+
+  it('a changed language or highlighter highlights again', () => {
+    const { calls, plugin } = counting()
+    const ed = setup(doc(code('ab', 'x')), caret([0, 0], 0), plugin)
+    inline(ed)
+    calls.length = 0
+    ed.commands.setLanguage('css')
+    expect(inline(ed)).toEqual([tok([0, 0], 2, 'css')])
+    expect(calls).toEqual(['ab'])
+    const other = counting()
+    const ed2 = setup(ed.state.doc as Doc, caret([0, 0], 0), other.plugin)
+    expect(ed2.getDecorations(ed.state).filter((d) => d.type === 'inline')).toEqual([tok([0, 0], 2, 'css')])
+    expect(other.calls).toEqual(['ab'])
+  })
+
+  it('does not walk again into a subtree that did not change', () => {
+    const { plugin } = counting()
+    const ed = setup(doc(p(txt('a')), code('ab', 'x')), caret([0, 0], 0), plugin)
+    let reads = 0
+    const para = new Proxy(ed.state.doc.children[0]!, {
+      get(target, key, receiver) {
+        if (key === 'children') reads++
+        return Reflect.get(target, key, receiver)
+      },
+    })
+    const withPara = (children: readonly unknown[]) => ({ ...ed.state, doc: { ...ed.state.doc, children } }) as typeof ed.state
+    const [, block] = ed.state.doc.children
+    expect(ed.getDecorations(withPara([para, block])).filter((d) => d.type === 'inline')).toEqual([tok([1, 0], 2, 'x')])
+    reads = 0
+    // A new doc (another block appended) holding the same paragraph node.
+    const extra = { id: 'z', type: 'paragraph', data: {}, children: [{ text: 'z', marks: [] }] }
+    expect(ed.getDecorations(withPara([para, block, extra])).filter((d) => d.type === 'inline')).toEqual([tok([1, 0], 2, 'x')])
+    expect(reads).toBe(0)
+  })
 })
 
 describe('defaultHighlighter', () => {
