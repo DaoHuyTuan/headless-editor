@@ -55,7 +55,7 @@ Status after M2 verification: every item below was closed in M2 except the histo
 - History:
   - `runHistory` returns true even when the dispatch is vetoed.
   - It uses a `-Infinity` time sentinel.
-  - There is no stack depth limit.
+  - ✅ There is no stack depth limit.
   - A selection change between keystrokes doesn't break the typing group.
   - Cut merges with a previous Backspace.
 

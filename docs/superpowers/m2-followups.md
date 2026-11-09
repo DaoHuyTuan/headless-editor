@@ -62,7 +62,7 @@ Kept open from "Start of M3" (no M3 plugin needed them, and each is a separate c
 - Pasting several blocks with an atom at an edge can leave an empty paragraph next to it.
 - A drop within 500 ms of typing joins the typing undo step, and a drop moves the caret even when nothing was inserted.
 - History replay runs on every data-only change made outside history; add a guard when the stacks hold no `set_node_data`.
-- `rewriteHistoryData` doesn't validate its data.
+- ✅ `rewriteHistoryData` doesn't validate its data.
 - Validated data from insert can alias the caller's object.
 - A default block whose schema has required fields would make normalize's inserts reject.
 - The mutation.ts JSDoc is garbled.

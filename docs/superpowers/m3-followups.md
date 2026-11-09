@@ -32,9 +32,9 @@ Collected from the per-task and final reviews of milestone M3 (branch `feat/m3`)
   - attribute output order changed (matters for string compares);
   - the `mergeAttrs` JSDoc is spliced awkwardly.
 - History (Task 4):
-  - entries grow across undo/redo cycles with appends (no compaction);
+  - ✅ entries grow across undo/redo cycles with appends (no compaction);
   - appended trs cannot be separate undo steps (JSDoc);
-  - a structural append under `addToHistory: false` clears the stacks;
+  - ✅ a structural append under `addToHistory: false` clears the stacks (stale since M4);
   - the meaning of `R.selectionBefore` after a fold;
   - untested: 3+ levels of appends, a selection-only append, a data-only append after an undo root.
 - Inline atoms (Task 5):

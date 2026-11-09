@@ -46,14 +46,14 @@ Items that cannot be acted on here (other machines, decisions, rulings already r
 | 2.1 | ✅ A selection change between keystrokes doesn't break the typing group. | m1 | bug | P1 | fixed |
 | 2.2 | ✅ Cut merges with a previous Backspace. | m1 | bug | P1 | fixed |
 | 2.3 | ✅ A drop within 500 ms of typing joins the typing undo step; a drop moves the caret even when nothing was inserted. | m2 | bug | P1 | fixed |
-| 2.4 | No stack depth limit. | m1 | bug | P2 | confirmed |
+| 2.4 | ✅ No stack depth limit. Now the `depth` option (default 100): recording past it drops the oldest step. | m1 | bug | P2 | fixed |
 | 2.5 | `runHistory` returns true even when the dispatch is dropped. | m1 | bug | P3 | confirmed |
 | 2.6 | `-Infinity` time sentinel for "closed group"; replace with an explicit flag. | m1 | api | P3 | confirmed |
-| 2.7 | Entries grow across undo/redo cycles with appends (no compaction). | m3 | perf | P2 | open |
-| 2.8 | A structural append under `addToHistory: false` clears the stacks. | m3 | bug | P2 | open |
+| 2.7 | ✅ Entries grow across undo/redo cycles with appends (no compaction). Folds now cancel an op that meets its inverse (`compactOps`). | m3 | perf | P2 | fixed |
+| 2.8 | ✅ A structural append under `addToHistory: false` clears the stacks. Stale: since M4 it maps the stacks (`rebaseStack`); a test now covers it after an undo too. Closed. | m3 | bug | P2 | fixed |
 | 2.9 | History replay runs on every data-only change made outside history; skip when the stacks hold no `set_node_data`. | m2 | perf | P3 | open |
-| 2.10 | `rewriteHistoryData` doesn't validate its data. | m2 | bug | P2 | open |
-| 2.11 | A mixed data+structural outside tr drops entries the data path would rewrite. | m4 | bug | P2 | open |
+| 2.10 | ✅ `rewriteHistoryData` doesn't validate its data. Every merged stored copy is validated now; a failure rejects the rewrite (throws in dev mode). | m2 | bug | P2 | fixed |
+| 2.11 | ✅ A mixed data+structural outside tr drops entries the data path would rewrite. Its data ops now rewrite the payloads, and only the other ops are rebased. | m4 | bug | P2 | fixed |
 | 2.12 | Undoing the duplicate-mark dedupe (normalize rule 6) throws (corrupted input only). | m1 | bug | P3 | open |
 | 2.13 | Docs: appended trs cannot be separate undo steps; meaning of `selectionBefore` after a fold. | m3 | doc | P3 | open |
 | 2.14 | Tests: 3+ levels of appends, a selection-only append, a data-only append after an undo root; multi-entry redo replay and replay-failure fallback; a vetoed undo. | m1, m2, m3 | test | P3 | open |
