@@ -1,4 +1,4 @@
-import { comparePoint, pointEquals } from './path'
+import { comparePoint, pathEquals, pointEquals } from './path'
 import type { Path, Point, Selection, SelectionRange } from './types'
 
 export type { Selection, SelectionRange }
@@ -13,10 +13,6 @@ export function isNodeRange(r: SelectionRange): r is SelectionRange & { node: Pa
 
 export function mainRange(sel: Selection): SelectionRange {
   return sel.ranges[sel.main]!
-}
-
-function pathEquals(a: Path, b: Path): boolean {
-  return a.length === b.length && a.every((v, i) => v === b[i])
 }
 
 export function rangeEquals(a: SelectionRange, b: SelectionRange): boolean {

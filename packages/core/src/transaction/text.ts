@@ -1,7 +1,7 @@
 import { createId } from '../model/id'
 import { editableTextEntries, isNodeSelection, isOpaque, nodeSelection } from '../model/editable'
 import { getNode, isElement, isText, sameMarkSet } from '../model/node'
-import { comparePath, comparePoint, isAncestorPath, nextPath, parentPath, pointEquals, toRange } from '../model/path'
+import { comparePath, comparePoint, isAncestorPath, nextPath, parentPath, pathEquals, pointEquals, toRange } from '../model/path'
 import { isNodeRange, rangeEquals, single } from '../model/selection'
 import type { ElementNode, Mark, Node, Path, Point, Range, Selection, SelectionRange, TextNode } from '../model/types'
 import { marksAtTr, marksOfRange } from './marks'
@@ -17,10 +17,6 @@ import type { Transaction } from './transaction'
  */
 
 export type DeleteUnit = 'character' | 'word' | 'line'
-
-function pathEquals(a: Path, b: Path): boolean {
-  return a.length === b.length && a.every((v, i) => v === b[i])
-}
 
 /** Orders the points: callers may pass a backward selection or an unordered range. */
 function asRange(at: SelectionRange | Range): Range {

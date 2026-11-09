@@ -1,6 +1,6 @@
 import { editableTextEntries, type NodeTypes } from '../model/editable'
 import { cloneJson, deepEqualJson, getNode, isText, sameMarkSet, textEntries } from '../model/node'
-import { comparePoint, nextPath, parentPath } from '../model/path'
+import { comparePoint, nextPath, parentPath, pathEquals } from '../model/path'
 import { single } from '../model/selection'
 import type { Data, DeepReadonly, Doc, Json, Mark, Path, Point, Range, SelectionRange, TextNode } from '../model/types'
 import type { Registry } from '../plugin/registry'
@@ -17,10 +17,6 @@ import type { Transaction } from './transaction'
 
 /** The parts of a state the mark queries read (an `EditorState` or a transaction's current view). */
 export type MarkStateView = Pick<EditorState, 'doc' | 'selection' | 'storedMarks'>
-
-function pathEquals(a: Path, b: Path): boolean {
-  return a.length === b.length && a.every((v, i) => v === b[i])
-}
 
 function isCollapsedRange(r: Range): boolean {
   return comparePoint(r.start, r.end) === 0
