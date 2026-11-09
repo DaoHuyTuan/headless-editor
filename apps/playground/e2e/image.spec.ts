@@ -91,7 +91,8 @@ async function caret(page: Page, path: number[], offset: number): Promise<void> 
   )
 }
 
-const editorImg = (page: Page) => page.locator('[data-testid=editor] img')
+/** The `<img>` of the image node views (by their stable marker, not any `<img>` in the editor). */
+const editorImg = (page: Page) => page.locator('[data-testid=editor] [data-hte-image] img')
 
 test.describe('inserting', () => {
   test('the file input inserts an image that is uploaded; undo and redo keep the uploaded src', async ({ page }) => {
@@ -272,7 +273,7 @@ test.describe('the image scenario', () => {
 
   test('dragging the resize handle by +40px increases the width', async ({ page }) => {
     const start = (await editorImg(page).boundingBox())!.width
-    const handle = page.locator('[data-testid=editor] .image-resize')
+    const handle = page.locator('[data-testid=editor] [data-hte-image] [role=separator]')
     const box = (await handle.boundingBox())!
     const x = box.x + box.width / 2
     const y = box.y + box.height / 2

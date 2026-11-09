@@ -1,6 +1,18 @@
 import { expect, test, type Page } from '@playwright/test'
 import type { ElementNode, TextNode } from '@hte/core'
-import { collectErrors, compose, focusEnd, getDoc, getSelection, getText, openPlayground, openScenario, setCaret } from './helpers'
+import {
+  collectErrors,
+  compose,
+  focusEnd,
+  getDoc,
+  getSelection,
+  getText,
+  openPlayground,
+  openScenario,
+  setCaret,
+  syntheticCopy,
+  syntheticPaste,
+} from './helpers'
 
 let errors: string[]
 
@@ -240,6 +252,28 @@ test('pasting rich HTML into a code block inserts its plain text', async ({ page
   expect(await code(page, 1)).toEqual({ text: `${SNIPPET}bold big\nsecond line`, marks: [] })
   await expect(page.locator('[data-testid=editor] [data-hte-code-block] :is(strong, em, [style])')).toHaveCount(0)
   await expect.poll(() => getSelection(page)).toMatchObject({ focus: { path: [1, 0], offset: SNIPPET.length + 20 } })
+})
+
+test('multi-line code copied from the block and pasted into a paragraph gives one paragraph per line', async ({ page }) => {
+  await openSnippet(page)
+  await setCaret(page, [2, 0], 'after'.length)
+  await page.keyboard.press('Enter')
+  await expect.poll(() => types(page)).toEqual(['paragraph', 'codeBlock', 'paragraph', 'paragraph'])
+  await page.evaluate((end) => {
+    const editor = window.editor
+    const tr = editor.createTransaction()
+    tr.setSelection({ ranges: [{ anchor: { path: [1, 0], offset: 0 }, focus: { path: [1, 0], offset: end } }], main: 0 })
+    tr.setMeta('addToHistory', false)
+    editor.dispatch(tr)
+  }, SNIPPET.length)
+  expect((await syntheticCopy(page, 'copy')).prevented).toBe(true)
+  await setCaret(page, [3, 0], 0)
+  expect(await syntheticPaste(page)).toBe(true)
+  const lines = SNIPPET.split('\n')
+  await expect.poll(() => types(page)).toEqual(['paragraph', 'codeBlock', 'paragraph', ...lines.map(() => 'paragraph')])
+  const doc = await getDoc(page)
+  expect(doc.children.slice(3).map((b) => textOf(b as ElementNode))).toEqual(lines)
+  expect(await codeText(page, 1)).toBe(SNIPPET)
 })
 
 test('highlight classes appear and follow the language', async ({ page }) => {
