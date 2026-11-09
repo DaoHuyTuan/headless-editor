@@ -313,3 +313,32 @@ describe('input rules with several carets', () => {
     expect(ed.state.selection).toEqual(createSelection([at([0, 0], 2), at([0, 0], 3)]))
   })
 })
+
+describe('input rules: the match ends at the caret', () => {
+  it('a rule without $ matches the occurrence ending at the caret, not the leftmost one', () => {
+    const plain: InputRule = {
+      match: /-- /,
+      handler: (_ctx, _match, range, tr) => {
+        tr.insertText('— ', range)
+        return true
+      },
+    }
+    const { type, text } = setup(doc(p('x-- a')), sel([0, 0], 5), [plain])
+    type('-- ')
+    expect(text()).toEqual(stripIds(doc(p('x-- a— '))))
+  })
+
+  it('the handler gets the match with its index and groups', () => {
+    const seen: (string | number | undefined)[] = []
+    const rule: InputRule = {
+      match: /\*(\w+)\*/,
+      handler: (_ctx, match) => {
+        seen.push(match.index, match[0], match[1])
+        return false
+      },
+    }
+    const { type } = setup(doc(p('*a* b ')), sel([0, 0], 6), [rule])
+    type('*cd*')
+    expect(seen).toEqual([6, '*cd*', 'cd'])
+  })
+})
