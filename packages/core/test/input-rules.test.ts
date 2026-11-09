@@ -55,6 +55,17 @@ describe('input rules', () => {
     expect(text()).toEqual(stripIds(doc(p('— '))))
   })
 
+  it('the character typed right after a rule is a step of its own after the rule step', () => {
+    const { ed, type, text } = setup()
+    type('-- x')
+    expect(text()).toEqual(stripIds(doc(p('— x'))))
+    // The rule ended the typing group: typing after it does not merge into the rule's step.
+    expect(ed.commands.undo()).toBe(true)
+    expect(text()).toEqual(stripIds(doc(p('— '))))
+    expect(ed.commands.undo()).toBe(true)
+    expect(text()).toEqual(stripIds(doc(p('-- '))))
+  })
+
   it('matches against the block text from its start to the caret only', () => {
     const { type, text } = setup(doc(p('a')), sel([0, 0], 1))
     type('-- ')

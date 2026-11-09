@@ -101,6 +101,7 @@ export type {
   EditorEvent,
   EditorEventName,
   OptionsEvent,
+  EditorListeners,
   EditorOptions,
   EditorPlugins,
   EditorStorage,

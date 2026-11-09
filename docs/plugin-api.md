@@ -354,7 +354,7 @@ All lifecycle hooks run in priority order with the same `ctx`. If one throws, th
 
 | Hook | When | Notes |
 |---|---|---|
-| `onCreate(ctx)` | once, at the end of the editor constructor, before any DOM | must be side-effect-free: React StrictMode may build a throwaway editor |
+| `onCreate(ctx)` | once, at the end of the editor constructor, before any DOM | keep it side-effect-free: an editor can be built and never mounted (a render React discards) |
 | `onMount(ctx, view) => cleanup?` | each time a view attaches to a DOM root | use the `view` argument, because `editor.view` is still null here; the cleanup runs on unmount, remount or destroy |
 | `onUpdate(ctx, { tr })` | after a committed tr that changed the doc | outside the pipeline, so dispatching here is a normal nested dispatch |
 | `onSelectionUpdate(ctx, { tr })` | after a committed tr that changed the selection | same as `onUpdate` |

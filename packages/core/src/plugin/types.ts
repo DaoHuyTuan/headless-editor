@@ -279,7 +279,8 @@ export interface PluginSpec<
   /**
    * Called once at the end of the editor constructor, after every plugin's storage exists (no DOM).
    * When one throws, the constructor destroys the editor (every `destroy` hook runs) before rethrowing.
-   * Must be side-effect-free under StrictMode's double invoke (React builds a throwaway editor).
+   * Keep it side-effect-free: an app may build an editor it never mounts or keeps (the React
+   * adapter builds one per mount, but a render React discards before committing can still build one).
    */
   onCreate?: (ctx: PluginContext<O, S, C, T>) => void
   /**
