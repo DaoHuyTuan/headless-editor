@@ -56,9 +56,16 @@ export function* textEntries(root: ReadableRoot, range?: Range): Generator<[Text
 
 /** A deep copy of a JSON value: data that enters the doc never aliases a caller's (or another node's) object. */
 export function cloneJson<T extends Json>(value: T): T {
-  if (Array.isArray(value)) return value.map(cloneJson) as T
   if (typeof value !== 'object' || value === null) return value
-  return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, cloneJson(v)])) as T
+  if (Array.isArray(value)) {
+    const out = new Array(value.length)
+    for (let i = 0; i < value.length; i++) out[i] = cloneJson(value[i]!)
+    return out as T
+  }
+  // Plain loops: this runs over every node of the doc in `getJSON`.
+  const out: Record<string, Json> = {}
+  for (const k of Object.keys(value)) out[k] = cloneJson((value as Record<string, Json>)[k]!)
+  return out as T
 }
 
 export function deepEqualJson(a: Json, b: Json): boolean {

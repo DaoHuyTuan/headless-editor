@@ -147,7 +147,7 @@ The document is a tree of elements and texts:
 
 | | |
 |---|---|
-| Read | `editor.getJSON()` (store this) or `editor.getHTML()` |
+| Read | `editor.getJSON()` (store this; a mutable copy) or `editor.getHTML()`. To autosave, `JSON.stringify(editor.state.doc)` needs no copy |
 | Load | `new Editor({ content })`, or `editor.setContent(jsonOrHtml)` |
 | Listen | `editor.on('update', …)`, or `onUpdate` in `useEditor` |
 

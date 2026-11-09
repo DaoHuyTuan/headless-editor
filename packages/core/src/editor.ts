@@ -6,10 +6,10 @@ import { serializeHTML } from './html/serialize'
 import { runInputRules } from './input-rules'
 import { coerceDoc } from './load'
 import { firstEditableCaret, isEditableRange, rehomeRanges } from './model/editable'
-import { deepEqualJson, getNode, isElement } from './model/node'
+import { cloneJson, deepEqualJson, getNode, isElement } from './model/node'
 import { comparePoint } from './model/path'
 import { mainRange, selectionEquals } from './model/selection'
-import type { Data, Doc, ElementNode, Point, Selection, SelectionRange } from './model/types'
+import type { Data, Doc, ElementNode, Json, Point, Selection, SelectionRange } from './model/types'
 import { normalize } from './normalize'
 import { Registry } from './plugin/registry'
 import type {
@@ -411,9 +411,13 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     }
   }
 
-  /** A deep copy of the document: changing it never affects the editor. */
+  /**
+   * A deep copy of the document: changing it never affects the editor. It costs O(doc); to serialize
+   * (autosave), `JSON.stringify(editor.state.doc)` needs no copy: the state's doc is never mutated.
+   */
   getJSON(): Doc {
-    return structuredClone(this._state.doc) as Doc
+    // A plain JSON walk: several times faster than `structuredClone` on the doc's small objects.
+    return cloneJson(this._state.doc as unknown as Json) as unknown as Doc
   }
 
   /** Serializes the document with the plugins' current options (no DOM needed). */
