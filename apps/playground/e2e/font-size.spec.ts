@@ -22,13 +22,11 @@ const size = (s: string) => ({ type: 'fontSize', data: { size: s } })
 
 test('choosing 24px on a selection adds the fontSize mark to it', async ({ page }) => {
   await page.keyboard.type('hello world')
-  await page.evaluate(() => {
-    const editor = window.editor
-    const tr = editor.createTransaction()
-    tr.setSelection({ ranges: [{ anchor: { path: [0, 0], offset: 6 }, focus: { path: [0, 0], offset: 11 } }], main: 0 })
-    tr.setMeta('addToHistory', false)
-    editor.dispatch(tr)
-  })
+  // Select "world" as a user does: Shift+ArrowLeft from the end.
+  for (let i = 0; i < 5; i++) await page.keyboard.press('Shift+ArrowLeft')
+  await expect
+    .poll(() => page.evaluate(() => window.editor.state.selection?.ranges[0]))
+    .toEqual({ anchor: { path: [0, 0], offset: 11 }, focus: { path: [0, 0], offset: 6 } })
   const select = page.getByTestId('font-size')
   await expect(select).toHaveValue('')
   await select.selectOption('24px')
@@ -71,20 +69,7 @@ test('the fontSizes scenario loads sizes as marks, and the select follows the ca
   const doc = await getDoc(page)
   const marks = doc.children.flatMap((b) => ((b as ElementNode).children ?? []).flatMap((c) => ('text' in c ? c.marks : [])))
   expect(marks).toEqual(expect.arrayContaining([size('12px'), size('16px'), size('24px'), size('32px')]))
-  // Put the caret inside the 32px text.
-  await page.evaluate(() => {
-    const editor = window.editor
-    const blocks = editor.getJSON().children
-    for (const [b, block] of blocks.entries()) {
-      for (const [t, child] of (block.children ?? []).entries()) {
-        if (!('text' in child) || !child.marks.some((m) => m.data.size === '32px')) continue
-        const point = { path: [b, t], offset: 1 }
-        const tr = editor.createTransaction()
-        tr.setSelection({ ranges: [{ anchor: point, focus: point }], main: 0 }).setMeta('addToHistory', false)
-        editor.dispatch(tr)
-        return
-      }
-    }
-  })
+  // Put the caret inside the 32px text with a click.
+  await page.locator('[data-testid=editor] span[style*="font-size: 32px"]').first().click()
   await expect(page.getByTestId('font-size')).toHaveValue('32px')
 })
