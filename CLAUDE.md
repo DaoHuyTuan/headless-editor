@@ -63,7 +63,7 @@ Longer docs:
 - `pnpm install`. If vitest is "not found", run `pnpm install --offline`.
 - Unit tests: `pnpm exec vitest run <path>` while iterating; `pnpm test` (full) once before committing. Never use watch mode.
 - Types: `pnpm typecheck`; type tests: `pnpm exec vitest --typecheck run`.
-- e2e: `pnpm --filter playground e2e:chromium` (and `e2e:webkit`). Plain `e2e` also runs Firefox, which cannot launch on this machine.
+- e2e: `pnpm --filter playground e2e` (Chromium + WebKit), or `e2e:chromium` / `e2e:webkit` alone. Firefox is not in the suite.
   - The e2e server uses port 5174. If that port is busy, never kill the process holding it. Run through an uncommitted copy of `apps/playground/playwright.config.ts` with another port, and delete the copy afterwards.
   - Never kill anything on 5173 either.
 - One normalize perf test is timing-sensitive. If it flakes under load, re-run that file alone.

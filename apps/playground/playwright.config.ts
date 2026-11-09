@@ -18,13 +18,13 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   use: { baseURL: `http://localhost:${PORT}`, trace: 'on-first-retry' },
   webServer: { command: `pnpm dev --port ${PORT} --strictPort`, port: PORT, reuseExistingServer },
+  // Chromium and WebKit only: Firefox is not part of the automated suite (it is checked by hand).
   projects: [
-    // Clipboard permissions are Chromium-only: Firefox and WebKit reject them as unknown.
+    // Clipboard permissions are Chromium-only: WebKit rejects them as unknown.
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'], permissions: ['clipboard-read', 'clipboard-write'] },
     },
-    { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
     { name: 'webkit', use: { ...devices['Desktop Safari'] } },
   ],
 })
