@@ -108,7 +108,7 @@ Status after M2 verification: every item below was closed in M2 except the histo
   - Malformed payloads spam warnings.
 
 ## React adapter
-- `onUpdate` can be missed for dispatches during the first commit.
+- ✅ `onUpdate` can be missed for dispatches during the first commit.
 - Passing an explicit `T` to `useEditorState` loses the editor type.
 - Coverage gaps: StrictMode for the selector tests.
 

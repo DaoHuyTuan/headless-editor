@@ -22,12 +22,12 @@ Kept open from "Start of M3" (no M3 plugin needed them, and each is a separate c
 - A copy of a pending image pasted into **another** editor keeps the blob URL; the source editor revokes it on destroy.
 - `rewriteHistoryData` overwrites a `src` the user set before removing the image (documented).
 - A pending blob src set by hand through `setNodeData` is not tracked as a copy.
-- Blob URLs are revoked only on `destroy`, so long sessions hold every preview in memory.
+- ✅ Blob URLs are revoked only on `destroy`, so long sessions hold every preview in memory.
 - A drop ignores the drop point while a node is selected, so the dropped file can replace the selected image.
-- Width parsing accepts unsafe integers (the schema then rejects them).
+- ✅ Width parsing accepts unsafe integers (the schema then rejects them).
 - The view-side `safeSrc` guard has no unit test.
 - Resize handle:
-  - no `lostpointercapture` fallback;
+  - ✅ no `lostpointercapture` fallback;
   - no accessibility (role, label);
   - no behavioural test that a mousedown on the handle or the input doesn't node-select.
 - Failing to upload the last block's image leaves a trailing empty paragraph.
@@ -70,7 +70,7 @@ Kept open from "Start of M3" (no M3 plugin needed them, and each is a separate c
 
 ## React adapter
 - StrictMode builds a throwaway editor in the `useState` initializer.
-- Node views get one commit with stale options after a `pluginOptions` change.
+- ✅ Node views get one commit with stale options after a `pluginOptions` change.
 - No tests yet for a dispatch from a node view's `useEffect`, or for `EditorContent` receiving a different editor.
 
 ## Tests / tooling

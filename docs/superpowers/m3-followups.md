@@ -47,11 +47,11 @@ Collected from the per-task and final reviews of milestone M3 (branch `feat/m3`)
   - ✅ unknown inline elements get no rule-10 siblings;
   - coverage gaps: typing into a ZW leaf, IME before ZW, ZW to `<br>` after the last chip is removed.
 - Input rules (Task 6):
-  - `toBlockOffset` at `input-rules.ts:32` is outside the try, but the throw is unreachable: `runAt` just succeeded for the same caret (move it inside the try for robustness only);
-  - `findTrigger` false positive when the trigger text is the first child of a link;
-  - `runAt` vs `findTrigger` mismatch;
+  - ✅ `toBlockOffset` at `input-rules.ts:32` is outside the try, but the throw is unreachable: `runAt` just succeeded for the same caret (move it inside the try for robustness only);
+  - ✅ `findTrigger` false positive when the trigger text is the first child of a link;
+  - ✅ `runAt` vs `findTrigger` mismatch;
   - a multi-char trigger is loosely supported (docs say single-char);
-  - a rule without `$` matches only the leftmost match;
+  - ✅ a rule without `$` matches only the leftmost match;
   - missing tests: next char after a rule creates a new entry, Vietnamese/NFD query, composition triggers no rule.
 - Decorations (Task 7):
   - ✅ a throwing `decorations` hook propagates out of update/mount (document or catch and log);
@@ -78,8 +78,8 @@ Collected from the per-task and final reviews of milestone M3 (branch `feat/m3`)
 ## Mention
 - The keydown comment near `mention/src/index.ts:411` says the popup stays open after a zero-results Enter; the split moves the caret out of the trigger, so `refresh` closes it. Comment only.
 - Caret after a plain `@foo` opens the popup (document in JSDoc).
-- Hopping between triggers with the same query clears `dismissedAt`.
-- The cache is written during render (`remember()` in two hooks).
+- ✅ Hopping between triggers with the same query clears `dismissedAt`.
+- ✅ The cache is written during render (`remember()` in two hooks).
 - Popup coords don't follow scroll or resize.
 - No `aria-activedescendant` or option ids.
 - Not all tests assert no `console.error`; the `Label` type in a test is awkward; the `commands` cast assumes the plugin name.

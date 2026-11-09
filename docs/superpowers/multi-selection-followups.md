@@ -26,10 +26,10 @@ These items were collected from the per-task reviews of the multi-selection mile
   - With Tab, a selection that ends at a line start next to another indented range ends up mapped over that indent. This is cosmetic.
   - `onBeforeInput` `insertParagraph` overlaps with the mention popup; registration order decides which runs.
 - **Mention:**
-  - `insertAtTriggers` fakes an `EditorState`.
+  - ✅ `insertAtTriggers` fakes an `EditorState`.
   - The popup test checks the popup range, not its coordinates.
 - **Image:**
-  - The pending state is briefly only the main id while multiple copies upload (two dispatches).
+  - ✅ The pending state is briefly only the main id while multiple copies upload (two dispatches).
   - An image file paste with a targeted range (one that is not main) still goes to every range. No intent reaches this today.
 
 ## Tests and docs
