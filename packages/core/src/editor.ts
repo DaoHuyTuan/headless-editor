@@ -351,12 +351,20 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     throwFirst(this.runHooks((plugin, ctx) => plugin.spec.onBlur?.(ctx, event)))
   }
 
-  /** Every plugin's `decorations` for `state`, by priority (what the view draws on its next render). */
+  /**
+   * Every plugin's `decorations` for `state`, by priority (what the view draws on its next render).
+   * A hook that throws is reported with `console.error` and contributes nothing: the view still renders.
+   */
   getDecorations(state: EditorState): Decoration[] {
     const out: Decoration[] = []
     for (const plugin of this.registry.plugins) {
       const hook = plugin.spec.decorations
-      if (hook) out.push(...hook(state, this.getContext(plugin)))
+      if (!hook) continue
+      try {
+        out.push(...hook(state, this.getContext(plugin)))
+      } catch (error) {
+        console.error(`[hte] The decorations hook of "${plugin.name}" threw; its decorations are skipped:`, error)
+      }
     }
     return out
   }

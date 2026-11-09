@@ -1,4 +1,5 @@
 import { getNode, isText } from '../model/node'
+import { checkAttrName } from '../plugin/attrs'
 import { comparePath, comparePoint } from '../model/path'
 import type { DeepReadonly, Doc, Node, Path, Point, TextNode } from '../model/types'
 
@@ -66,8 +67,24 @@ function clamp(n: number, max: number): number {
 }
 
 /**
+ * The first attribute name of `attrs` that is not a valid HTML attribute name, or null. Checked
+ * before rendering, so a bad decoration is dropped instead of failing the render midway.
+ */
+function invalidAttrName(attrs: DecorationAttrs): string | null {
+  for (const name of Object.keys(attrs)) {
+    try {
+      checkAttrName(name)
+    } catch {
+      return name
+    }
+  }
+  return null
+}
+
+/**
  * Groups decorations by the text they fall in (keyed by `pathKey`). Decorations whose points are not
  * in a text of `doc` are dropped; an inline decoration spanning texts is split at their boundaries.
+ * An inline decoration with an invalid attribute name is dropped with a `console.warn`.
  */
 export function groupDecorations(doc: DeepReadonly<Doc>, decorations: readonly Decoration[]): Map<string, LeafDecorations> {
   const out = new Map<string, LeafDecorations>()
@@ -82,6 +99,11 @@ export function groupDecorations(doc: DeepReadonly<Doc>, decorations: readonly D
       const length = textLengthAt(doc, deco.at.path)
       if (length === null) continue
       entry(deco.at.path).widgets.push({ offset: clamp(deco.at.offset, length), key: deco.key, render: deco.render })
+      continue
+    }
+    const bad = invalidAttrName(deco.attrs)
+    if (bad !== null) {
+      console.warn(`[hte] Dropped an inline decoration with an invalid attribute name "${bad}"`)
       continue
     }
     let { from, to } = deco

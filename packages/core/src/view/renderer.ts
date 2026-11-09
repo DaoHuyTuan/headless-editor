@@ -58,11 +58,21 @@ interface HolePosition {
 }
 
 export interface RenderOptions {
-  /** A leaf owned by composition: its DOM is never changed, moved out or removed by this render. */
+  /**
+   * A leaf owned by composition. This render never changes its content and never removes it. It is
+   * not moved, nor is the element child of its hole that holds it, while it sits in its hole between
+   * the static `before` and `anchor` nodes: the other children are placed around it. The shells of
+   * the elements around it are not rebuilt (a data change or `invalidate` is applied on the next
+   * render without `skipLeaf`). It is still moved when it is not where it belongs: in another
+   * parent, outside its hole's window, or when the text it shows moved to another parent, or when an
+   * element around it is replaced (another type or id).
+   */
   skipLeaf?: HTMLElement
   /**
    * The path, in the doc being rendered, of the text `skipLeaf` shows. When given, that text is
-   * rendered by `skipLeaf` whatever its position; otherwise `skipLeaf` keeps its positional slot.
+   * rendered by `skipLeaf` whatever its position. Otherwise `skipLeaf` keeps its positional slot
+   * among its parent's leaves: when leaves before it come or go, another leaf can show the text it
+   * shows (the text appears twice) until the next render without `skipLeaf`. Pass it while composing.
    */
   skipPath?: Path
   /** The path of the node-selected element: its root gets `data-hte-selected`, its node view `selected: true`. */
@@ -76,6 +86,8 @@ interface RenderPass {
   skipLeaf?: HTMLElement
   skipPath?: Path
   selectedNode?: Path
+  /** Ids whose shell (node view: instance) a previous render left as it was around its `skipLeaf`: rebuilt now. */
+  forced: ReadonlySet<string>
   /** Decorations by text path (`pathKey`). */
   decorations: Map<string, LeafDecorations>
   /** Widget elements by key, as shown after this render. */
@@ -126,12 +138,16 @@ export class Renderer {
   private readonly leafShape = new WeakMap<Element, ResolvedPart[]>()
   /** Widget elements by key, as last rendered: a widget decorated again with the same key reuses its element. */
   private widgets = new Map<string, HTMLElement>()
+  /** Widget elements rendered for a key another widget already held in that render (not keyed). */
+  private readonly duplicateWidgets = new WeakSet<HTMLElement>()
   /** Element types whose shells are rebuilt (node views: updated) on the next render. */
   private readonly invalidated = new Set<string>()
   /** Mark types whose leaves are re-rendered on the next render. */
   private readonly invalidatedMarks = new Set<string>()
   /** Ids of node views rebuilt (new container, new instance) on the next render. */
   private readonly rebuildViews = new Set<string>()
+  /** Ids whose rebuild was deferred because their DOM holds the composing leaf (see `RenderOptions.skipLeaf`). */
+  private readonly deferred = new Set<string>()
   private readonly nodeViews: NodeViewHost
   private lastDoc: DeepReadonly<Doc> = { type: 'doc', children: [] }
   private _rendering = false
@@ -152,12 +168,20 @@ export class Renderer {
     this.nodeViews = new NodeViewHost(editor)
   }
 
+  /**
+   * Renders `doc`. When it throws (a plugin's `renderHTML`, a mark's `render`, a node view factory),
+   * the DOM is left partly patched: the elements this render already built stay known (by id, so
+   * the next render reuses or replaces them) and pending invalidations are kept for the next render.
+   */
   render(doc: DeepReadonly<Doc>, opts: RenderOptions = {}): void {
+    const forced = new Set(this.deferred)
+    this.deferred.clear()
     const pass: RenderPass = {
       next: new Map(),
       skipLeaf: opts.skipLeaf,
       skipPath: opts.skipPath,
       selectedNode: opts.selectedNode,
+      forced,
       decorations: groupDecorations(doc, opts.decorations ?? []),
       widgets: new Map(),
     }
@@ -166,6 +190,7 @@ export class Renderer {
       for (const [key, el] of this.widgets) if (opts.skipLeaf.contains(el)) pass.widgets.set(key, el)
     }
     this._rendering = true
+    let done = false
     try {
       // Read-only: the renderer keeps references to the nodes but never changes them.
       this.reconcile(this.rootHolder, (doc as Doc).children, [], pass)
@@ -176,11 +201,20 @@ export class Renderer {
       const live = new Set<string>()
       for (const [id, entry] of pass.next) if (entry.nodeView) live.add(id)
       this.nodeViews.prune(live)
+      done = true
     } finally {
       this._rendering = false
-      this.invalidated.clear()
-      this.invalidatedMarks.clear()
-      this.rebuildViews.clear()
+      if (done) {
+        this.invalidated.clear()
+        this.invalidatedMarks.clear()
+        this.rebuildViews.clear()
+      } else {
+        // What this render built replaces what it replaced (shells, node views, widgets); the rest
+        // is kept as last rendered. The invalidations and deferred rebuilds stay pending.
+        this.byId = new Map([...this.byId, ...pass.next])
+        this.widgets = new Map([...this.widgets, ...pass.widgets])
+        for (const id of forced) this.deferred.add(id)
+      }
       for (const hook of [...this.renderedHooks]) hook()
     }
   }
@@ -397,11 +431,14 @@ export class Renderer {
     })
 
     const { hole, anchor } = holder
+    // Composition owns skipLeaf: the kid that is or holds it stays where it is when that is inside the
+    // hole's window, and the other kids are placed around it.
+    const fixed = skipLeaf ? kids.find((k) => k === skipLeaf || k.contains(skipLeaf)) : undefined
+    const stay = fixed !== undefined && inWindow(holder, fixed) ? fixed : undefined
     let ref = anchor
     for (let i = kids.length - 1; i >= 0; i--) {
       const kid = kids[i]!
-      // Composition owns skipLeaf: never move it (it is already in place when reused here).
-      if (kid === skipLeaf && kid.parentNode === hole) {
+      if (kid === stay) {
         ref = kid
         continue
       }
@@ -427,7 +464,8 @@ export class Renderer {
     const prev = duplicate ? undefined : this.byId.get(node.id)
     const selected = pass.selectedNode !== undefined && samePath(path, pass.selectedNode)
     let entry: ElementEntry
-    const keepView = prev?.nodeView && prev.node.type === node.type && !this.rebuildViews.has(node.id)
+    const forced = pass.forced.has(node.id)
+    const keepView = prev?.nodeView && prev.node.type === node.type && !this.rebuildViews.has(node.id) && !forced
     if (keepView && this.nodeViews.has(node.id)) {
       // A node view keeps its container: data, selection and option changes go through `update`.
       entry = prev
@@ -436,12 +474,26 @@ export class Renderer {
     } else if (
       prev &&
       !prev.nodeView &&
+      !forced &&
       this.shellIntact(prev) &&
       !this.invalidated.has(node.type) &&
       (prev.node === node || (prev.node.type === node.type && deepEqualJson(prev.node.data, node.data)))
     ) {
       entry = prev
       entry.node = node
+    } else if (
+      prev &&
+      pass.skipLeaf &&
+      prev.node.type === node.type &&
+      prev.dom.contains(pass.skipLeaf) &&
+      this.shellIntact(prev) &&
+      (!prev.nodeView || this.nodeViews.has(node.id))
+    ) {
+      // Rebuilding would move the composing leaf into a new shell: keep this one until the next render.
+      entry = prev
+      entry.node = node
+      this.deferred.add(node.id)
+      if (prev.nodeView) this.nodeViews.update(node, selected, false)
     } else {
       entry = this.shell(node)
       // Keep the old children's DOM so they are moved into the new shell, not recreated.
@@ -617,18 +669,18 @@ export class Renderer {
   }
 
   /**
-   * Keeps the widgets of a reused leaf under their keys for this render. False (nothing claimed) when
-   * a key was already taken by another element in this render: the leaf is then rebuilt.
+   * Keeps the widgets of a reused leaf under their keys for this render (a duplicate-key widget is
+   * kept as it is, not keyed). False (nothing claimed) when a key was already taken by another
+   * element in this render and the leaf's widget was keyed: the leaf is then rebuilt.
    */
   private claimWidgets(parts: ResolvedPart[], pass: RenderPass): boolean {
-    let ok = true
     for (const part of parts) {
       if (part.kind !== 'widget') continue
       const taken = pass.widgets.get(part.key)
-      if (taken && taken !== part.el) ok = false
+      if (taken && taken !== part.el && !this.duplicateWidgets.has(part.el)) return false
     }
-    if (ok) for (const part of parts) if (part.kind === 'widget') pass.widgets.set(part.key, part.el)
-    return ok
+    for (const part of parts) if (part.kind === 'widget' && !pass.widgets.has(part.key)) pass.widgets.set(part.key, part.el)
+    return true
   }
 
   /**
@@ -646,8 +698,9 @@ export class Renderer {
         el.setAttribute(WIDGET_ATTR, '')
         el.setAttribute('contenteditable', 'false')
       }
-      // A duplicate key gets its own element, not keyed.
+      // A duplicate key gets its own element, not keyed (kept while its leaf is unchanged).
       if (!taken) pass.widgets.set(part.key, el)
+      else this.duplicateWidgets.add(el)
       return { kind: 'widget', key: part.key, el }
     })
   }
@@ -655,7 +708,8 @@ export class Renderer {
   /**
    * Cheap check that a leaf still has the shape we rendered: a single-child chain with one wrapper
    * per known mark, holding the parts in order (texts, decoration spans around their text, widget
-   * elements, the break). Attributes on wrappers and decoration spans are not compared.
+   * elements, the break). Decoration spans must carry exactly their attributes; attributes on mark
+   * wrappers are not compared.
    */
   private leafIntact(leaf: HTMLElement, text: TextNode, zw: boolean, parts: ResolvedPart[]): boolean {
     if (leaf.hasAttribute(ZW_ATTR) !== zw) return false
@@ -674,6 +728,9 @@ export class Renderer {
       if (part.kind === 'break') return node.nodeName === 'BR' && (node as Element).hasAttribute('data-hte-break')
       if (!part.attrs) return node.nodeType === 3 && (node as Text).data === part.text
       if (node.nodeType !== 1 || !(node as Element).hasAttribute(DECO_ATTR) || node.childNodes.length !== 1) return false
+      const span = node as Element
+      const names = Object.keys(part.attrs)
+      if (span.attributes.length !== names.length + 1 || names.some((n) => span.getAttribute(n) !== part.attrs![n])) return false
       const inside = node.firstChild!
       return inside.nodeType === 3 && (inside as Text).data === part.text
     })
@@ -726,6 +783,14 @@ export class Renderer {
 
 function samePath(a: Path, b: Path): boolean {
   return a.length === b.length && a.every((v, i) => v === b[i])
+}
+
+/** Whether `node` is a child of `holder`'s hole strictly between its `before` and `anchor` nodes. */
+function inWindow(holder: Holder, node: globalThis.Node): boolean {
+  if (node.parentNode !== holder.hole) return false
+  let cur = holder.before ? holder.before.nextSibling : holder.hole.firstChild
+  for (; cur && cur !== holder.anchor; cur = cur.nextSibling) if (cur === node) return true
+  return false
 }
 
 /**
