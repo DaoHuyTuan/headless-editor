@@ -4,7 +4,7 @@ import { nodeSelection } from '../src/model/editable'
 import { testBold as testBoldPlugin } from './fixtures'
 import type { Doc, ElementNode, Node } from '../src/model/types'
 import type { AnyPlugin } from '../src/plugin/types'
-import { createTestEditor, doc, el, sel, stripIds, txt } from '../src/testing/index'
+import { atomEl, createTestEditor, doc, el, sel, stripIds, txt } from '../src/testing/index'
 import { testParagraph } from './fixtures'
 
 const img = definePlugin({ name: 'img', node: { kind: 'block', atom: true } })
@@ -15,12 +15,12 @@ const shape = (d: Doc) => stripIds(d)
 
 describe('normalize: a hoisted atom block next to empty texts (3.2b)', () => {
   it('leaves no stray empty paragraph before it', () => {
-    expect(shape(load(doc(p('', el('img', {}), ''))).getJSON())).toEqual(shape(doc(el('img', {}), p(''))))
-    expect(shape(load(doc(p('', el('img', {}), 'b'))).getJSON())).toEqual(shape(doc(el('img', {}), p('b'))))
+    expect(shape(load(doc(p('', atomEl('img', {}), ''))).getJSON())).toEqual(shape(doc(atomEl('img', {}), p(''))))
+    expect(shape(load(doc(p('', atomEl('img', {}), 'b'))).getJSON())).toEqual(shape(doc(atomEl('img', {}), p('b'))))
   })
 
   it('leaves no stray empty paragraph after it', () => {
-    expect(shape(load(doc(p('a', el('img', {}), ''))).getJSON())).toEqual(shape(doc(p('a'), el('img', {}))))
+    expect(shape(load(doc(p('a', atomEl('img', {}), ''))).getJSON())).toEqual(shape(doc(p('a'), atomEl('img', {}))))
   })
 })
 
@@ -46,7 +46,7 @@ describe('plugin normalize hooks (3.7)', () => {
         seen.push('type' in node ? node.type : `text:${node.text}`)
       },
     })
-    const content = doc(p('a'), el('img', {}), el('weird', {}, p('inner')))
+    const content = doc(p('a'), atomEl('img', {}), el('weird', {}, p('inner')))
     load(content, [img, spy])
     expect(seen).toContain('img')
     expect(seen).toContain('weird')
@@ -81,7 +81,7 @@ describe('selection when its node goes away (3.9, 3.13)', () => {
 
   it('a caret in an empty text that rule 4 drops, with no text beside it, moves to the nearest editable text', () => {
     // The quote holds an empty text and an atom block: no sibling has a text to re-home to.
-    const ed = createTestEditor({ plugins: [testParagraph, img, quote], doc: doc(p('ab'), el('quote', el('img', {}))) })
+    const ed = createTestEditor({ plugins: [testParagraph, img, quote], doc: doc(p('ab'), el('quote', atomEl('img', {}))) })
     const tr = ed.createTransaction()
     tr.apply({ type: 'insert_node', path: [1, 0], node: txt('') })
     tr.setSelection(sel([1, 0], 0))
@@ -92,7 +92,7 @@ describe('selection when its node goes away (3.9, 3.13)', () => {
   it('a node selection survives an op that removes its anchor text while the node stays', () => {
     const ed = createTestEditor({
       plugins: [testParagraph, img],
-      doc: doc(p('ab'), el('img', {}), p('cd')),
+      doc: doc(p('ab'), atomEl('img', {}), p('cd')),
     })
     const tr = ed.createTransaction()
     tr.setSelection(nodeSelection(tr.doc, ed.registry, [1]))
@@ -103,7 +103,7 @@ describe('selection when its node goes away (3.9, 3.13)', () => {
   })
 
   it('isMarkActive is false while a node is selected, unless the stored marks have the mark', () => {
-    const content = doc(p({ text: 'ab', marks: [bold] }, el('chip', {}), { text: 'cd', marks: [bold] }))
+    const content = doc(p({ text: 'ab', marks: [bold] }, atomEl('chip'), { text: 'cd', marks: [bold] }))
     const ed = createTestEditor({ plugins: [testParagraph, testBoldPlugin, chip], doc: content })
     const tr = ed.createTransaction()
     tr.setSelection(nodeSelection(tr.doc, ed.registry, [0, 1]))
@@ -116,12 +116,12 @@ describe('selection when its node goes away (3.9, 3.13)', () => {
   })
 
   it('a block node inserted right before another atom block gets an empty block after it for the caret', () => {
-    const ed = createTestEditor({ plugins: [testParagraph, img], doc: doc(el('img', { n: 1 }), p(''), el('img', { n: 2 }), p('x')) })
+    const ed = createTestEditor({ plugins: [testParagraph, img], doc: doc(atomEl('img', { n: 1 }), p(''), atomEl('img', { n: 2 }), p('x')) })
     const tr = ed.createTransaction()
     tr.setSelection(sel([1, 0], 0))
-    tr.insertBlockNode(el('img', { n: 3 }))
+    tr.insertBlockNode(atomEl('img', { n: 3 }))
     ed.dispatch(tr)
-    expect(shape(ed.getJSON())).toEqual(shape(doc(el('img', { n: 1 }), el('img', { n: 3 }), p(''), el('img', { n: 2 }), p('x'))))
+    expect(shape(ed.getJSON())).toEqual(shape(doc(atomEl('img', { n: 1 }), atomEl('img', { n: 3 }), p(''), atomEl('img', { n: 2 }), p('x'))))
     expect(ed.state.selection).toEqual(sel([2, 0], 0))
   })
 })

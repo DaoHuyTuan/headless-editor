@@ -10,7 +10,7 @@ import { testBold, testParagraph } from './fixtures'
 const p = (...children: (Node | string)[]): ElementNode =>
   el('paragraph', ...children.map((c) => (typeof c === 'string' ? txt(c) : c)))
 const chip = definePlugin({ name: 'chip', node: { kind: 'inline', atom: true } })
-const c = (): ElementNode => ({ id: 'c', type: 'chip', data: {}, children: [] })
+const c = (): ElementNode => ({ id: 'c', type: 'chip', data: {} })
 
 const emDash: InputRule = {
   match: /^-- $/,

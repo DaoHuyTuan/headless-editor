@@ -12,7 +12,7 @@ const code = definePlugin({ name: 'code', node: { kind: 'block', content: 'text'
 
 const p = (...children: (Node | string)[]): ElementNode =>
   el('paragraph', ...children.map((c) => (typeof c === 'string' ? txt(c) : c)))
-const c = (label = 'x'): ElementNode => ({ id: 'c', type: 'chip', data: { label }, children: [] })
+const c = (label = 'x'): ElementNode => ({ id: 'c', type: 'chip', data: { label } })
 
 function setup(content: Doc, selection?: Selection) {
   return createTestEditor({ plugins: [testParagraph, testBold, chip, code], doc: content, selection })

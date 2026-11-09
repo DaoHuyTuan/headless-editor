@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { definePlugin } from '../../src/plugin/define'
 import type { Doc, ElementNode, Node, Selection } from '../../src/model/types'
 import type { AnyPlugin } from '../../src/plugin/types'
-import { createTestEditor, doc, el, sel, stripIds, txt } from '../../src/testing/index'
+import { atomEl, createTestEditor, doc, el, sel, stripIds, txt } from '../../src/testing/index'
 import { testBold, testParagraph } from '../fixtures'
 
 const p = (...children: (Node | string)[]): ElementNode =>
@@ -54,10 +54,10 @@ describe('a paste without a model selection (4.4)', () => {
   })
 
   it('goes into a new block when the doc has no editable text', () => {
-    const ed = setup(doc(el('img', {})), null, [img])
+    const ed = setup(doc(atomEl('img', {})), null, [img])
     expect(ed.state.selection).toBeNull()
     paste(ed, { 'text/plain': 'xy' })
-    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(el('img', {}), p('xy'))))
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(atomEl('img', {}), p('xy'))))
   })
 })
 

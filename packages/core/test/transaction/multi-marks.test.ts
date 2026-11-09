@@ -6,7 +6,7 @@ import type { Doc, ElementNode, Mark, Node, Path, Selection, SelectionRange } fr
 import type { EditorState } from '../../src/state'
 import { isMarkActive, marksAt } from '../../src/transaction/marks'
 import { Transaction } from '../../src/transaction/transaction'
-import { createTestEditor, doc, el, stripIds, txt } from '../../src/testing/index'
+import { atomEl, createTestEditor, doc, el, stripIds, txt } from '../../src/testing/index'
 import { record, registry, scenarios } from './single-range-mark-scenarios'
 import recorded from './single-range-mark-ops.json'
 
@@ -173,12 +173,12 @@ describe('marks on every range', () => {
   })
 
   it('a range covering only an atom does not decide the toggle direction', () => {
-    const ed = editor(doc(p('abcd'), el('atom'), p('efgh')), span([0, 0], 1, 2), rng([0, 0], 4, [2, 0], 0))
+    const ed = editor(doc(p('abcd'), atomEl('atom'), p('efgh')), span([0, 0], 1, 2), rng([0, 0], 4, [2, 0], 0))
     ed.commands.toggleMark('bold')
-    expect(stripIds(ed.state.doc as Doc)).toEqual(stripIds(doc(p('a', t('b', bold), 'cd'), el('atom'), p('efgh'))))
+    expect(stripIds(ed.state.doc as Doc)).toEqual(stripIds(doc(p('a', t('b', bold), 'cd'), atomEl('atom'), p('efgh'))))
     expect(ed.isActive('bold')).toBe(true)
     ed.commands.toggleMark('bold')
-    expect(stripIds(ed.state.doc as Doc)).toEqual(stripIds(doc(p('abcd'), el('atom'), p('efgh'))))
+    expect(stripIds(ed.state.doc as Doc)).toEqual(stripIds(doc(p('abcd'), atomEl('atom'), p('efgh'))))
     expect(ed.isActive('bold')).toBe(false)
   })
 

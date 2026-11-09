@@ -11,7 +11,7 @@ import {
   type Node,
   type Selection,
 } from '../../src/index'
-import { createTestEditor, doc, el, sel, stripIds, txt } from '../../src/testing/index'
+import { atomEl, createTestEditor, doc, el, sel, stripIds, txt } from '../../src/testing/index'
 import { testBold, testParagraph } from '../fixtures'
 
 const atomPlugin = definePlugin({ name: 'atom', node: { kind: 'block', atom: true } })
@@ -32,7 +32,7 @@ const strictAtom = definePlugin({
 
 const p = (...children: (Node | string)[]): ElementNode =>
   el('paragraph', ...children.map((c) => (typeof c === 'string' ? txt(c) : c)))
-const atom = (): ElementNode => el('atom')
+const atom = (): ElementNode => atomEl('atom')
 const caret = (path: number[], offset: number): Selection => sel(path, offset)
 const nodeSel = (node: number[], path: number[], offset: number): Selection => single({ ...mainRange(caret(path, offset)), node })
 

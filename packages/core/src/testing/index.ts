@@ -3,7 +3,7 @@ import { createId, setIdGenerator } from '../model/id'
 import type { Doc, Selection } from '../model/types'
 import type { AnyPlugin } from '../plugin/types'
 
-export { doc, el, sel, stripIds, txt } from './builders'
+export { atomEl, doc, el, sel, stripIds, txt } from './builders'
 
 export type TestEditorOptions<P extends readonly AnyPlugin[]> = EditorOptions<P> & { doc?: Doc; selection?: Selection }
 

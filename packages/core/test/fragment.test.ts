@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { definePlugin } from '../src/plugin/define'
 import type { DeepReadonly, Doc, ElementNode, Node, Range, Selection } from '../src/model/types'
 import { getFragment, isElement, nodeEntries, nodeSelection, type Fragment } from '../src/index'
-import { createTestEditor, doc, el, sel, stripIds, txt } from '../src/testing/index'
+import { atomEl, createTestEditor, doc, el, sel, stripIds, txt } from '../src/testing/index'
 import { testBold, testParagraph } from './fixtures'
 
 const heading = definePlugin({ name: 'heading', node: { kind: 'block' } })
@@ -151,7 +151,7 @@ describe('insertFragment / insertContent', () => {
       selection: sel([0, 0], 1),
     })
     ed.commands.insertContent([txt('X'), el('mention', txt('@m'))])
-    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p('aX', el('mention', txt('@m')), 'b'))))
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p('aX', atomEl('mention'), 'b'))))
     // Right after the atom: the start of the text following it.
     expect(ed.state.selection).toEqual(sel([0, 2], 0))
   })

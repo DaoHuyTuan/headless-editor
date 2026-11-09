@@ -22,6 +22,11 @@ export function el(type: string, ...rest: [Data, ...Node[]] | Node[]): ElementNo
   return { id: createId(), type, data, children }
 }
 
+/** An atom element: no `children`, as loading gives a known atom. */
+export function atomEl(type: string, data: Data = {}): ElementNode {
+  return { id: createId(), type, data }
+}
+
 export function txt(text: string, ...marks: (string | Mark)[]): TextNode {
   return { text, marks: marks.map((m) => (typeof m === 'string' ? { type: m, data: {} } : m)) }
 }

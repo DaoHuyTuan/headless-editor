@@ -145,7 +145,8 @@ function coerceNode(raw: unknown, registry: Registry, validate: boolean, seen: S
     return null
   }
   const el: ElementNode = { id, type: raw.type, data: res.data }
-  if (!registered.atom || Array.isArray(raw.children)) el.children = coerceChildren(raw.children, registry, true, seen)
+  // A known atom has no `children` (any given are dropped); other elements always get an array.
+  if (!registered.atom) el.children = coerceChildren(raw.children, registry, true, seen)
   return el
 }
 
