@@ -19,8 +19,12 @@ interface HostedView {
  */
 export class NodeViewHost {
   private readonly views = new Map<string, HostedView>()
+  /** The editor's `dev` option (read through a transaction: the editor keeps it private). */
+  private readonly dev: boolean
 
-  constructor(private readonly editor: Editor) {}
+  constructor(private readonly editor: Editor) {
+    this.dev = editor.createTransaction().dev
+  }
 
   has(id: string): boolean {
     return this.views.has(id)
@@ -29,6 +33,13 @@ export class NodeViewHost {
   /**
    * Calls `factory` for the element `node`, rendered into `container`; `contentDOM` (non-atom nodes)
    * is the element the renderer renders the children into, passed in every props.
+   *
+   * The view may place `contentDOM` in `container` during the factory call or later (e.g. a React
+   * portal commit). While it is not placed, its leaves are detached: the model selection in them is
+   * kept (the view snapshots the stale DOM selection after every render, so re-rendering a leaf while
+   * detached does not let that DOM selection overwrite it) and shown once it is placed. In dev mode,
+   * a view that still has not placed it after a macrotask (and is still current and connected) gets
+   * one warning: its content is neither shown nor editable.
    */
   create(
     factory: NodeViewFactory,
@@ -41,6 +52,19 @@ export class NodeViewHost {
     const props = this.props(node, selected, contentDOM)
     const instance = factory(container, props)
     this.views.set(node.id, { instance, container, props })
+    if (this.dev && contentDOM) this.checkPlaced(node, instance, container, contentDOM)
+  }
+
+  /** Dev mode: warns when the view of `node` has not placed `contentDOM` in `container` after a macrotask. */
+  private checkPlaced(node: ElementNode, instance: NodeViewInstance, container: HTMLElement, contentDOM: HTMLElement): void {
+    setTimeout(() => {
+      const current = this.views.get(node.id)?.instance === instance
+      if (!current || !container.isConnected || container.contains(contentDOM)) return
+      console.warn(
+        `[hte] The node view of "${node.type}" did not place its contentDOM in its container: its content is ` +
+          'neither shown nor editable. Append props.contentDOM (a React node view renders <NodeContent /> exactly once).',
+      )
+    }, 0)
   }
 
   /**

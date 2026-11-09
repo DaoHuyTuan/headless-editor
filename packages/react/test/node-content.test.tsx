@@ -29,23 +29,46 @@ const NoContentView: ReactNodeView = () => (
   </section>
 )
 
-function Harness({ onEditor, view, tick }: { onEditor: (e: TestEditor) => void; view: ReactNodeView<any>; tick: number }) {
+function Harness({
+  onEditor,
+  view,
+  tick,
+  dev = true,
+}: {
+  onEditor: (e: TestEditor) => void
+  view: ReactNodeView<any>
+  tick: number
+  dev?: boolean
+}) {
   const editor = useEditor({
     plugins,
     content: doc(el('paragraph', txt('ab')), el('box', txt('hello'))),
     selection: sel([0, 0], 1),
     nodeViews: { box: view },
+    dev,
   })
   onEditor(editor)
   return <EditorContent editor={editor} data-testid="content" data-tick={tick} />
 }
 
 /** Re-renders the harness on demand (a parent state change). */
-function App({ onEditor, view, onBump }: { onEditor: (e: TestEditor) => void; view: ReactNodeView<any>; onBump: (bump: () => void) => void }) {
+function App({
+  onEditor,
+  view,
+  onBump,
+  dev,
+}: {
+  onEditor: (e: TestEditor) => void
+  view: ReactNodeView<any>
+  onBump: (bump: () => void) => void
+  dev?: boolean
+}) {
   const [tick, setTick] = useState(0)
   onBump(() => setTick((t) => t + 1))
-  return <Harness onEditor={onEditor} view={view} tick={tick} />
+  return <Harness onEditor={onEditor} view={view} tick={tick} dev={dev} />
 }
+
+const flushAct = () => act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)))
 
 let errors: ReturnType<typeof vi.spyOn>
 let warns: ReturnType<typeof vi.spyOn>
@@ -207,5 +230,95 @@ describe('NodeContent', () => {
     await act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)))
     expect(warns).toHaveBeenCalledTimes(1)
     expect(String(warns.mock.calls[0]![0])).toContain('<NodeContent />')
+  })
+
+  it('follows the editor dev flag, not NODE_ENV: no warning outside dev mode', async () => {
+    const Twice: ReactNodeView = () => (
+      <section>
+        <NodeContent />
+        <NodeContent />
+      </section>
+    )
+    expect(process.env.NODE_ENV).not.toBe('production')
+    render(<App onEditor={() => {}} view={NoContentView} onBump={() => {}} dev={false} />)
+    render(<App onEditor={() => {}} view={Twice} onBump={() => {}} dev={false} />)
+    await flushAct()
+    expect(warns).not.toHaveBeenCalled()
+  })
+
+  it('warns in dev when NodeContent is rendered more than once', async () => {
+    const Twice: ReactNodeView = () => (
+      <section>
+        <NodeContent />
+        <NodeContent />
+      </section>
+    )
+    render(<App onEditor={() => {}} view={Twice} onBump={() => {}} />)
+    await flushAct()
+    expect(warns).toHaveBeenCalledTimes(1)
+    expect(String(warns.mock.calls[0]![0])).toContain('more than once')
+  })
+
+  it('warns in dev when NodeContent is rendered in an atom node view', async () => {
+    const atom = definePlugin({ name: 'atomBox', node: { kind: 'block', atom: true } })
+    const AtomView: ReactNodeView = () => (
+      <section>
+        <NodeContent />
+      </section>
+    )
+    function AtomHarness({ dev }: { dev: boolean }) {
+      const editor = useEditor({
+        plugins: [paragraph, atom] as const,
+        content: doc(el('paragraph', txt('ab')), el('atomBox')),
+        nodeViews: { atomBox: AtomView },
+        dev,
+      })
+      return <EditorContent editor={editor} />
+    }
+    render(
+      <StrictMode>
+        <AtomHarness dev={false} />
+      </StrictMode>,
+    )
+    await flushAct()
+    expect(warns).not.toHaveBeenCalled()
+    render(
+      <StrictMode>
+        <AtomHarness dev />
+      </StrictMode>,
+    )
+    await flushAct()
+    expect(warns).toHaveBeenCalledTimes(1)
+    expect(String(warns.mock.calls[0]![0])).toContain('"atomBox"')
+    expect(String(warns.mock.calls[0]![0])).toContain('atom')
+  })
+
+  it('warns when NodeContent is rendered outside a node view, unless NODE_ENV is production or there is no process', () => {
+    render(
+      <StrictMode>
+        <NodeContent />
+      </StrictMode>,
+    )
+    expect(warns).toHaveBeenCalledTimes(1)
+    expect(String(warns.mock.calls[0]![0])).toContain('outside a node view')
+    cleanup()
+
+    vi.stubEnv('NODE_ENV', 'production')
+    try {
+      render(<NodeContent />)
+    } finally {
+      vi.unstubAllEnvs()
+    }
+    cleanup()
+
+    // A browser bundle without a `process` define.
+    const saved = globalThis.process
+    ;(globalThis as { process?: unknown }).process = undefined
+    try {
+      render(<NodeContent />)
+    } finally {
+      globalThis.process = saved
+    }
+    expect(warns).toHaveBeenCalledTimes(1)
   })
 })

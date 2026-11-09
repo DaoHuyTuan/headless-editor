@@ -1,10 +1,12 @@
 // @vitest-environment happy-dom
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mainRange, single } from '../../src/model/selection'
 import {
   definePlugin,
   findPathById,
+  modelToDom,
   nodeSelection,
+  type Editor,
   type AnyPlugin,
   type Doc,
   type ElementNode,
@@ -12,6 +14,7 @@ import {
   type NodeViewFactory,
   type NodeViewProps,
   type Selection,
+  type TextNode,
 } from '../../src/index'
 import { createTestEditor, doc, el, sel, txt } from '../../src/testing/index'
 import { testBold, testParagraph } from '../fixtures'
@@ -432,5 +435,117 @@ describe('node views: composition over a node selection', () => {
     leaf.replaceChildren(document.createTextNode('ế'))
     root.dispatchEvent(new Event('compositionend', { bubbles: true }))
     expect(editor.state.doc.children.map((b) => (b.children![0] as { text: string }).text)).toEqual(['a', 'ế', 'b'])
+  })
+})
+
+/** A non-atom block with inline content. */
+const box = definePlugin({
+  name: 'box',
+  node: { kind: 'block', content: 'inline' },
+})
+const b = (text: string): ElementNode => el('box', txt(text))
+
+function mountBox(content: Doc, factory: NodeViewFactory, opts: { selection?: Selection; dev?: boolean } = {}) {
+  const editor = createTestEditor({
+    plugins: [testParagraph, testBold, box],
+    doc: content,
+    selection: opts.selection,
+    nodeViews: { box: factory },
+    ...(opts.dev === undefined ? {} : { dev: opts.dev }),
+  })
+  const root = document.createElement('div')
+  document.body.appendChild(root)
+  editor.mount(root)
+  return { editor, root, view: editor.view! }
+}
+
+function setDomCaret(editor: Editor, path: number[], offset: number): void {
+  const pos = modelToDom(editor.view!.renderer, { path, offset })
+  document.getSelection()!.setBaseAndExtent(pos.node, pos.offset, pos.node, pos.offset)
+}
+
+/** Never places its `contentDOM`. */
+const unplaced: NodeViewFactory = () => ({ update: () => {}, destroy: () => {} })
+
+describe('node views: a contentDOM that is never placed', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('warns once in dev mode when a non-atom view did not place its contentDOM', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    mountBox(doc(p('a'), b('hello')), unplaced)
+    await flush()
+    await flush()
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(String(warn.mock.calls[0]![0])).toContain('"box"')
+    expect(String(warn.mock.calls[0]![0])).toContain('contentDOM')
+  })
+
+  it('does not warn when the view places it later (before the check), outside dev mode, or once destroyed', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    let place: (() => void) | undefined
+    const deferred: NodeViewFactory = (c, props) => {
+      place = () => c.append(props.contentDOM!)
+      return { update: () => {}, destroy: () => {} }
+    }
+    mountBox(doc(p('a'), b('hello')), deferred)
+    queueMicrotask(() => place!())
+    mountBox(doc(p('a'), b('hello')), unplaced, { dev: false })
+    const { editor } = mountBox(doc(p('a'), b('hello')), unplaced)
+    const tr = editor.createTransaction()
+    tr.removeNode([1])
+    editor.dispatch(tr)
+    await flush()
+    await flush()
+    expect(warn).not.toHaveBeenCalled()
+  })
+})
+
+describe('node views: a stale DOM caret while the selection is detached', () => {
+  it('a re-render of the detached leaf keeps the model selection', () => {
+    const { editor, view } = mountBox(doc(p('abc')), unplaced, { selection: sel([0, 0], 3) })
+    view.focus()
+    const tr = editor.createTransaction()
+    tr.insertNode([1], b('hello'))
+    tr.setSelection(sel([1, 0], 5))
+    editor.dispatch(tr)
+    // The detached leaf is re-rendered (its text changes) while it is still detached.
+    const edit = editor.createTransaction()
+    edit.insertText('!', { anchor: { path: [1, 0], offset: 5 }, focus: { path: [1, 0], offset: 5 } })
+    editor.dispatch(edit)
+    expect((editor.state.doc.children[1]!.children![0] as TextNode).text).toBe('hello!')
+    let dispatched = 0
+    editor.on('transaction', () => dispatched++)
+    document.dispatchEvent(new Event('selectionchange'))
+    view.syncSelection()
+    expect(dispatched).toBe(0)
+    expect(mainRange(editor.state.selection!).anchor.path).toEqual([1, 0])
+  })
+
+  it('a re-render of the leaf holding the stale DOM caret keeps the model selection', () => {
+    const { editor, view } = mountBox(doc(p('abc')), unplaced, { selection: sel([0, 0], 3) })
+    view.focus()
+    const tr = editor.createTransaction()
+    tr.insertNode([1], b('hello'))
+    tr.setSelection(sel([1, 0], 5))
+    editor.dispatch(tr)
+    // The paragraph holding the DOM caret is re-rendered: its text node is rewritten.
+    const edit = editor.createTransaction()
+    edit.insertText('XY', { anchor: { path: [0, 0], offset: 0 }, focus: { path: [0, 0], offset: 3 } })
+    edit.setSelection(sel([1, 0], 5))
+    editor.dispatch(edit)
+    expect((editor.state.doc.children[0]!.children![0] as TextNode).text).toBe('XY')
+    let dispatched = 0
+    editor.on('transaction', () => dispatched++)
+    document.dispatchEvent(new Event('selectionchange'))
+    view.syncSelection()
+    expect(dispatched).toBe(0)
+    expect(editor.state.selection).toEqual(sel([1, 0], 5))
+
+    // A caret the user puts in the paragraph afterwards is still read.
+    setDomCaret(editor, [0, 0], 1)
+    view.syncSelection()
+    expect(editor.state.selection).toEqual(sel([0, 0], 1))
   })
 })

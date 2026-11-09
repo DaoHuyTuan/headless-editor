@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useSyncExternalStore, type HTMLAttributes } from 'react'
+import { useLayoutEffect, useMemo, useRef, useSyncExternalStore, type HTMLAttributes } from 'react'
 import { createPortal } from 'react-dom'
 import type { AnyPlugin, Editor } from '@hte/core'
 import { NodeViewScope } from './node-content'
@@ -30,12 +30,14 @@ export function EditorContent({ editor, ...divProps }: EditorContentProps) {
   }, [editor])
   const store = getPortalStore(editor) ?? noStore
   const entries = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot)
+  // The editor's `dev` option (it keeps the flag private; a transaction exposes it).
+  const dev = useMemo(() => editor.createTransaction().dev, [editor])
   return (
     <>
       <div {...divProps} ref={ref} />
       {entries.map(({ id, container, Component, props }) =>
         createPortal(
-          <NodeViewScope contentDOM={props.contentDOM} type={props.node.type}>
+          <NodeViewScope contentDOM={props.contentDOM} type={props.node.type} dev={dev}>
             <Component {...props} />
           </NodeViewScope>,
           container,
