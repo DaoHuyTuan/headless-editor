@@ -571,9 +571,27 @@ function segments(text: string, granularity: 'grapheme' | 'word'): Intl.SegmentD
   return [...s.segment(text)]
 }
 
+/**
+ * Characters segmented on each side of the caret: Backspace/Delete look at a window, not the whole
+ * block (whose text can be very long). A cluster or word reaching the window's edge falls back to
+ * the whole text, so the result is always the one segmenting the whole text gives.
+ */
+const SEGMENT_WINDOW = 256
+
 /** Block offset the deletion extends to from `offset`, in the given direction. */
 function targetOffset(text: string, offset: number, unit: DeleteUnit, backward: boolean): number {
   if (unit === 'line') return backward ? 0 : text.length
+  const from = Math.max(0, offset - SEGMENT_WINDOW)
+  const to = Math.min(text.length, offset + SEGMENT_WINDOW)
+  if (from === 0 && to === text.length) return targetIn(text, offset, unit, backward)
+  const target = from + targetIn(text.slice(from, to), offset - from, unit, backward)
+  // At a window edge that is not the text's: the cluster or word may go on past it.
+  const atCut = (backward && target === from && from > 0) || (!backward && target === to && to < text.length)
+  return atCut ? targetIn(text, offset, unit, backward) : target
+}
+
+/** `targetOffset` within `text` (segmented whole). */
+function targetIn(text: string, offset: number, unit: Exclude<DeleteUnit, 'line'>, backward: boolean): number {
   const segs = segments(text, unit === 'character' ? 'grapheme' : 'word')
   if (backward) {
     let target = offset
