@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { z } from 'zod'
 import { definePlugin } from '../src/plugin/define'
 import { nodeSelection } from '../src/model/editable'
 import { testBold as testBoldPlugin } from './fixtures'
@@ -123,5 +124,28 @@ describe('selection when its node goes away (3.9, 3.13)', () => {
     ed.dispatch(tr)
     expect(shape(ed.getJSON())).toEqual(shape(doc(atomEl('img', { n: 1 }), atomEl('img', { n: 3 }), p(''), atomEl('img', { n: 2 }), p('x'))))
     expect(ed.state.selection).toEqual(sel([2, 0], 0))
+  })
+})
+
+describe('a default block with a data schema (3.12)', () => {
+  const para = (data: z.ZodType) =>
+    definePlugin({ name: 'paragraph', node: { kind: 'block', default: true, content: 'inline' }, data })
+
+  it('new default blocks get the schema output for `{}` (its defaults)', () => {
+    const ed = createTestEditor({ plugins: [para(z.object({ align: z.string().default('left') }))], doc: doc() })
+    expect(shape(ed.getJSON())).toEqual(shape(doc(el('paragraph', { align: 'left' }, txt('')))))
+    const tr = ed.createTransaction()
+    tr.splitBlock()
+    ed.dispatch(tr)
+    expect(shape(ed.getJSON())).toEqual(shape(doc(el('paragraph', { align: 'left' }, txt('')), el('paragraph', { align: 'left' }, txt('')))))
+  })
+
+  it('throws a clear error at construction when the default block rejects empty data', () => {
+    const strict = para(z.object({ align: z.string() }))
+    const content = doc(el('paragraph', { align: 'left' }, txt('a')))
+    expect(() => createTestEditor({ plugins: [strict], doc: content })).toThrow(
+      /default block "paragraph" cannot be created with empty data/i,
+    )
+    expect(() => createTestEditor({ plugins: [strict], doc: content, dev: false })).toThrow(/default block "paragraph"/i)
   })
 })
