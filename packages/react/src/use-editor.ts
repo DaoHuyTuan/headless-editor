@@ -1,6 +1,6 @@
 import { useEffect, useInsertionEffect, useRef, useState } from 'react'
 import { Editor, type AnyPlugin, type EditorOptions, type NodeViewFactory } from '@hte/core'
-import { createPortalStore, setPortalStore, toNodeViewFactory, type ReactNodeView } from './node-views'
+import { createPortalStore, setPortalStore, toNodeViewFactory, type PortalStore, type ReactNodeView } from './node-views'
 
 export type UseEditorOptions<P extends readonly AnyPlugin[]> = Omit<EditorOptions<P>, 'nodeViews'> & {
   /**
@@ -19,6 +19,9 @@ export type UseEditorOptions<P extends readonly AnyPlugin[]> = Omit<EditorOption
    * shallow-compared with the last value applied, and `editor.setPluginOptions(name, value)` is called
    * (in an effect) when it differs. The values given on the first render are applied at creation.
    * Options merge: a key dropped from a value keeps its last applied value.
+   * React node views rendered in the commit of a change already get the new (merged) options, so
+   * none renders with the old ones; the editor itself (`getPluginOptions`, core-rendered DOM) has
+   * them from the effect on.
    */
   pluginOptions?: Record<string, Record<string, unknown>>
 }
@@ -55,7 +58,7 @@ export function useEditor<const P extends readonly AnyPlugin[]>(options: UseEdit
 
   // The unsubscribe goes with the editor it belongs to: StrictMode's second initializer call builds a
   // throwaway editor, which a ref written from the initializer would point at.
-  const [[editor, unsubscribeUpdate]] = useState((): [Editor<P>, () => void] => {
+  const [[editor, unsubscribeUpdate, store]] = useState((): [Editor<P>, () => void, PortalStore] => {
     const { onUpdate: _onUpdate, nodeViews, pluginOptions, ...editorOptions } = options
     const store = createPortalStore()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -68,7 +71,7 @@ export function useEditor<const P extends readonly AnyPlugin[]>(options: UseEdit
     // `onMount` (run when `EditorContent` mounts, in a layout effect) come before this hook's effects.
     // Once per editor, so StrictMode's effect re-runs never subscribe twice; removed on destroy.
     const off = created.on('update', () => onUpdateRef.current?.({ editor: created }))
-    return [created, off]
+    return [created, off, store]
   })
 
   const appliedOptions = useRef<Record<string, Record<string, unknown>> | null>(null)
@@ -76,11 +79,21 @@ export function useEditor<const P extends readonly AnyPlugin[]>(options: UseEdit
     appliedOptions.current = Object.fromEntries(Object.entries(options.pluginOptions ?? {}).map(([k, v]) => [k, { ...v }]))
   }
   const pluginOptions = options.pluginOptions
+  // The node views rendered in this commit already see the options about to be applied (merged as
+  // `setPluginOptions` will). Computed from this render's input only, so repeating it is harmless;
+  // a render React discards leaves its entries only until the next render replaces the map.
+  const pending = new Map<string, Readonly<Record<string, unknown>>>()
+  for (const [name, value] of Object.entries(pluginOptions ?? {})) {
+    if (shallowEqual(appliedOptions.current[name], value) || !editor.registry.node(name)) continue
+    pending.set(name, Object.freeze({ ...editor.getPluginOptions(name), ...value }))
+  }
+  store.pendingOptions = pending
   useEffect(() => {
     const applied = appliedOptions.current!
     for (const [name, value] of Object.entries(pluginOptions ?? {})) {
       if (shallowEqual(applied[name], value)) continue
       applied[name] = { ...value }
+      store.pendingOptions.delete(name)
       editor.setPluginOptions(name, value)
     }
   })

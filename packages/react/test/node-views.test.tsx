@@ -18,8 +18,11 @@ type AtomData = { title: string }
 
 /** Ids of the mounted view components (per mount effect), to check StrictMode keeps one per node. */
 let live: Map<string, number>
+/** `options.label` of every render of `AtomView`, in order. */
+let renderedLabels: string[]
 
 const AtomView: ReactNodeView<AtomData, { label: string }> = ({ node, selected, options, updateData }) => {
+  renderedLabels.push(options.label)
   useEffect(() => {
     live.set(node.id, (live.get(node.id) ?? 0) + 1)
     return () => {
@@ -59,6 +62,7 @@ let errors: ReturnType<typeof vi.spyOn>
 
 beforeEach(() => {
   live = new Map()
+  renderedLabels = []
   errors = vi.spyOn(console, 'error')
 })
 
@@ -164,6 +168,30 @@ describe('React node views', () => {
     )
     expect(spy).toHaveBeenCalledWith('atom', { label: 'two' })
     expect(root.querySelector('.label')!.textContent).toBe('two')
+    expect(errors).not.toHaveBeenCalled()
+  })
+
+  it('no render after a pluginOptions change sees the old options', () => {
+    let editor!: TestEditor
+    const { getByTestId, rerender } = render(
+      <StrictMode>
+        <Harness onEditor={(e) => (editor = e)} label="one" />
+      </StrictMode>,
+    )
+    expect(renderedLabels.at(-1)).toBe('one')
+    renderedLabels = []
+    rerender(
+      <StrictMode>
+        <Harness onEditor={(e) => (editor = e)} label="two" />
+      </StrictMode>,
+    )
+    expect(renderedLabels.length).toBeGreaterThan(0)
+    expect(renderedLabels.every((l) => l === 'two')).toBe(true)
+    expect(getByTestId('content').querySelector('.label')!.textContent).toBe('two')
+
+    // Once applied, a direct setPluginOptions call is not masked by the value the hook last saw.
+    act(() => editor.setPluginOptions('atom', { label: 'three' }))
+    expect(getByTestId('content').querySelector('.label')!.textContent).toBe('three')
     expect(errors).not.toHaveBeenCalled()
   })
 
