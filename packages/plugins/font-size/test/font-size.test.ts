@@ -103,3 +103,14 @@ describe('fontSize with several ranges', () => {
     expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p(txt('ab')), p(txt('cd')))))
   })
 })
+
+describe('font-size commands without a selection', () => {
+  it('report that they did nothing', () => {
+    const ed = createTestEditor({ plugins: [paragraph, fontSize], doc: doc(el('paragraph', txt('ab'))) })
+    const tr = ed.createTransaction()
+    tr.setSelection(null)
+    ed.dispatch(tr)
+    expect(ed.commands.setFontSize('20px')).toBe(false)
+    expect(ed.commands.unsetFontSize()).toBe(false)
+  })
+})

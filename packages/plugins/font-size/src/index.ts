@@ -24,9 +24,10 @@ export const fontSize = definePlugin({
     }),
   },
   parseHTML: [{ style: 'font-size', getData: (_, v) => (v && SIZE_RE.test(v) ? { size: v } : false) }],
+  // Without a selection a mark edit has no target: the command reports that it did nothing.
   commands: () => ({
     setFontSize: (size: string): Command => ({ tr }) =>
-      tr.addMark({ type: 'fontSize', data: { size } }).rejected === null,
-    unsetFontSize: (): Command => ({ tr }) => tr.removeMark('fontSize').rejected === null,
+      tr.selection !== null && tr.addMark({ type: 'fontSize', data: { size } }).rejected === null,
+    unsetFontSize: (): Command => ({ tr }) => tr.selection !== null && tr.removeMark('fontSize').rejected === null,
   }),
 })

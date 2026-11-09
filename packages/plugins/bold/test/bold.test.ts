@@ -106,3 +106,17 @@ describe('bold HTMLAttributes', () => {
     expect(ed.getHTML()).toBe('<p>a<strong class="c">b</strong>c</p>')
   })
 })
+
+describe('bold commands without a selection', () => {
+  it('report that they did nothing', () => {
+    const ed = setup(doc(p(txt('ab'))))
+    const tr = ed.createTransaction()
+    tr.setSelection(null)
+    ed.dispatch(tr)
+    expect(ed.state.selection).toBeNull()
+    expect(ed.can().toggleBold()).toBe(false)
+    expect(ed.commands.toggleBold()).toBe(false)
+    expect(ed.commands.setBold()).toBe(false)
+    expect(ed.commands.unsetBold()).toBe(false)
+  })
+})
