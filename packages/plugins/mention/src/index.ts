@@ -72,7 +72,7 @@ export interface MentionOptions {
 
 /**
  * The suggestion popup's state (plugin state `mention`). It changes only through trs carrying the
- * meta `mention` (`MentionMeta`); between those, doc changes just map `range` and `dismissedAt`.
+ * meta `mention` (`MentionMeta`); between those, doc changes just map `range` and `dismissed`.
  */
 export interface MentionState {
   open: boolean
@@ -89,10 +89,12 @@ export interface MentionState {
   /** Whether the response to the current query (`requestId`) is still awaited. False when closed. */
   pending: boolean
   /**
-   * The trigger the user closed (Esc, caret left, space typed). The same trigger never reopens; one
-   * typed again (a new trigger, or this one deleted and retyped) does.
+   * The triggers the user closed (Esc, the caret leaving it, a space typed), each keyed by its
+   * position (mapped through doc changes), never by its query. A dismissed trigger never reopens,
+   * whichever other triggers the caret visits in between; one typed again (a new trigger, or this one
+   * deleted and retyped) does. A trigger whose text is gone drops out.
    */
-  dismissedAt: Range | null
+  dismissed: readonly Range[]
 }
 
 /** Meta (key `mention`) of the trs that change `MentionState`. */
@@ -108,6 +110,12 @@ export interface MentionStorage {
    * fetching when the query changed. Called after every committed doc or selection change.
    */
   refresh(): void
+  /**
+   * The latest user with this id seen in suggestion results (the ones applied to the popup: stale or
+   * post-close responses are not), or undefined. Recorded before the `results` tr is dispatched, so a
+   * view subscribed to the editor reads the new user on that tr. Kept across closes, per editor.
+   */
+  user(id: string): User | undefined
 }
 
 /** Class of the inline decoration over the open trigger range (`@query`). */
@@ -115,7 +123,7 @@ export const MENTION_QUERY_CLASS = 'hte-mention-query'
 
 type Ctx = PluginContext<MentionOptions, MentionState>
 
-const CLOSED: Omit<MentionState, 'requestId' | 'dismissedAt'> = {
+const CLOSED: Omit<MentionState, 'requestId' | 'dismissed'> = {
   open: false,
   query: '',
   range: null,
@@ -124,18 +132,20 @@ const CLOSED: Omit<MentionState, 'requestId' | 'dismissedAt'> = {
   pending: false,
 }
 
-const initState = (): MentionState => ({ ...CLOSED, requestId: 0, dismissedAt: null })
+const initState = (): MentionState => ({ ...CLOSED, requestId: 0, dismissed: [] })
 
 /** Per-editor bookkeeping that is not editor state. */
 interface Runtime {
   destroyed: boolean
+  /** Users seen in applied results, by id (`MentionStorage.user`). Latest result wins. */
+  users: Map<string, User>
 }
 
 const runtimes = new WeakMap<Editor, Runtime>()
 
 function runtimeOf(editor: Editor): Runtime {
   let rt = runtimes.get(editor)
-  if (!rt) runtimes.set(editor, (rt = { destroyed: false }))
+  if (!rt) runtimes.set(editor, (rt = { destroyed: false, users: new Map() }))
   return rt
 }
 
@@ -192,20 +202,40 @@ function inTextOnlyBlock(doc: DeepReadonly<Doc>, registry: Registry, path: reado
   return false
 }
 
+const isDismissed = (dismissed: readonly Range[], start: Point) => dismissed.some((d) => pointEquals(d.start, start))
+
+/** `dismissed` plus `range` (when its trigger is still there and not dismissed already). */
+function dismiss(dismissed: readonly Range[], range: Range | null): readonly Range[] {
+  return range && !isDismissed(dismissed, range.start) ? [...dismissed, range] : dismissed
+}
+
+/** Maps every dismissed trigger through `tr`, dropping the gone ones; the same array when none moved. */
+function mapDismissed(dismissed: readonly Range[], tr: Transaction, trigger: string): readonly Range[] {
+  if (dismissed.length === 0) return dismissed
+  const next: Range[] = []
+  for (const d of dismissed) {
+    const mapped = triggerAt(tr.doc, mapRange(d, tr), trigger)
+    if (mapped && !isDismissed(next, mapped.start)) next.push(mapped)
+  }
+  return next.length === dismissed.length && next.every((r, i) => rangeEquals(r, dismissed[i]!)) ? dismissed : next
+}
+
 function applyMeta(tr: Transaction, prev: MentionState, trigger: string): MentionState {
   // Doc changes only move the positions; the popup itself changes through the meta below.
   let state = prev
   if (tr.docChanged) {
     const range = mapRange(prev.range, tr)
-    const dismissedAt = triggerAt(tr.doc, mapRange(prev.dismissedAt, tr), trigger)
-    if (!rangeEquals(range, prev.range) || !rangeEquals(dismissedAt, prev.dismissedAt))
-      state = { ...prev, range, dismissedAt }
+    const dismissed = mapDismissed(prev.dismissed, tr, trigger)
+    if (!rangeEquals(range, prev.range) || dismissed !== prev.dismissed) state = { ...prev, range, dismissed }
   }
   const meta = tr.meta.mention as MentionMeta | undefined
   if (typeof meta !== 'object' || meta === null) return state
   switch (meta.type) {
     case 'open': {
-      const changed = !state.open || meta.query !== state.query
+      // The caret went straight from the open trigger to another one: it left the first one
+      // (dismissed), and this is a new popup even with the same query.
+      const hop = state.open && state.range !== null && !pointEquals(state.range.start, meta.range.start)
+      const changed = !state.open || hop || meta.query !== state.query
       return {
         open: true,
         query: meta.query,
@@ -214,7 +244,7 @@ function applyMeta(tr: Transaction, prev: MentionState, trigger: string): Mentio
         index: changed ? 0 : state.index,
         requestId: changed ? state.requestId + 1 : state.requestId,
         pending: changed ? true : state.pending,
-        dismissedAt: null,
+        dismissed: hop ? dismiss(state.dismissed, triggerAt(tr.doc, state.range, trigger)) : state.dismissed,
       }
     }
     case 'results':
@@ -229,7 +259,7 @@ function applyMeta(tr: Transaction, prev: MentionState, trigger: string): Mentio
       return {
         ...CLOSED,
         requestId: state.requestId,
-        dismissedAt: meta.dismiss ? (triggerAt(tr.doc, state.range, trigger) ?? state.dismissedAt) : state.dismissedAt,
+        dismissed: meta.dismiss ? dismiss(state.dismissed, triggerAt(tr.doc, state.range, trigger)) : state.dismissed,
       }
     default:
       return state
@@ -269,8 +299,10 @@ function insertAtTriggers(ctx: Ctx, tr: Transaction, user: User, query: string):
   const label = typeof user.label === 'string' ? user.label : ''
   let inserted = false
   tr.forEachRange((range, t) => {
-    const view = { doc: t.doc, selection: single(range) } as unknown as EditorState
-    const match = findTrigger(view, { char: ctx.options.trigger })
+    // A real state (the tr's start state) with the live doc and this range alone: the same
+    // `findTrigger` the popup runs at the main caret, asked at this caret.
+    const at: EditorState = { ...t.before, doc: t.doc, selection: single(range) }
+    const match = findTrigger(at, { char: ctx.options.trigger })
     if (!match || match.query !== query || inTextOnlyBlock(t.doc, t.registry, match.range.start.path)) return
     // The space takes the trigger text's marks, as the single-range path's insertText takes the caret's.
     const lead = getNode(t.doc, match.range.start.path)
@@ -332,8 +364,11 @@ function fetchFor(ctx: Ctx, rt: Runtime, query: string, requestId: number): void
   void request
     .then(
       (users) => {
-        if (current())
-          dispatchMeta(ctx.editor, { type: 'results', requestId, items: Array.isArray(users) ? users.filter(isUser) : [] })
+        if (!current()) return
+        const items = Array.isArray(users) ? users.filter(isUser) : []
+        // Recorded before the dispatch, so views re-rendering on this tr read the new users.
+        for (const u of items) rt.users.set(u.id, u)
+        dispatchMeta(ctx.editor, { type: 'results', requestId, items })
       },
       () => {
         if (current()) dispatchMeta(ctx.editor, { type: 'close' })
@@ -353,7 +388,7 @@ function refresh(ctx: Ctx, rt: Runtime): void {
       ? findTrigger(state, { char: trigger })
       : null
   if (match && inTextOnlyBlock(state.doc, editor.registry, match.range.start.path)) match = null
-  if (match && st.dismissedAt && pointEquals(st.dismissedAt.start, match.range.start)) match = null
+  if (match && isDismissed(st.dismissed, match.range.start)) match = null
 
   if (!match) {
     // The caret left the trigger (or a space ended it): this trigger stays closed.
@@ -436,7 +471,7 @@ export const mention = definePlugin({
   }),
   storage: (ctx): MentionStorage => {
     const rt = runtimeOf(ctx.editor)
-    return { refresh: () => refresh(ctx, rt) }
+    return { refresh: () => refresh(ctx, rt), user: (id) => rt.users.get(id) }
   },
   state: {
     init: initState,

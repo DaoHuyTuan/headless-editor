@@ -342,6 +342,74 @@ describe('mention suggestion: races (Review Focus 2)', () => {
     expect(state().open).toBe(true)
   })
 
+  describe('hopping between triggers with the same query', () => {
+    /** Two `@jo` triggers: A ends at offset 3, B at offset 9. */
+    function twoTriggers() {
+      const ctx = setup(doc(p(txt('@jo x @jo'))))
+      const caret = (offset: number) => {
+        const tr = ctx.editor.createTransaction()
+        tr.setSelection(sel([0, 0], offset))
+        ctx.editor.dispatch(tr)
+      }
+      return { ...ctx, caret }
+    }
+
+    it('an Esc-dismissed trigger stays closed after the caret visits another one', () => {
+      const { state, key, caret } = twoTriggers()
+      caret(3)
+      expect(state()).toMatchObject({ open: true, query: 'jo' })
+      key('Escape')
+      caret(9)
+      expect(state()).toMatchObject({ open: true, query: 'jo' })
+      expect(state().range!.start).toEqual({ path: [0, 0], offset: 6 })
+      caret(3)
+      expect(state().open).toBe(false)
+    })
+
+    it('the caret hopping straight from an open trigger to another one dismisses the first', () => {
+      const { state, caret } = twoTriggers()
+      caret(3)
+      caret(9)
+      expect(state()).toMatchObject({ open: true, query: 'jo' })
+      caret(3)
+      expect(state().open).toBe(false)
+    })
+
+    it('every dismissed trigger stays closed, not only the last one', () => {
+      const { state, key, caret } = twoTriggers()
+      caret(3)
+      key('Escape')
+      caret(9)
+      key('Escape')
+      caret(3)
+      expect(state().open).toBe(false)
+      caret(9)
+      expect(state().open).toBe(false)
+    })
+
+    it("a dismissal belongs to its trigger: it is not reused for another trigger's same query", () => {
+      const { state, key, caret } = twoTriggers()
+      caret(9)
+      key('Escape')
+      caret(3)
+      expect(state()).toMatchObject({ open: true, query: 'jo' })
+      expect(state().range!.start).toEqual({ path: [0, 0], offset: 0 })
+    })
+
+    it("another trigger is a new popup: the first one's items and index are not reused", async () => {
+      const { state, key, caret, last, fetchUsers } = twoTriggers()
+      caret(3)
+      last().resolve([joe, bob])
+      await flush()
+      key('ArrowDown')
+      expect(state().index).toBe(1)
+      const calls = fetchUsers.mock.calls.length
+      caret(9)
+      expect(state()).toMatchObject({ open: true, query: 'jo', items: [], index: 0, pending: true })
+      expect(fetchUsers).toHaveBeenCalledTimes(calls + 1)
+    })
+  })
+
   it('blur closes the popup; unmount closes it too', () => {
     const { editor, root, state, type } = setup()
     type('@jo')
@@ -451,6 +519,46 @@ describe('mention commands', () => {
     expect(state()).toMatchObject({ open: true, index: 0 })
     expect(editor.commands.moveSuggestion(-1)).toBe(true)
     expect(state().index).toBe(1)
+  })
+})
+
+describe('mention storage: users seen in results', () => {
+  it('storage.user returns the latest result for an id, written before views see the results', async () => {
+    const { editor, type, last } = setup()
+    const storage = () => editor.storage.mention
+    expect(storage().user('u1')).toBeUndefined()
+    let seen: User | undefined
+    editor.on('transaction', ({ tr }) => {
+      if ((tr.meta.mention as { type?: string } | undefined)?.type === 'results') seen = storage().user('u1')
+    })
+    type('@a')
+    const annie = { id: 'u1', label: 'Annie' }
+    last().resolve([ann, bob])
+    await flush()
+    expect(seen).toBe(ann)
+    expect(storage().user('u2')).toBe(bob)
+    type('n')
+    last().resolve([annie])
+    await flush()
+    expect(storage().user('u1')).toBe(annie)
+    // Closing keeps what was seen.
+    editor.commands.closeSuggestion()
+    expect(storage().user('u1')).toBe(annie)
+  })
+
+  it('stale or post-close results are not recorded', async () => {
+    const { editor, type, key, last } = setup()
+    type('@a')
+    const stale = last()
+    type('n')
+    stale.resolve([ann])
+    await flush()
+    expect(editor.storage.mention.user('u1')).toBeUndefined()
+    const current = last()
+    key('Escape')
+    current.resolve([bob])
+    await flush()
+    expect(editor.storage.mention.user('u2')).toBeUndefined()
   })
 })
 
