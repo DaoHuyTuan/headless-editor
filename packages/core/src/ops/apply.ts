@@ -1,4 +1,4 @@
-import { deepEqualJson, isElement, isText } from '../model/node'
+import { cloneJson, deepEqualJson, isElement, isText } from '../model/node'
 import { isAncestorPath } from '../model/path'
 import type { Doc, ElementNode, Node, Path, TextNode } from '../model/types'
 import { movedPath } from './invert'
@@ -113,7 +113,8 @@ function apply(root: Root, op: Operation): Root {
         right = {
           id: props.id ?? (n as ElementNode).id,
           type: props.type ?? (n as ElementNode).type,
-          data: props.data ?? {},
+          // Its own copy: the left half keeps `n`'s data, and the op's payload stays out of the doc.
+          data: props.data ? cloneJson(props.data) : {},
           children: cs.slice(pos),
         }
       }

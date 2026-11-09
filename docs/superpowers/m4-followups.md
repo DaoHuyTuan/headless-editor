@@ -18,7 +18,7 @@ Longer-term direction (View interface extraction, incremental normalize/decorati
 ## Normalize / clipboard
 - No multi-newline selection-mapping test for rule 11.
 - The rule 11 perf bound is machine-dependent (~3x margin).
-- Split pieces share data by reference (pre-existing).
+- ✅ Split pieces share data by reference (pre-existing).
 - A lone non-opaque block pasted over a node selection takes the placeholder type (heading becomes paragraph), per caret rules.
 - `nodeSelection` accepts inline atoms programmatically (the view never does).
 - Non-atom block node views cannot be node-selected (`nodeSelection` throws); no test.

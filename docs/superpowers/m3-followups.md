@@ -39,9 +39,9 @@ Collected from the per-task and final reviews of milestone M3 (branch `feat/m3`)
   - ✅ untested: 3+ levels of appends, a selection-only append, a data-only append after an undo root.
 - Inline atoms (Task 5):
   - a literal U+200B in source, and a duplicated ZW constant/attribute (use an escape and one shared helper);
-  - rule 10 changes the link-end caret (typing no longer extends a trailing link), untested;
-  - `pastMiddle` asymmetry for text-less atoms;
-  - `insertInlineNode` returns false with ops on the tr;
+  - ✅ rule 10 changes the link-end caret (typing no longer extends a trailing link), untested;
+  - ✅ `pastMiddle` asymmetry for text-less atoms;
+  - ✅ `insertInlineNode` returns false with ops on the tr (only when rejected);
   - `leafDomText` strips a real U+200B;
   - word-Backspace removes an atom (comment needed);
   - ✅ unknown inline elements get no rule-10 siblings;

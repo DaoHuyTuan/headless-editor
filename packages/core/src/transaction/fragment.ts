@@ -1,6 +1,6 @@
 import { isOpaque, type NodeTypes } from '../model/editable'
 import { createId } from '../model/id'
-import { deepEqualJson, getNode, isElement, isText, nodeEntries } from '../model/node'
+import { cloneJson, deepEqualJson, getNode, isElement, isText, nodeEntries } from '../model/node'
 import { comparePoint, parentPath, toRange } from '../model/path'
 import { isNodeRange } from '../model/selection'
 import type { DeepReadonly, Doc, ElementNode, Json, Node, Path, Point, Range, SelectionRange, TextNode } from '../model/types'
@@ -23,12 +23,6 @@ import type { Transaction } from './transaction'
  * blocks); otherwise it is inline content (texts and inline elements).
  */
 export type Fragment = Node[]
-
-function cloneJson<T extends Json>(value: T): T {
-  if (Array.isArray(value)) return value.map(cloneJson) as T
-  if (typeof value !== 'object' || value === null) return value
-  return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, cloneJson(v)])) as T
-}
 
 function cloneText(node: TextNode, text: string): TextNode {
   return { text, marks: node.marks.map((m) => ({ type: m.type, data: cloneJson(m.data) })) }

@@ -54,6 +54,13 @@ export function* textEntries(root: ReadableRoot, range?: Range): Generator<[Text
   }
 }
 
+/** A deep copy of a JSON value: data that enters the doc never aliases a caller's (or another node's) object. */
+export function cloneJson<T extends Json>(value: T): T {
+  if (Array.isArray(value)) return value.map(cloneJson) as T
+  if (typeof value !== 'object' || value === null) return value
+  return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, cloneJson(v)])) as T
+}
+
 export function deepEqualJson(a: Json, b: Json): boolean {
   if (a === b) return true
   if (a === null || b === null || typeof a !== 'object' || typeof b !== 'object') return false

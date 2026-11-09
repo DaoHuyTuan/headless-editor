@@ -189,11 +189,20 @@ function isInlineAtomRoot(r: Renderer, el: Element): boolean {
   return !!spec && spec.kind === 'inline' && spec.atom === true
 }
 
-/** Whether the DOM position is past the middle of `el`'s text (of its child nodes, when it has no text). */
+/**
+ * Whether the DOM position is past the middle of `el`'s text, or, when it has no text, of its child
+ * nodes: a position inside child `i` counts as halfway through it (`i + 0.5` children before it), so
+ * one inside the last of two children is past the middle, like one after both.
+ */
 function pastMiddle(el: Element, node: globalThis.Node, offset: number): boolean {
   const total = textsIn(el).reduce((sum, t) => sum + t.data.length, 0)
-  if (total === 0) return node === el && offset * 2 > el.childNodes.length
-  return textBefore(el, node, offset) * 2 > total
+  if (total > 0) return textBefore(el, node, offset) * 2 > total
+  const count = el.childNodes.length
+  if (node === el) return offset * 2 > count
+  let child: globalThis.Node = node
+  while (child.parentNode && child.parentNode !== el) child = child.parentNode
+  if (child.parentNode !== el) return false
+  return indexOf(child) * 2 + 1 > count
 }
 
 /** The length of `el`'s DOM text before the position `(node, offset)` inside it. */

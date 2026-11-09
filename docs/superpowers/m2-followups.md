@@ -53,7 +53,7 @@ Kept open from "Start of M3" (no M3 plugin needed them, and each is a separate c
 - Normalize and editing:
   - ✅ a hoisted atom next to empty texts leaves a stray empty paragraph (rule 9 runs before rule 4);
   - ✅ `edgeBlockOf` treats unknown inline elements as edge blocks;
-  - split halves share a `data` reference;
+  - ✅ split halves share a `data` reference;
   - `nearestEditablePoint` is O(doc).
 - Node selection:
   - ✅ an op that removes the anchor text while the node survives leaves the selection null;
@@ -63,7 +63,7 @@ Kept open from "Start of M3" (no M3 plugin needed them, and each is a separate c
 - A drop within 500 ms of typing joins the typing undo step, and a drop moves the caret even when nothing was inserted.
 - ✅ History replay runs on every data-only change made outside history; add a guard when the stacks hold no `set_node_data`.
 - ✅ `rewriteHistoryData` doesn't validate its data.
-- Validated data from insert can alias the caller's object.
+- ✅ Validated data from insert can alias the caller's object.
 - A default block whose schema has required fields would make normalize's inserts reject.
 - The mutation.ts JSDoc is garbled.
 - Duplicate `samePath` helpers.

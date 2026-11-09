@@ -199,3 +199,72 @@ describe('fragments (3.5)', () => {
     expect(new Set(all).size).toBe(all.length)
   })
 })
+
+describe('data references (3.10)', () => {
+  const box = definePlugin({ name: 'box', node: { kind: 'block', content: 'inline' } })
+  const tag = definePlugin({ name: 'tag', mark: { render: () => ({ tag: 'span' }) } })
+
+  it('split halves get their own data objects', () => {
+    const ed = createTestEditor({ plugins: [testParagraph, box], doc: doc(el('box', { meta: { n: 1 } }, txt('ab'))), selection: sel([0, 0], 1) })
+    ed.commands.splitBlock()
+    const [left, right] = ed.state.doc.children as ElementNode[]
+    expect(right!.data).toEqual(left!.data)
+    expect(right!.data).not.toBe(left!.data)
+    expect(right!.data.meta).not.toBe(left!.data.meta)
+  })
+
+  it("inserted node data does not alias the caller's object", () => {
+    const ed = setup(doc(p('ab')), sel([0, 0], 2))
+    const data = { meta: { n: 1 } }
+    const tr = ed.createTransaction()
+    tr.insertNode([1], el('paragraph', data, txt('x')))
+    ed.dispatch(tr)
+    data.meta.n = 2
+    expect((ed.state.doc.children[1] as ElementNode).data).toEqual({ meta: { n: 1 } })
+  })
+
+  it("setNodeData does not alias the caller's nested objects", () => {
+    const ed = setup(doc(p('ab')), sel([0, 0], 2))
+    const partial = { meta: { n: 1 } }
+    ed.commands.setNodeData([0], partial)
+    partial.meta.n = 2
+    expect((ed.state.doc.children[0] as ElementNode).data).toEqual({ meta: { n: 1 } })
+  })
+
+  it("mark data does not alias the caller's object", () => {
+    const ed = createTestEditor({ plugins: [testParagraph, tag], doc: doc(p('ab')), selection: sel([0, 0], 0, [0, 0], 2) })
+    const data = { meta: { n: 1 } }
+    ed.commands.setMark('tag', data)
+    data.meta.n = 2
+    const text = (ed.state.doc.children[0] as ElementNode).children![0] as { marks: Mark[] }
+    expect(text.marks[0]!.data).toEqual({ meta: { n: 1 } })
+  })
+})
+
+describe('inline atoms (3.14)', () => {
+  const chip = definePlugin({
+    name: 'chip',
+    node: { kind: 'inline', atom: true },
+    data: z.object({ id: z.string() }),
+  })
+  const link = definePlugin({ name: 'link', node: { kind: 'inline' } })
+
+  it('insertInlineNode returns false only with a rejected tr when it leaves ops (never applied)', () => {
+    const ed = createTestEditor({ plugins: [testParagraph, chip], doc: doc(p('ab')), selection: sel([0, 0], 1) })
+    const tr = ed.createTransaction()
+    tr.insertInlineNode(el('chip', { id: 42 } as never))
+    expect(tr.rejected).not.toBeNull()
+    expect(() => ed.dispatch(tr)).toThrow()
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p('ab'))))
+  })
+
+  it('typing at the end of a trailing link types outside it (rule 10 adds a text after the link)', () => {
+    const ed = createTestEditor({ plugins: [testParagraph, link], doc: doc(p('a', el('link', {}, txt('url')))) })
+    // The caret at the end of the paragraph is in the empty text after the link.
+    const tr = ed.createTransaction()
+    tr.setSelection(sel([0, 2], 0))
+    ed.dispatch(tr)
+    ed.handleIntent({ inputType: 'insertText', data: 'x', range: null })
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p('a', el('link', {}, txt('url')), 'x'))))
+  })
+})

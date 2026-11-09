@@ -376,3 +376,28 @@ describe('inline atoms: DOM <-> model mapping', () => {
     expect(readDomSelection(renderer, domSel())).toEqual(sel)
   })
 })
+
+describe('inline atoms without text: past the middle (3.14)', () => {
+  /** Two icons, no text: the middle is between them. */
+  const icons = definePlugin({
+    name: 'icons',
+    node: { kind: 'inline', atom: true },
+    renderHTML: () => ['span', { class: 'icons' }, ['i', { class: 'a' }], ['i', { class: 'b' }]],
+  })
+
+  it('a position inside the second child is past the middle, inside the first is not', () => {
+    const editor = createTestEditor({ plugins: [testParagraph, icons] })
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    const renderer = new Renderer(root, editor)
+    renderer.render(doc({ id: 'p1', type: 'paragraph', data: {}, children: [txt('x'), { id: 'c1', type: 'icons', data: {} }, txt('y')] }))
+    const el = renderer.elementAt([0, 1])!
+    const [first, second] = [el.querySelector('i.a')!, el.querySelector('i.b')!]
+    expect(domToModel(renderer, first, 0)).toEqual({ path: [0, 0], offset: 1 })
+    expect(domToModel(renderer, second, 0)).toEqual({ path: [0, 2], offset: 0 })
+    // On the atom element itself: offsets 0 and 1 are before, 2 (after both icons) is after.
+    expect(domToModel(renderer, el, 1)).toEqual({ path: [0, 0], offset: 1 })
+    expect(domToModel(renderer, el, 2)).toEqual({ path: [0, 2], offset: 0 })
+    root.remove()
+  })
+})

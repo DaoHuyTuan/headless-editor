@@ -1,5 +1,5 @@
 import { createId } from '../model/id'
-import { getNode, isElement, isText } from '../model/node'
+import { cloneJson, getNode, isElement, isText } from '../model/node'
 import { isOpaqueAt, nearestEditablePoint, nodeSelection } from '../model/editable'
 import { createSelection, selectionEquals } from '../model/selection'
 import type { Data, Doc, ElementNode, Mark, Node, Path, Point, Range, Selection, SelectionRange, TextNode } from '../model/types'
@@ -192,7 +192,8 @@ export class Transaction {
       this.rejected = result.message
       return null
     }
-    const out: ElementNode = { ...node, data: result.data }
+    // A copy: the caller's object (returned as is by a schemaless validator) never enters the doc.
+    const out: ElementNode = { ...node, data: cloneJson(result.data) }
     if (node.children) {
       const children: Node[] = []
       for (const child of node.children) {
@@ -325,6 +326,6 @@ export class Transaction {
       this.rejected = result.message
       return this
     }
-    return this.apply({ type: 'set_node_data', path, data: result.data, prevData: node.data })
+    return this.apply({ type: 'set_node_data', path, data: cloneJson(result.data), prevData: node.data })
   }
 }

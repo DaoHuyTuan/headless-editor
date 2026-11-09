@@ -1,5 +1,5 @@
 import { editableTextEntries, type NodeTypes } from '../model/editable'
-import { deepEqualJson, getNode, isText, sameMarkSet, textEntries } from '../model/node'
+import { cloneJson, deepEqualJson, getNode, isText, sameMarkSet, textEntries } from '../model/node'
 import { comparePoint, nextPath, parentPath } from '../model/path'
 import { single } from '../model/selection'
 import type { Data, DeepReadonly, Doc, Json, Mark, Path, Point, Range, SelectionRange, TextNode } from '../model/types'
@@ -200,7 +200,7 @@ function validated(tr: Transaction, type: string, data: unknown): Mark | null {
     tr.rejected = result.message
     return null
   }
-  return { type, data: result.data }
+  return { type, data: cloneJson(result.data) }
 }
 
 /**
