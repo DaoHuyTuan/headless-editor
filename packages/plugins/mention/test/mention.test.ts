@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createSelection, definePlugin, serializeForClipboard, type Doc, type ElementNode, type Node, type Transaction } from '@hte/core'
 import { createTestEditor, doc, el, sel, stripIds, txt } from '@hte/core/testing'
 import { paragraph } from '@hte/paragraph'
@@ -19,9 +19,19 @@ const ann: User = { id: 'u1', label: 'Ann' }
 const bob: User = { id: 'u2', label: 'Bob' }
 const joe: User = { id: 'u3', label: 'Joe' }
 
+/** Every test asserts no `console.error`; one that expects some reads and clears `errors` itself. */
+let errors: ReturnType<typeof vi.spyOn>
+beforeEach(() => {
+  errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+})
 afterEach(() => {
   document.getSelection()?.removeAllRanges()
   document.body.replaceChildren()
+  // Read after the cleanup (which may log too), and restored before asserting, so a failure here
+  // never leaves the spy on for the next test.
+  const calls = [...errors.mock.calls]
+  vi.restoreAllMocks()
+  expect(calls).toEqual([])
 })
 
 function setup(content: Doc = doc(p(txt(''))), opts: Partial<Parameters<typeof mention.configure>[0]> = {}, extra: (typeof code)[] = []) {
@@ -101,6 +111,34 @@ describe('mention suggestion: opening and fetching', () => {
     type('@a #b')
     expect(state()).toMatchObject({ open: true, query: 'b' })
   })
+
+  // The limits documented on `trigger` (multi-character triggers are loosely supported).
+  describe('a multi-character trigger', () => {
+    it('opens once the whole trigger is typed, not on its first character', () => {
+      const { state, type } = setup(undefined, { trigger: '::' })
+      type(':')
+      expect(state().open).toBe(false)
+      type(':jo')
+      expect(state()).toMatchObject({ open: true, query: 'jo' })
+      expect(state().range).toEqual({ start: { path: [0, 0], offset: 0 }, end: { path: [0, 0], offset: 4 } })
+    })
+
+    it('the nearest occurrence before the caret decides: a repeated trigger character opens nothing', () => {
+      const { state, type } = setup(undefined, { trigger: '::' })
+      type(':::jo')
+      expect(state().open).toBe(false)
+    })
+
+    it('accepting replaces the whole trigger and query', async () => {
+      const { editor, type, last } = setup(undefined, { trigger: '::' })
+      type('::a')
+      last().resolve([ann])
+      await flush()
+      expect(editor.commands.acceptSuggestion()).toBe(true)
+      const kids = blockKids(editor.getJSON())
+      expect(kids.map((n) => ('text' in n ? n.text : (n as ElementNode).type))).toEqual(['', 'mention', ' '])
+    })
+  })
 })
 
 describe('mention suggestion: keyboard', () => {
@@ -178,7 +216,9 @@ describe('mention suggestion: keyboard', () => {
     expect(state().open).toBe(true)
   })
 
-  it('once the current query resolved with no results, ↑ ↓ Enter are released: Enter splits, the popup stays open', async () => {
+  // The released keydown alone changes nothing (no keydown binding here); the split comes with the
+  // insertParagraph intent (next test), which closes the popup.
+  it('once the current query resolved with no results, ↑ ↓ Enter keydowns are released (not prevented)', async () => {
     const { state, type, key, last } = setup()
     type('@zz')
     expect(state().pending).toBe(true)
@@ -194,13 +234,29 @@ describe('mention suggestion: keyboard', () => {
     expect(state().open).toBe(false)
   })
 
-  it('an insertParagraph intent with zero resolved results splits the block', async () => {
-    const { editor, root, type, last } = setup()
+  it('an insertParagraph intent with zero resolved results splits the block, which closes the popup', async () => {
+    const { editor, root, state, type, last } = setup()
     type('@zz')
     last().resolve([])
     await flush()
     root.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, cancelable: true, inputType: 'insertParagraph' }))
     expect(stripIds(editor.getJSON())).toEqual(stripIds(doc(p(txt('@zz')), p(txt('')))))
+    // The split moved the caret out of the trigger: the popup closed, and that trigger stays closed.
+    expect(state().open).toBe(false)
+    const back = editor.createTransaction()
+    back.setSelection(sel([0, 0], 3))
+    editor.dispatch(back)
+    expect(state().open).toBe(false)
+  })
+
+  it('a query typed in decomposed (NFD) Vietnamese is passed to fetchUsers as typed', () => {
+    const { state, type, fetchUsers } = setup()
+    const query = 'Nguyễn'.normalize('NFD')
+    expect(query.length).toBeGreaterThan('Nguyễn'.length)
+    type(`@${query}`)
+    expect(state()).toMatchObject({ open: true, query })
+    expect(state().range).toEqual({ start: { path: [0, 0], offset: 0 }, end: { path: [0, 0], offset: query.length + 1 } })
+    expect(fetchUsers).toHaveBeenLastCalledWith(query)
   })
 
   it('a new query after zero results captures the keys again until its own results arrive', async () => {

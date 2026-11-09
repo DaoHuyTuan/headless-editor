@@ -61,10 +61,16 @@ export interface MentionOptions {
   fetchUsers: (query: string) => Promise<User[]>
   /**
    * The live display name of a user, for views (not used by the logic, nor by HTML export, which
-   * writes the `label` snapshot).
+   * writes the `label` snapshot). Called when a view renders: an external store it reads is not
+   * subscribed, so a change there shows on the chip's next render only (see `useMention`).
    */
   renderUser: ((user: User) => string) | undefined
-  /** The character that opens the suggestion popup. Default `'@'`. */
+  /**
+   * The text that opens the suggestion popup. Default `'@'`. Meant to be one character; a longer
+   * trigger works loosely: the popup opens only once the whole trigger is typed, the nearest
+   * occurrence before the caret decides (so a run of the trigger's characters, e.g. `:::` with
+   * `'::'`, opens nothing), and the trigger must not contain whitespace (whitespace ends a query).
+   */
   trigger: string
   /** Extra attributes merged into the `<span>`; `data-mention` and `data-id` always win. */
   HTMLAttributes: HTMLAttributes
@@ -412,8 +418,9 @@ function closeQuietly(ctx: Ctx): void {
  * `MentionState`). Typing the trigger at a line start or after whitespace opens the popup (not in a
  * text-only block such as a code block); while it is open, ArrowUp / ArrowDown / Enter go to the popup
  * while it has items or the current query's results are pending (no-ops then); once the query resolved
- * with no results they are left to the editor (Enter splits, the popup stays open). Esc closes it. A space,
- * the caret leaving the trigger, Esc, a blur or an unmount close it.
+ * with no results they are left to the editor (Enter splits the block, which moves the caret out of
+ * the trigger and so closes the popup). Esc closes it. A space, the caret leaving the trigger, Esc, a
+ * blur or an unmount close it.
  *
  * The trigger is recomputed on every doc and selection change, not only on typing: putting the caret
  * after an existing plain-text `@foo` (at a line start or after whitespace) opens the popup too
@@ -432,7 +439,11 @@ function closeQuietly(ctx: Ctx): void {
  */
 export const mention = definePlugin({
   name: 'mention',
-  priority: 150,
+  // Above the code block (150): with the main caret at an open popup and another caret in a code
+  // block, both handle `insertParagraph`; the popup must claim it first, whatever the registration
+  // order. It claims it only while open (with items, or results pending), so other plugins see every
+  // other Enter. (Keydown needs no priority: DOM event handlers run before every keymap.)
+  priority: 160,
   node: { kind: 'inline', atom: true },
   data: z.object({ userId: z.string().min(1), label: z.string() }),
   options: {
@@ -487,8 +498,9 @@ export const mention = definePlugin({
         return false
       // While open, ↑ ↓ Enter belong to the popup while it has items or the current query's results are
       // still pending (then they are no-ops, so Enter never splits the block under a list about to
-      // appear). Once the query resolved with no results they are released: Enter splits as usual and
-      // the popup stays open (Esc, a space or the caret leaving still close it).
+      // appear). Once the query resolved with no results they are released: Enter splits as usual,
+      // which moves the caret out of the trigger, so the refresh after the split closes the popup
+      // (and dismisses that trigger).
       const hasItems = st.items.length > 0
       if (!hasItems && !st.pending && e.key !== 'Escape') return false
       if (e.key === 'ArrowDown') {
@@ -506,7 +518,8 @@ export const mention = definePlugin({
   },
   // Keyboards that send no usable keydown (e.g. Android): Enter while open accepts the highlighted
   // item, or is swallowed while results are pending (the block is not split under a list about to
-  // appear); with zero results for the current query it splits as usual.
+  // appear); with zero results for the current query it splits as usual (closing the popup, as the
+  // caret leaves the trigger).
   onBeforeInput: (intent, ctx) => {
     if (intent.inputType !== 'insertParagraph') return false
     const st = ctx.getState()
