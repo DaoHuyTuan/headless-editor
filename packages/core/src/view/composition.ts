@@ -9,19 +9,21 @@ import { textsOutsideWidgets } from './decorations'
 import { modelToDom } from './dom-selection'
 import { isIgnoredEvent } from './ignore'
 import type { EditorView, ViewModule } from './view'
+import { isZwLeaf, stripPlaceholder } from './zero-width'
 
 const INPUT_TYPE = 'insertCompositionText'
 
 /**
  * The text an IME left in a leaf: its DOM text (a lone `<br data-hte-break>` counts as empty). In a
- * zero-width leaf (an empty text beside an inline atom) the zero-width placeholder is not text.
+ * zero-width leaf (an empty text beside an inline atom) its one placeholder is not text, while a
+ * real U+200B the IME wrote is (see `stripPlaceholder`).
  * Decoration spans are read through (their text is the leaf's); decoration widgets are not text.
  */
 function leafDomText(leaf: HTMLElement): string {
   const text = textsOutsideWidgets(leaf)
     .map((t) => t.data)
     .join('')
-  return leaf.hasAttribute('data-hte-zw') ? text.split('​').join('') : text
+  return stripPlaceholder(text, isZwLeaf(leaf))
 }
 
 /**

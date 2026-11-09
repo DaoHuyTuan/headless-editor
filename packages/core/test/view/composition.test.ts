@@ -310,3 +310,27 @@ describe('composition and newline splitting (normalize rule 11)', () => {
     expect(editor.getHTML()).toBe('<p>ax</p><p>yb</p>')
   })
 })
+
+describe('composition in a zero-width leaf (5.15)', () => {
+  const chip = definePlugin({ name: 'chip', node: { kind: 'inline', atom: true } })
+
+  it('drops only the placeholder, keeping a real U+200B the IME wrote', () => {
+    const chipNode: ElementNode = { id: 'c1', type: 'chip', data: {} }
+    const editor = createTestEditor({
+      plugins: [testParagraph, chip],
+      doc: doc(p('p1', txt('x'), chipNode, txt(''))),
+      selection: caret([0, 2], 0),
+    })
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    editor.mount(root)
+    const view = editor.view!
+    view.focus()
+    expect(view.renderer.leafAt([0, 2])!.hasAttribute('data-hte-zw')).toBe(true)
+    fire(root, 'compositionstart')
+    // The placeholder, then the composed text with a genuine zero-width space in it.
+    imeWrite(view, [0, 2], '\u200ba\u200bb')
+    fire(root, 'compositionend')
+    expect((editor.state.doc.children[0]!.children![2] as TextNode).text).toBe('a\u200bb')
+  })
+})

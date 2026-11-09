@@ -4,28 +4,28 @@ import { mainRange, single } from '../model/selection'
 import type { Path, Point, Selection } from '../model/types'
 import { textsOutsideWidgets, widgetAround } from './decorations'
 import type { Renderer } from './renderer'
+import { isZwLeaf, placeholderIndex, stripPlaceholder } from './zero-width'
 
 const LEAF_ATTR = 'data-hte-leaf'
 const ID_ATTR = 'data-hte-id'
-const ZW_ATTR = 'data-hte-zw'
-const ZW = '​'
 const PRECEDING = 2
 
 /**
  * The DOM position for a model point: the innermost DOM text inside the leaf with the same
  * offset (UTF-16 code units), or `(leaf, 0)` for an empty leaf. Throws when no leaf is rendered there.
+ * In a zero-width leaf, a point at or after its placeholder maps past it.
  */
 export function modelToDom(r: Renderer, p: Point): { node: globalThis.Node; offset: number } {
   const leaf = r.leafAt(p.path)
   if (!leaf) throw new Error(`No rendered text at path [${p.path.join(',')}]`)
   const texts = textsIn(leaf)
   if (texts.length === 0) return { node: leaf, offset: 0 }
-  const zw = isZwLeaf(leaf)
+  const placeholder = placeholderIndex(texts.map((t) => t.data).join(''), isZwLeaf(leaf))
   let rest = Math.max(0, p.offset)
+  if (placeholder >= 0 && rest >= placeholder) rest++
   for (const t of texts) {
-    const length = modelLength(t.data, zw)
-    if (rest <= length) return { node: t, offset: zw ? domIndex(t.data, rest) : rest }
-    rest -= length
+    if (rest <= t.data.length) return { node: t, offset: rest }
+    rest -= t.data.length
   }
   const last = texts[texts.length - 1]!
   return { node: last, offset: last.data.length }
@@ -34,7 +34,8 @@ export function modelToDom(r: Renderer, p: Point): { node: globalThis.Node; offs
 /**
  * The model point for a DOM position, or null when it is outside the root (or the doc has no text).
  * Positions outside text leaves (element containers, static spec nodes, non-editable content) map to
- * the nearest leaf boundary.
+ * the nearest leaf boundary. In or on non-editable content, the offset picks the side: the boundary
+ * before its outermost non-editable ancestor, or after it once past its middle (see `pastMiddle`).
  */
 export function domToModel(r: Renderer, node: globalThis.Node, offset: number): Point | null {
   const root = r.root
@@ -50,11 +51,12 @@ export function domToModel(r: Renderer, node: globalThis.Node, offset: number): 
   const leaf = leafAround(r, node)
   if (leaf) return pointInLeaf(r, leaf, node, offset)
 
-  // Content the user cannot place a caret in counts as one opaque node at its outermost ancestor:
-  // its position is the boundary before it, or after it for an inline atom past its middle.
+  // Content the user cannot place a caret in counts as one opaque node at its outermost ancestor
+  // (an inline atom, a block atom, an unknown element, a non-editable static spec node): its position
+  // is the boundary before it, or after it when past its middle (see `pastMiddle`).
   const opaque = outermostNonEditable(r, node)
   if (opaque) {
-    const after = isInlineAtomRoot(r, opaque) && pastMiddle(opaque, node, offset)
+    const after = pastMiddle(opaque, node, offset)
     return boundaryPoint(r, opaque.parentNode!, indexOf(opaque) + (after ? 1 : 0))
   }
   if (node.nodeType !== 1) {
@@ -114,8 +116,8 @@ export function writeDomSelection(r: Renderer, sel: Selection | null, domSel: gl
     !current.node &&
     pointEquals(current.anchor, range.anchor) &&
     pointEquals(current.focus, range.focus) &&
-    !isStrayPosition(r, domSel.anchorNode!) &&
-    !isStrayPosition(r, domSel.focusNode!)
+    !isStrayPosition(r, domSel.anchorNode!, domSel.isCollapsed) &&
+    !isStrayPosition(r, domSel.focusNode!, domSel.isCollapsed)
   ) {
     return
   }
@@ -127,14 +129,23 @@ export function writeDomSelection(r: Renderer, sel: Selection | null, domSel: gl
 // --- helpers ---
 
 /**
- * Whether a DOM selection end in `node` cannot show a caret: the root itself, or an editable element
- * outside every leaf that contains no leaf (e.g. a block or contentDOM whose leaf was removed).
- * Positions in leaves, in non-editable content (inline atoms, node-view controls) or in static text
- * are not stray: they are the user's, and kept while they map to the model selection.
+ * Whether a DOM selection end in `node` is stray, so a write that maps to the same model points still
+ * moves it into the leaves:
+ * - the root itself;
+ * - for a collapsed caret (`collapsed`), any editable position outside every leaf: e.g. parked at a
+ *   block element's child index or in a static text of a spec, where typing would land outside the
+ *   leaves and never reach the model;
+ * - for an end of a non-collapsed selection, an editable element outside every leaf that contains no
+ *   leaf (e.g. a block or contentDOM whose leaf was removed).
+ * Positions in leaves and in non-editable content (inline atoms, node-view controls) are never stray,
+ * nor are the ends of a non-collapsed selection at block boundaries or in static text (e.g. mid-drag):
+ * they are the user's, and kept while they map to the model selection.
  */
-function isStrayPosition(r: Renderer, node: globalThis.Node): boolean {
+function isStrayPosition(r: Renderer, node: globalThis.Node, collapsed: boolean): boolean {
   if (node === r.root) return true
-  if (node.nodeType !== 1 || leafAround(r, node) || outermostNonEditable(r, node)) return false
+  if (leafAround(r, node) || outermostNonEditable(r, node)) return false
+  if (collapsed) return true
+  if (node.nodeType !== 1) return false
   return !(node as Element).querySelector(`[${LEAF_ATTR}]`)
 }
 
@@ -156,37 +167,16 @@ function textsIn(el: globalThis.Node): Text[] {
   return textsOutsideWidgets(el)
 }
 
-/** The model text length of a leaf (zero-width placeholders excluded). */
+/** The DOM text of a leaf (decoration widgets excluded). */
+function leafDomText(leaf: Element): string {
+  return textsIn(leaf)
+    .map((t) => t.data)
+    .join('')
+}
+
+/** The model text length of a leaf (the zero-width placeholder excluded, see `stripPlaceholder`). */
 function textLength(leaf: Element): number {
-  const zw = isZwLeaf(leaf)
-  return textsIn(leaf).reduce((sum, t) => sum + modelLength(t.data, zw), 0)
-}
-
-/** Whether the leaf shows an empty text as a zero-width space (see the renderer): that character is not model text. */
-function isZwLeaf(leaf: Element): boolean {
-  return leaf.hasAttribute(ZW_ATTR)
-}
-
-/** How many model characters `data` holds: in a zero-width leaf, its zero-width spaces do not count. */
-function modelLength(data: string, zw: boolean): number {
-  return zw ? data.split(ZW).join('').length : data.length
-}
-
-/** The DOM index in `data` (of a zero-width leaf) right after its first `count` model characters, past any zero-width space. */
-function domIndex(data: string, count: number): number {
-  let i = 0
-  for (let seen = 0; i < data.length; i++) {
-    if (data[i] === ZW) continue
-    if (seen === count) break
-    seen++
-  }
-  return Math.min(i, data.length)
-}
-
-function isInlineAtomRoot(r: Renderer, el: Element): boolean {
-  const node = r.nodeOfElement(el)
-  const spec = node && r.registry.node(node.type)
-  return !!spec && spec.kind === 'inline' && spec.atom === true
+  return stripPlaceholder(leafDomText(leaf), isZwLeaf(leaf)).length
 }
 
 /**
@@ -247,11 +237,9 @@ function pointInLeaf(r: Renderer, leaf: Element, node: globalThis.Node, offset: 
   const length = textLength(leaf)
   // Leaf span, mark wrapper or break as a container: the leaf text before the boundary counts.
   let before = textBefore(leaf, node, offset)
-  if (isZwLeaf(leaf)) {
-    // Zero-width placeholders are not model text: count only what precedes the position otherwise.
-    const all = textsIn(leaf).map((t) => t.data).join('')
-    before = modelLength(all.slice(0, before), true)
-  }
+  // The zero-width placeholder is not model text: drop it when it precedes the position.
+  const placeholder = placeholderIndex(leafDomText(leaf), isZwLeaf(leaf))
+  if (placeholder >= 0 && before > placeholder) before--
   return { path, offset: Math.min(before, length) }
 }
 

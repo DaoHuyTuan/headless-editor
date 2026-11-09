@@ -17,15 +17,13 @@ import {
   type LeafDecorations,
   type LeafPart,
 } from './decorations'
+import { ZW, ZW_ATTR } from './zero-width'
 
 const ID_ATTR = 'data-hte-id'
 const LEAF_ATTR = 'data-hte-leaf'
 const NODE_VIEW_ATTR = 'data-hte-node-view'
 const CONTENT_ATTR = 'data-hte-content'
 const SELECTED_ATTR = 'data-hte-selected'
-const ZW_ATTR = 'data-hte-zw'
-/** What an empty text beside an inline element shows: a caret can sit in it, and it adds no line break. */
-const ZW = '​'
 
 /**
  * The rendered DOM of one element (or of the root, for the doc). Children occupy the hole's
