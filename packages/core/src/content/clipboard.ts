@@ -1,11 +1,12 @@
 import type { Editor } from '../editor'
 import { serializeHTML } from '../html/serialize'
 import { parseHTML } from '../html/parse'
-import { defaultBlock, isBlock, sanitizeFragment } from './sanitize'
+import { defaultBlock, dropCollector, isBlock, sanitizeFragment } from './sanitize'
 import { nodeText } from './text'
 import { mainRange, single } from '../model/selection'
 import type { Doc, ElementNode, Mark, Node, Path, Range, SelectionRange } from '../model/types'
 import type { Registry } from '../plugin/registry'
+import type { DropHandler } from '../load'
 import { getFragment, type Fragment } from '../transaction/fragment'
 import { marksAt, marksOfRange } from '../transaction/marks'
 
@@ -38,14 +39,14 @@ export function serializeForClipboard(
   }
 }
 
-function fromJson(json: string, registry: Registry): Fragment {
+function fromJson(json: string, registry: Registry, onDrop: DropHandler): Fragment {
   let raw: unknown
   try {
     raw = JSON.parse(json)
   } catch {
     return []
   }
-  return Array.isArray(raw) ? sanitizeFragment(raw, registry) : []
+  return Array.isArray(raw) ? sanitizeFragment(raw, registry, onDrop) : []
 }
 
 function fromText(text: string, registry: Registry, marks: Mark[]): Fragment {
@@ -90,11 +91,14 @@ export function parseFromClipboard(
  * The `json` flavor, else the `html` one, as a validated fragment, before `transformPasted`; empty when
  * neither yields content (`parseFromClipboard` then falls back to `text`, whose marks depend on the
  * target). It does not depend on where the fragment goes, so a paste at several ranges parses it once.
+ * Malformed nodes and marks dropped on the way are reported as one warning (not one each).
  */
 export function parseRichClipboard(editor: Editor, data: { json?: string; html?: string }): Fragment {
   const { registry } = editor
   let fragment: Fragment = []
-  if (data.json) fragment = fromJson(data.json, registry)
-  if (fragment.length === 0 && data.html) fragment = sanitizeFragment(parseHTML(data.html, registry), registry)
+  const drops = dropCollector()
+  if (data.json) fragment = fromJson(data.json, registry, drops.onDrop)
+  if (fragment.length === 0 && data.html) fragment = sanitizeFragment(parseHTML(data.html, registry), registry, drops.onDrop)
+  drops.warn('pasted content')
   return fragment
 }

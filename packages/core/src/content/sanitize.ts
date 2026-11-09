@@ -1,4 +1,4 @@
-import { coerceDoc } from '../load'
+import { coerceDoc, preview, type DropHandler } from '../load'
 import { createId } from '../model/id'
 import { isElement, isText } from '../model/node'
 import type { ElementNode, Mark, Node, TextNode } from '../model/types'
@@ -32,13 +32,35 @@ function dropUnknown(nodes: Node[], registry: Registry): Node[] {
 }
 
 /**
+ * Collects what `coerceDoc` drops, to report it as one warning: untrusted content (a paste) can
+ * hold any number of malformed nodes, and one warning each would flood the console.
+ */
+export function dropCollector(): { onDrop: DropHandler; warn: (source: string) => void } {
+  let count = 0
+  let first = ''
+  return {
+    onDrop: (what, raw, reason) => {
+      if (count++ === 0) first = `${what} (${reason}): ${preview(raw)}`
+    },
+    warn: (source) => {
+      if (count === 0) return
+      console.warn(`[hte] Dropped ${count} malformed node(s) or mark(s) from ${source}; the first: ${first}`)
+      count = 0
+    },
+  }
+}
+
+/**
  * Makes untrusted content safe to insert: `coerceDoc` validates every node's and mark's data
  * (repairing via `onInvalidData` or dropping the node), unknown types and marks are dropped, and
  * the result is either all inline content or all blocks (inline runs beside blocks are wrapped into
- * default blocks; non-atom blocks without children get an empty text).
+ * default blocks; non-atom blocks without children get an empty text). What `coerceDoc` drops goes
+ * to `onDrop`; without it, one warning sums it all up.
  */
-export function sanitizeFragment(raw: unknown[], registry: Registry): Fragment {
-  const coerced = coerceDoc({ type: 'doc', children: raw }, registry).children as Node[]
+export function sanitizeFragment(raw: unknown[], registry: Registry, onDrop?: DropHandler): Fragment {
+  const drops = onDrop ? null : dropCollector()
+  const coerced = coerceDoc({ type: 'doc', children: raw }, registry, onDrop ?? drops!.onDrop).children as Node[]
+  drops?.warn('inserted content')
   const nodes = dropUnknown(coerced, registry)
   const fixEmpty = (n: Node): Node => {
     if (isText(n) || n.children === undefined || n.children.length > 0) return n

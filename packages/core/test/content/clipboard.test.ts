@@ -186,6 +186,35 @@ describe('serializeForClipboard / parseFromClipboard', () => {
     ])
   })
 
+  it('warns once per paste, not once per malformed node (4.5)', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const strict = definePlugin({
+      name: 'strict',
+      node: { kind: 'block' },
+      data: {
+        '~standard': {
+          version: 1 as const,
+          vendor: 'test',
+          validate: (v: unknown) => (v && (v as { ok?: unknown }).ok === true ? { value: v as object } : { issues: [{ message: 'not ok' }] }),
+        },
+      },
+    })
+    const editor = setup(doc(p('p1', txt(''))), caret([0, 0], 0), [testParagraph, testBold, strict])
+    const bad = Array.from({ length: 5 }, (_, i) => ({ id: `s${i}`, type: 'strict', data: {}, children: [] }))
+    const json = JSON.stringify([...bad, null, 7, { id: 'c', type: 'paragraph', data: {}, children: [{ text: 'y', marks: [] }] }])
+    expect(stripIds(parseFromClipboard(editor, { json }))).toEqual([{ type: 'paragraph', data: {}, children: [txt('y')] }])
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(String(warn.mock.calls[0]![0])).toMatch(/7 .*pasted content/)
+    // json that sanitizes to nothing, then malformed html: still one warning for the whole paste.
+    warn.mockClear()
+    parseFromClipboard(editor, { json: JSON.stringify(bad), html: '<p>h</p>' })
+    expect(warn).toHaveBeenCalledTimes(1)
+    // Nothing dropped, no warning.
+    warn.mockClear()
+    parseFromClipboard(editor, { json: JSON.stringify([txt('ok')]) })
+    expect(warn).not.toHaveBeenCalled()
+  })
+
   it('json that sanitizes to nothing falls through to html, then text', () => {
     const editor = setup(doc(p('p1', txt(''))), caret([0, 0], 0))
     const json = JSON.stringify([{ id: 'b', type: 'mystery', data: {} }])
