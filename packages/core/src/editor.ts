@@ -45,6 +45,21 @@ export interface EditorOptions<P extends readonly AnyPlugin[] = readonly AnyPlug
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   nodeViews?: Record<string, NodeViewFactory<any, any, any, any>>
+  /**
+   * Event listeners registered at the start of construction, before any plugin hook runs: unlike
+   * `on`, they also see what plugins' `onCreate` hooks dispatch (or set with `setPluginOptions`).
+   * Afterwards they behave like listeners added with `on` (registered first, so called first), and
+   * `destroy()` removes them. There is no unsubscribe: use `on` for a listener that may go earlier.
+   */
+  listeners?: EditorListeners
+}
+
+/** `EditorOptions.listeners`: one listener per event. */
+export interface EditorListeners {
+  transaction?: (e: EditorEvent) => void
+  update?: (e: EditorEvent) => void
+  selectionUpdate?: (e: EditorEvent) => void
+  options?: (e: OptionsEvent) => void
 }
 
 export type EditorEventName = 'transaction' | 'update' | 'selectionUpdate'
@@ -124,6 +139,10 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
   constructor(options: EditorOptions<P>) {
     this.dev = options.dev ?? false
     this.platform = options.platform ?? detectPlatform()
+    // Before any plugin code runs, so `onCreate` dispatches are reported.
+    for (const [event, fn] of Object.entries(options.listeners ?? {})) {
+      if (fn) this.on(event as EditorEventName, fn as (e: EditorEvent) => void)
+    }
     const plugins: AnyPlugin[] = [corePlugin, ...(options.history === false ? [] : [historyPlugin]), ...options.plugins]
     this.registry = new Registry(plugins)
     for (const [type, factory] of Object.entries(options.nodeViews ?? {})) {

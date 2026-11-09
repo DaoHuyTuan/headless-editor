@@ -1,14 +1,15 @@
-import { useEffect, useInsertionEffect, useRef, useState } from 'react'
-import { Editor, type AnyPlugin, type EditorOptions, type NodeViewFactory } from '@hte/core'
+import { useEffect, useInsertionEffect, useRef } from 'react'
+import { Editor, type AnyPlugin, type EditorEvent, type EditorOptions, type NodeViewFactory } from '@hte/core'
 import { createPortalStore, setPortalStore, toNodeViewFactory, type PortalStore, type ReactNodeView } from './node-views'
 
 export type UseEditorOptions<P extends readonly AnyPlugin[]> = Omit<EditorOptions<P>, 'nodeViews'> & {
   /**
-   * Called once per doc-changing commit (the editor's `'update'` event), from the moment `useEditor`
-   * returns the editor: dispatches from a child's layout effect or a plugin's `onMount` during the
-   * first commit are included, and the callback of the render being committed is the one called.
-   * Dispatches from a plugin's `onCreate` run inside the editor's constructor, before any listener
-   * can exist, so they are not reported: read the initial state from the editor instead.
+   * Called once per doc-changing commit (the editor's `'update'` event), for the editor's whole life:
+   * it is passed to the editor as `listeners.update`, so dispatches from a plugin's `onCreate` are
+   * reported too (synchronously, while `useEditor` builds the editor during the first render; the
+   * `editor` argument is then not returned yet), as are those from a child's layout effect or a
+   * plugin's `onMount` during the first commit. The callback of the render being committed is the
+   * one called. A `listeners.update` given as well is kept and runs first.
    */
   onUpdate?: (e: { editor: Editor<P> }) => void
   /** React components rendered as node views, keyed by (atom) node type. Read on the first render only. */
@@ -36,7 +37,13 @@ function shallowEqual(a: Record<string, unknown> | undefined, b: Record<string, 
 /**
  * Creates an editor once for the component's lifetime. Options are read only on the first render
  * (except `pluginOptions`, which are synced on every render); `onUpdate` is held in a ref, so a new
- * callback identity never recreates the editor.
+ * callback identity never recreates the editor. `listeners` (see `EditorOptions`) are registered
+ * before the plugins' `onCreate` hooks run; `onUpdate` goes through them.
+ *
+ * The editor is built once, StrictMode included: it is created lazily in a ref, which React 19 keeps
+ * across StrictMode's double render (a `useState` initializer would be called twice and build a
+ * throwaway editor whose `onCreate` hooks ran). A render React discards before its first commit
+ * (a suspended mount) still leaves its editor undestroyed, as with any render-time resource.
  *
  * `nodeViews` components are rendered by `EditorContent` through portals into the containers the
  * core creates for their nodes.
@@ -56,23 +63,38 @@ export function useEditor<const P extends readonly AnyPlugin[]>(options: UseEdit
     onUpdateRef.current = options.onUpdate
   })
 
-  // The unsubscribe goes with the editor it belongs to: StrictMode's second initializer call builds a
-  // throwaway editor, which a ref written from the initializer would point at.
-  const [[editor, unsubscribeUpdate, store]] = useState((): [Editor<P>, () => void, PortalStore] => {
-    const { onUpdate: _onUpdate, nodeViews, pluginOptions, ...editorOptions } = options
+  // Created lazily in a ref rather than a `useState` initializer, which StrictMode calls twice (the
+  // second call would build a throwaway editor, running its plugins' `onCreate`, never destroyed).
+  // React 19 keeps the hooks of the first pass for StrictMode's second render, so this runs once.
+  const created = useRef<{ editor: Editor<P>; store: PortalStore } | null>(null)
+  if (created.current === null) {
+    const { onUpdate: _onUpdate, nodeViews, pluginOptions, listeners, ...editorOptions } = options
     const store = createPortalStore()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const factories: Record<string, NodeViewFactory<any, any>> = {}
     for (const [type, Component] of Object.entries(nodeViews ?? {})) factories[type] = toNodeViewFactory(Component, store)
-    const created = new Editor<P>({ ...editorOptions, nodeViews: factories } as EditorOptions<P>)
-    for (const [name, value] of Object.entries(pluginOptions ?? {})) created.setPluginOptions(name, value)
-    setPortalStore(created, store)
-    // Subscribed at creation, not in an effect: dispatches from children's layout effects and from
-    // `onMount` (run when `EditorContent` mounts, in a layout effect) come before this hook's effects.
-    // Once per editor, so StrictMode's effect re-runs never subscribe twice; removed on destroy.
-    const off = created.on('update', () => onUpdateRef.current?.({ editor: created }))
-    return [created, off, store]
-  })
+    // `onUpdate` is registered through `listeners`, before the plugins' `onCreate` hooks run, so their
+    // dispatches are reported too, as are those of children's layout effects and `onMount` (run when
+    // `EditorContent` mounts, in a layout effect), which come before this hook's effects. Once per
+    // editor, so StrictMode's effect re-runs never subscribe twice; `destroy()` removes it.
+    const userUpdate = listeners?.update
+    const onUpdate = (e: EditorEvent) => {
+      try {
+        userUpdate?.(e)
+      } finally {
+        onUpdateRef.current?.({ editor: e.editor as unknown as Editor<P> })
+      }
+    }
+    const editor = new Editor<P>({
+      ...editorOptions,
+      listeners: { ...listeners, update: onUpdate },
+      nodeViews: factories,
+    } as EditorOptions<P>)
+    for (const [name, value] of Object.entries(pluginOptions ?? {})) editor.setPluginOptions(name, value)
+    setPortalStore(editor, store)
+    created.current = { editor, store }
+  }
+  const { editor, store } = created.current
 
   const appliedOptions = useRef<Record<string, Record<string, unknown>> | null>(null)
   if (appliedOptions.current === null) {
@@ -107,7 +129,6 @@ export function useEditor<const P extends readonly AnyPlugin[]>(options: UseEdit
     return () => {
       pendingDestroy.current = setTimeout(() => {
         pendingDestroy.current = null
-        unsubscribeUpdate()
         editor.destroy()
       }, 0)
     }

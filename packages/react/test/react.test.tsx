@@ -279,6 +279,75 @@ describe('useEditor onUpdate during the first commit', () => {
       expect(calls).toBe(commits)
     })
 
+    it(`reaches onUpdate once per dispatch from a plugin's onCreate${strict ? ' (StrictMode)' : ''}`, () => {
+      const creating = definePlugin({
+        name: 'creating',
+        onCreate: (ctx) => {
+          ctx.editor.commands.insertText('x')
+        },
+      })
+      const calls: string[] = []
+      let editor!: Editor<any>
+      function App() {
+        editor = useEditor({
+          plugins: [paragraph, counter, creating],
+          content: content(),
+          onUpdate: ({ editor: ed }) => calls.push(docText(ed)),
+        })
+        return <EditorContent editor={editor} />
+      }
+      render(wrap(<App />))
+      expect(commits).toBe(1)
+      expect(calls).toEqual([docText(editor)])
+      // One editor was built, and its onCreate ran once.
+      expect(countX(docText(editor))).toBe(1)
+    })
+
+    it(`keeps a user's update listener next to onUpdate${strict ? ' (StrictMode)' : ''}`, () => {
+      const order: string[] = []
+      let editor!: Editor<any>
+      function App() {
+        editor = useEditor({
+          plugins: [paragraph],
+          content: content(),
+          listeners: { update: () => void order.push('listener') },
+          onUpdate: () => void order.push('onUpdate'),
+        })
+        return <EditorContent editor={editor} />
+      }
+      render(wrap(<App />))
+      act(() => {
+        editor.commands.insertText('x')
+      })
+      expect(order).toEqual(['listener', 'onUpdate'])
+    })
+
+    it(`constructs one editor${strict ? ' under StrictMode' : ''}`, () => {
+      vi.useFakeTimers()
+      let creates = 0
+      let destroys = 0
+      const lifecycle = definePlugin({
+        name: 'lifecycle',
+        onCreate: () => void creates++,
+        destroy: () => void destroys++,
+      })
+      function App() {
+        const editor = useEditor({ plugins: [paragraph, lifecycle], content: content() })
+        return <EditorContent editor={editor} />
+      }
+      const { unmount } = render(wrap(<App />))
+      act(() => {
+        vi.runAllTimers()
+      })
+      expect(creates).toBe(1)
+      expect(destroys).toBe(0)
+      unmount()
+      act(() => {
+        vi.runAllTimers()
+      })
+      expect(destroys).toBe(1)
+    })
+
     it(`a child's layout effect dispatch reaches the onUpdate of the same render${strict ? ' (StrictMode)' : ''}`, () => {
       const calls: string[] = []
       let setTag!: (t: string) => void
