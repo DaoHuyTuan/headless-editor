@@ -164,11 +164,47 @@ function textStartAt(tr: Transaction, at: Path): Point {
   return { path: at, offset: 0 }
 }
 
-/** The ids of every element in the doc. */
+/** Per transaction: the ids of `tr.doc` as of `tr.ops[0 .. seen)` (see `docIds`). */
+const idCache = new WeakMap<Transaction, { ids: Set<string>; seen: number }>()
+
+/** Adds (or deletes) the id of every element in `node`'s subtree. */
+function eachId(node: DeepReadonly<Node>, fn: (id: string) => void): void {
+  if (isText(node as Node)) return
+  const el = node as ElementNode
+  fn(el.id)
+  el.children?.forEach((c) => eachId(c, fn))
+}
+
+/**
+ * The ids of every element in `tr.doc`. Scanned once per transaction, then kept up to date from the
+ * ops applied since (inserted and removed subtrees, split and merged elements), so a paste at many
+ * ranges does not rescan the doc per range. Callers may add to the set (ids about to be inserted):
+ * the insert op adds them anyway; a rejected insert leaves its ids in, which only makes later fresh
+ * ids on that (rejected) transaction more cautious.
+ */
 function docIds(tr: Transaction): Set<string> {
-  const used = new Set<string>()
-  for (const [n] of nodeEntries(tr.doc)) if (isElement(n)) used.add(n.id)
-  return used
+  let cached = idCache.get(tr)
+  if (!cached) {
+    const ids = new Set<string>()
+    for (const [n] of nodeEntries(tr.doc)) if (isElement(n)) ids.add(n.id)
+    idCache.set(tr, (cached = { ids, seen: tr.ops.length }))
+    return ids
+  }
+  const { ids } = cached
+  for (let i = cached.seen; i < tr.ops.length; i++) {
+    const op = tr.ops[i]!
+    if (op.type === 'insert_node') eachId(op.node, (id) => ids.add(id))
+    else if (op.type === 'remove_node') eachId(op.node, (id) => ids.delete(id))
+    else if (op.type === 'split_node' || op.type === 'merge_node') {
+      const id = (op.properties as Partial<ElementNode>).id
+      if (typeof id === 'string') {
+        if (op.type === 'split_node') ids.add(id)
+        else ids.delete(id)
+      }
+    }
+  }
+  cached.seen = tr.ops.length
+  return ids
 }
 
 function caret(point: Point): SelectionRange {

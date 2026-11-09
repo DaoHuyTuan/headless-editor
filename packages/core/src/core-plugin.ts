@@ -4,12 +4,13 @@ import { isNodeSelection, nearestEditablePoint } from './model/editable'
 import { createId } from './model/id'
 import { mainRange, single } from './model/selection'
 import { comparePoint, toRange } from './model/path'
-import type { Data, Path, Selection, SelectionRange } from './model/types'
+import { cloneJson } from './model/node'
+import type { Data, Json, Path, Selection, SelectionRange } from './model/types'
 import { definePlugin } from './plugin/define'
 import type { Command, InputIntent } from './plugin/types'
 import { insertFragment, type Fragment } from './transaction/fragment'
 import { addMark, removeMark, toggleMark } from './transaction/marks'
-import { FRAGMENT_MIME, parseFromClipboard } from './content/clipboard'
+import { FRAGMENT_MIME, parseFromClipboard, parseRichClipboard } from './content/clipboard'
 import type { Transaction } from './transaction/transaction'
 import { deleteBackward, deleteForward, deleteRange, insertText, selectAll, splitBlock, type DeleteUnit } from './transaction/text'
 
@@ -124,7 +125,14 @@ function insertTransfer(intent: InputIntent, editor: Editor): boolean {
   // elsewhere) then sees every caret's own context. With one range the selection is the target
   // (`info.at` as it always was).
   if (sel && !isNodeSelection(sel) && !at && sel.ranges.length > 1 && intent.inputType === 'insertFromPaste') {
-    const fragments = sel.ranges.map((range) => parseFromClipboard(editor, data, { at: range }))
+    // The json / html flavor is parsed once (it does not depend on the range); each range then gets its
+    // own copy through `transformPasted`. Plain text is read per range: its marks are the range's.
+    const rich = parseRichClipboard(editor, data)
+    const fragments = sel.ranges.map((range) =>
+      rich.length > 0
+        ? editor.transformPasted(cloneJson(rich as unknown as Json) as unknown as Fragment, range)
+        : parseFromClipboard(editor, data, { at: range }),
+    )
     if (fragments.every((f) => f.length === 0)) return true
     const tr = editor.createTransaction()
     tr.meta.origin = PASTE_INPUT[intent.inputType]!

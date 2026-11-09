@@ -81,10 +81,20 @@ export function parseFromClipboard(
   data: { json?: string; html?: string; text?: string },
   options: { at?: SelectionRange | null } = {},
 ): Fragment {
+  let fragment = parseRichClipboard(editor, data)
+  if (fragment.length === 0 && data.text) fragment = fromText(data.text, editor.registry, pasteMarks(editor, options.at ?? null))
+  return editor.transformPasted(fragment, options.at ?? null)
+}
+
+/**
+ * The `json` flavor, else the `html` one, as a validated fragment, before `transformPasted`; empty when
+ * neither yields content (`parseFromClipboard` then falls back to `text`, whose marks depend on the
+ * target). It does not depend on where the fragment goes, so a paste at several ranges parses it once.
+ */
+export function parseRichClipboard(editor: Editor, data: { json?: string; html?: string }): Fragment {
   const { registry } = editor
   let fragment: Fragment = []
   if (data.json) fragment = fromJson(data.json, registry)
   if (fragment.length === 0 && data.html) fragment = sanitizeFragment(parseHTML(data.html, registry), registry)
-  if (fragment.length === 0 && data.text) fragment = fromText(data.text, registry, pasteMarks(editor, options.at ?? null))
-  return editor.transformPasted(fragment, options.at ?? null)
+  return fragment
 }
