@@ -1,8 +1,15 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useInsertionEffect, useRef, useState } from 'react'
 import { Editor, type AnyPlugin, type EditorOptions, type NodeViewFactory } from '@hte/core'
 import { createPortalStore, setPortalStore, toNodeViewFactory, type ReactNodeView } from './node-views'
 
 export type UseEditorOptions<P extends readonly AnyPlugin[]> = Omit<EditorOptions<P>, 'nodeViews'> & {
+  /**
+   * Called once per doc-changing commit (the editor's `'update'` event), from the moment `useEditor`
+   * returns the editor: dispatches from a child's layout effect or a plugin's `onMount` during the
+   * first commit are included, and the callback of the render being committed is the one called.
+   * Dispatches from a plugin's `onCreate` run inside the editor's constructor, before any listener
+   * can exist, so they are not reported: read the initial state from the editor instead.
+   */
   onUpdate?: (e: { editor: Editor<P> }) => void
   /** React components rendered as node views, keyed by (atom) node type. Read on the first render only. */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -39,7 +46,16 @@ function shallowEqual(a: Record<string, unknown> | undefined, b: Record<string, 
  * editor, and showing it again cannot remount a destroyed editor (followup).
  */
 export function useEditor<const P extends readonly AnyPlugin[]>(options: UseEditorOptions<P>): Editor<P> {
-  const [editor] = useState(() => {
+  const onUpdateRef = useRef(options.onUpdate)
+  // An insertion effect runs before every layout effect of the commit, so a dispatch from a child's
+  // layout effect already calls this render's callback.
+  useInsertionEffect(() => {
+    onUpdateRef.current = options.onUpdate
+  })
+
+  // The unsubscribe goes with the editor it belongs to: StrictMode's second initializer call builds a
+  // throwaway editor, which a ref written from the initializer would point at.
+  const [[editor, unsubscribeUpdate]] = useState((): [Editor<P>, () => void] => {
     const { onUpdate: _onUpdate, nodeViews, pluginOptions, ...editorOptions } = options
     const store = createPortalStore()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -48,12 +64,11 @@ export function useEditor<const P extends readonly AnyPlugin[]>(options: UseEdit
     const created = new Editor<P>({ ...editorOptions, nodeViews: factories } as EditorOptions<P>)
     for (const [name, value] of Object.entries(pluginOptions ?? {})) created.setPluginOptions(name, value)
     setPortalStore(created, store)
-    return created
-  })
-
-  const onUpdateRef = useRef(options.onUpdate)
-  useLayoutEffect(() => {
-    onUpdateRef.current = options.onUpdate
+    // Subscribed at creation, not in an effect: dispatches from children's layout effects and from
+    // `onMount` (run when `EditorContent` mounts, in a layout effect) come before this hook's effects.
+    // Once per editor, so StrictMode's effect re-runs never subscribe twice; removed on destroy.
+    const off = created.on('update', () => onUpdateRef.current?.({ editor: created }))
+    return [created, off]
   })
 
   const appliedOptions = useRef<Record<string, Record<string, unknown>> | null>(null)
@@ -70,11 +85,6 @@ export function useEditor<const P extends readonly AnyPlugin[]>(options: UseEdit
     }
   })
 
-  useEffect(
-    () => editor.on('update', () => onUpdateRef.current?.({ editor })),
-    [editor],
-  )
-
   const pendingDestroy = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
     if (pendingDestroy.current !== null) {
@@ -84,6 +94,7 @@ export function useEditor<const P extends readonly AnyPlugin[]>(options: UseEdit
     return () => {
       pendingDestroy.current = setTimeout(() => {
         pendingDestroy.current = null
+        unsubscribeUpdate()
         editor.destroy()
       }, 0)
     }

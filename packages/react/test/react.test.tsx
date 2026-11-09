@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { StrictMode, useState, type ReactNode } from 'react'
+import { StrictMode, useLayoutEffect, useState, type ReactNode } from 'react'
 import { act, cleanup, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { definePlugin, Editor, textEntries, type EditorEventName } from '@hte/core'
@@ -212,6 +212,94 @@ describe('useEditor + EditorContent', () => {
     expect(mounts - cleanups).toBe(0)
     expect(cleanups).toBe(mounts)
   })
+})
+
+describe('useEditor onUpdate during the first commit', () => {
+  /** Counts the doc-changing commits as the core sees them (a plugin hook, attached at creation). */
+  let commits: number
+  const counter = definePlugin({ name: 'counter', onUpdate: () => void commits++ })
+  beforeEach(() => {
+    commits = 0
+  })
+
+  function Dispatcher({ editor, text }: { editor: Editor<any>; text: string }) {
+    useLayoutEffect(() => {
+      editor.commands.insertText(text)
+    }, [editor, text])
+    return null
+  }
+
+  for (const strict of [false, true]) {
+    const wrap = (node: ReactNode) => (strict ? <StrictMode>{node}</StrictMode> : node)
+
+    it(`reaches onUpdate once per dispatch from a child's layout effect${strict ? ' (StrictMode)' : ''}`, () => {
+      const calls: string[] = []
+      let editor!: Editor<any>
+      function App() {
+        editor = useEditor({
+          plugins: [paragraph, counter],
+          content: content(),
+          onUpdate: ({ editor: ed }) => calls.push(docText(ed)),
+        })
+        return (
+          <>
+            <EditorContent editor={editor} />
+            <Dispatcher editor={editor} text="x" />
+          </>
+        )
+      }
+      render(wrap(<App />))
+      expect(commits).toBe(strict ? 2 : 1)
+      expect(calls).toHaveLength(commits)
+      expect(calls.at(-1)).toBe(docText(editor))
+    })
+
+    it(`reaches onUpdate once per dispatch from a plugin's onMount${strict ? ' (StrictMode)' : ''}`, () => {
+      vi.useFakeTimers()
+      const mounting = definePlugin({
+        name: 'mounting',
+        onMount: (ctx) => {
+          ctx.editor.commands.insertText('m')
+        },
+      })
+      let calls = 0
+      function App() {
+        const editor = useEditor({
+          plugins: [paragraph, counter, mounting],
+          content: content(),
+          onUpdate: () => void calls++,
+        })
+        return <EditorContent editor={editor} />
+      }
+      render(wrap(<App />))
+      act(() => {
+        vi.runAllTimers()
+      })
+      expect(commits).toBe(strict ? 2 : 1)
+      expect(calls).toBe(commits)
+    })
+
+    it(`a child's layout effect dispatch reaches the onUpdate of the same render${strict ? ' (StrictMode)' : ''}`, () => {
+      const calls: string[] = []
+      let setTag!: (t: string) => void
+      function App() {
+        const [tag, set] = useState('a')
+        setTag = set
+        const editor = useEditor({ plugins: [paragraph, counter], content: content(), onUpdate: () => calls.push(tag) })
+        return (
+          <>
+            <EditorContent editor={editor} />
+            <Dispatcher editor={editor} text={tag} />
+          </>
+        )
+      }
+      render(wrap(<App />))
+      calls.length = 0
+      act(() => setTag('b'))
+      expect(calls.length).toBeGreaterThan(0)
+      expect(calls.every((t) => t === 'b')).toBe(true)
+    })
+  }
 })
 
 describe('useEditorState', () => {
