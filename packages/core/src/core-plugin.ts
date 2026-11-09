@@ -175,7 +175,8 @@ const INPUT_ACTIONS: Record<string, (tr: Transaction, intent: InputIntent) => bo
   deleteSoftLineBackward: (tr, intent) => deleteRemoteTarget(tr, intent) ?? deleteBackward(tr, 'line'),
   deleteHardLineBackward: (tr, intent) => deleteRemoteTarget(tr, intent) ?? deleteBackward(tr, 'line'),
   deleteContentForward: (tr, intent) => deleteRemoteTarget(tr, intent) ?? deleteForward(tr, 'character'),
-  deleteWordForward: (tr, intent) => deleteRemoteTarget(tr, intent) ?? deleteForward(tr, 'word'),  insertParagraph: (tr) => splitBlock(tr),
+  deleteWordForward: (tr, intent) => deleteRemoteTarget(tr, intent) ?? deleteForward(tr, 'word'),
+  insertParagraph: (tr) => splitBlock(tr),
   insertLineBreak: (tr) => splitBlock(tr),
 }
 
