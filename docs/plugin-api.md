@@ -183,7 +183,7 @@ These run after the core inserts typed text. They do not run for paste or for IM
 Example: `**text**` becomes bold.
 
 ### `handleDOMEvents: { keydown?, beforeinput?, input? }`
-Raw DOM handlers `(event, ctx) => boolean`. They run first, before keymaps and intents. Return `true` to claim the event. Use them when you need the raw event; a mention popup, for example, captures arrow keys while it is open. Prefer `keymap` and `onBeforeInput` when they are enough.
+Raw DOM handlers `(event, ctx) => boolean`. They run first, before keymaps and intents. Return `true` to claim the event: no other plugin sees it, and a claimed `keydown` or `beforeinput` is also prevented (`preventDefault()`), so the browser never edits the DOM itself. Claiming `input` only stops the other handlers (it has no default action). Use them when you need the raw event; a mention popup, for example, captures arrow keys while it is open. Prefer `keymap` and `onBeforeInput` when they are enough.
 
 ---
 

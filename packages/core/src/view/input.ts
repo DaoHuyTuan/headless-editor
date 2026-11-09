@@ -1,4 +1,5 @@
 import { eventToKeyName } from '../keymap'
+import { pointEquals } from '../model/path'
 import { mainRange } from '../model/selection'
 import type { SelectionRange } from '../model/types'
 import type { InputIntent } from '../plugin/types'
@@ -10,14 +11,27 @@ import type { EditorView, ViewModule } from './view'
 /** Input types owned by the clipboard module (`paste` / `cut` events): left alone here, not even prevented. */
 const CLIPBOARD_INPUT = new Set(['insertFromPaste', 'deleteByCut'])
 
-/** The model selection of the event's first target range, or null when there is none (or it is outside). */
+/**
+ * The model selection of the event's first target range, or null when there is none (or it is outside).
+ * A target spanning the same two points as the main selection range (a target range is always forward)
+ * is that main range itself, so its direction and `node` are kept.
+ */
 function targetRange(view: EditorView, e: InputEvent): SelectionRange | null {
   if (typeof e.getTargetRanges !== 'function') return null
   const range = e.getTargetRanges()[0]
   if (!range) return null
   const anchor = domToModel(view.renderer, range.startContainer, range.startOffset)
   const focus = domToModel(view.renderer, range.endContainer, range.endOffset)
-  return anchor && focus ? { anchor, focus } : null
+  if (!anchor || !focus) return null
+  const sel = view.editor.state.selection
+  if (sel) {
+    const main = mainRange(sel)
+    const same =
+      (pointEquals(anchor, main.anchor) && pointEquals(focus, main.focus)) ||
+      (pointEquals(anchor, main.focus) && pointEquals(focus, main.anchor))
+    if (same) return main
+  }
+  return { anchor, focus }
 }
 
 /** The input type a plain Backspace/Delete keydown stands for when no `beforeinput` follows it. */
@@ -108,7 +122,11 @@ function onBeforeInput(view: EditorView, e: InputEvent, m: InputModuleState): vo
   if (isIgnoredEvent(view, e)) return
   const { editor } = view
   view.recordInput({ inputType: e.inputType, data: e.data, time: Date.now() })
-  if (editor.handleDOMEvent('beforeinput', e)) return
+  // A claimed event is prevented, as a claimed keydown is: the browser must not edit the DOM itself.
+  if (editor.handleDOMEvent('beforeinput', e)) {
+    e.preventDefault()
+    return
+  }
   // Composition is handled by the composition module.
   if (view.composing || e.inputType === 'insertCompositionText') return
   if (CLIPBOARD_INPUT.has(e.inputType)) return

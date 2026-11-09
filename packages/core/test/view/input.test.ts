@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it } from 'vitest'
-import { single } from '../../src/model/selection'
+import { createSelection, single } from '../../src/model/selection'
 import type { ElementNode, Selection } from '../../src/model/types'
 import { definePlugin, modelToDom, type AnyPlugin, type Editor } from '../../src/index'
 import { createTestEditor, doc, txt } from '../../src/testing/index'
@@ -138,7 +138,8 @@ describe('input module', () => {
     expect(calls).toEqual(['high:high'])
     calls.length = 0
     const b = beforeInput(root, { inputType: 'insertText', data: 'z' })
-    expect(b.defaultPrevented).toBe(false)
+    // A claimed beforeinput is prevented, as a claimed keydown is: the DOM never drifts from the model.
+    expect(b.defaultPrevented).toBe(true)
     expect(editor.getJSON().children[0]).toMatchObject({ children: [{ text: 'ab' }] })
     expect(editor.view!.recentInput.at(-1)).toMatchObject({ inputType: 'insertText', data: 'z' })
     calls.length = 0
@@ -152,6 +153,60 @@ describe('input module', () => {
     editor.unmount()
     expect(beforeInput(root, { inputType: 'insertText', data: 'x' }).defaultPrevented).toBe(false)
     expect(editor.getJSON().children[0]).toMatchObject({ children: [{ text: 'ab' }] })
+  })
+})
+
+describe('input module: target ranges', () => {
+  type Pt = [number[], number]
+  /** Dispatches a beforeinput whose `getTargetRanges()` returns the given model span (as DOM positions). */
+  function targeted(editor: Editor, root: HTMLElement, init: InputEventInit, from: Pt, to: Pt): InputEvent {
+    const e = new InputEvent('beforeinput', { bubbles: true, cancelable: true, ...init })
+    const start = modelToDom(editor.view!.renderer, { path: from[0], offset: from[1] })
+    const end = modelToDom(editor.view!.renderer, { path: to[0], offset: to[1] })
+    const range = { startContainer: start.node, startOffset: start.offset, endContainer: end.node, endOffset: end.offset, collapsed: false }
+    Object.defineProperty(e, 'getTargetRanges', { value: () => [range] })
+    root.dispatchEvent(e)
+    return e
+  }
+  const text = (editor: Editor) =>
+    editor.getJSON().children.map((b) => ((b as ElementNode).children ?? []).map((c) => ('text' in c ? c.text : '')).join(''))
+
+  it('a deletion whose target is away from the caret deletes exactly that range (spellcheck, autocorrect)', () => {
+    const { editor, root } = setup('hello world', caret([0, 0], 11))
+    const e = targeted(editor, root, { inputType: 'deleteContentBackward' }, [[0, 0], 0], [[0, 0], 6])
+    expect(e.defaultPrevented).toBe(true)
+    expect(text(editor)).toEqual(['world'])
+    expect(editor.state.selection).toEqual(caret([0, 0], 0))
+  })
+
+  it('a word deletion away from the caret deletes its target, not the word before the caret', () => {
+    const { editor, root } = setup('hello world', caret([0, 0], 11))
+    targeted(editor, root, { inputType: 'deleteWordBackward' }, [[0, 0], 0], [[0, 0], 5])
+    expect(text(editor)).toEqual([' world'])
+  })
+
+  it('a deletion whose target touches the caret keeps the core unit logic', () => {
+    const { editor, root } = setup('hello world', caret([0, 0], 11))
+    targeted(editor, root, { inputType: 'deleteContentBackward' }, [[0, 0], 10], [[0, 0], 11])
+    expect(text(editor)).toEqual(['hello worl'])
+    expect(editor.state.selection).toEqual(caret([0, 0], 10))
+  })
+
+  it('a multi-caret Backspace whose target is the character before the main caret deletes at every caret', () => {
+    const at = (offset: number) => ({ anchor: { path: [0, 0], offset }, focus: { path: [0, 0], offset } })
+    const { editor, root } = setup('abcdef', createSelection([at(2), at(5)], 1))
+    targeted(editor, root, { inputType: 'deleteContentBackward' }, [[0, 0], 4], [[0, 0], 5])
+    expect(text(editor)).toEqual(['acdf'])
+    expect(editor.state.selection!.ranges).toHaveLength(2)
+  })
+
+  it('a target spanning the main range is passed as the main range itself (direction kept)', () => {
+    const seen: unknown[] = []
+    const spy = definePlugin({ name: 'spy', priority: 500, onBeforeInput: (intent) => (seen.push(intent.range), true) })
+    const backward = single({ anchor: { path: [0, 0], offset: 4 }, focus: { path: [0, 0], offset: 1 } })
+    const { editor, root } = setup('abcdef', backward, [testParagraph, spy])
+    targeted(editor, root, { inputType: 'insertText', data: 'x' }, [[0, 0], 1], [[0, 0], 4])
+    expect(seen).toEqual([{ anchor: { path: [0, 0], offset: 4 }, focus: { path: [0, 0], offset: 1 } }])
   })
 })
 

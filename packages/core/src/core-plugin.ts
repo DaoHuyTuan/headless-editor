@@ -11,7 +11,7 @@ import { insertFragment, type Fragment } from './transaction/fragment'
 import { addMark, removeMark, toggleMark } from './transaction/marks'
 import { FRAGMENT_MIME, parseFromClipboard } from './content/clipboard'
 import type { Transaction } from './transaction/transaction'
-import { deleteBackward, deleteForward, insertText, selectAll, splitBlock, type DeleteUnit } from './transaction/text'
+import { deleteBackward, deleteForward, deleteRange, insertText, selectAll, splitBlock, type DeleteUnit } from './transaction/text'
 
 /**
  * The text an insert intent carries: `data`, else the plain text in `dataTransfer` (Chromium sends
@@ -60,6 +60,26 @@ function insertIntentText(tr: Transaction, intent: InputIntent): boolean {
 function collapseTo(tr: Transaction, range: SelectionRange): void {
   const marks = tr.storedMarks
   tr.setSelection(single(range)).setStoredMarks(marks)
+}
+
+/**
+ * A deletion intent whose target is away from the main range (spellcheck or autocorrect deleting
+ * elsewhere): the selection collapses to that target and exactly it is deleted. Returns null when the
+ * core's own unit logic applies instead: no target, a collapsed one, one touching or containing the main
+ * range (on desktop the target is the character next to the caret; the core then deletes by its own
+ * units at every range), or a node selection (the model selection is authoritative).
+ */
+function deleteRemoteTarget(tr: Transaction, intent: InputIntent): boolean | null {
+  const sel = tr.selection
+  const range = intent.range
+  if (!sel || !range || isNodeSelection(sel)) return null
+  const target = toRange(range)
+  if (comparePoint(target.start, target.end) === 0) return null
+  const main = toRange(mainRange(sel))
+  const touches = comparePoint(target.start, main.end) <= 0 && comparePoint(target.end, main.start) >= 0
+  if (touches) return null
+  collapseTo(tr, range)
+  return deleteRange(tr)
 }
 
 /** Transfer input types the core inserts itself, and the origin of their tr. */
@@ -150,13 +170,12 @@ function caretAtDocEnd(tr: Transaction): void {
 const INPUT_ACTIONS: Record<string, (tr: Transaction, intent: InputIntent) => boolean> = {
   insertText: insertIntentText,
   insertReplacementText: insertIntentText,
-  deleteContentBackward: (tr) => deleteBackward(tr, 'character'),
-  deleteWordBackward: (tr) => deleteBackward(tr, 'word'),
-  deleteSoftLineBackward: (tr) => deleteBackward(tr, 'line'),
-  deleteHardLineBackward: (tr) => deleteBackward(tr, 'line'),
-  deleteContentForward: (tr) => deleteForward(tr, 'character'),
-  deleteWordForward: (tr) => deleteForward(tr, 'word'),
-  insertParagraph: (tr) => splitBlock(tr),
+  deleteContentBackward: (tr, intent) => deleteRemoteTarget(tr, intent) ?? deleteBackward(tr, 'character'),
+  deleteWordBackward: (tr, intent) => deleteRemoteTarget(tr, intent) ?? deleteBackward(tr, 'word'),
+  deleteSoftLineBackward: (tr, intent) => deleteRemoteTarget(tr, intent) ?? deleteBackward(tr, 'line'),
+  deleteHardLineBackward: (tr, intent) => deleteRemoteTarget(tr, intent) ?? deleteBackward(tr, 'line'),
+  deleteContentForward: (tr, intent) => deleteRemoteTarget(tr, intent) ?? deleteForward(tr, 'character'),
+  deleteWordForward: (tr, intent) => deleteRemoteTarget(tr, intent) ?? deleteForward(tr, 'word'),  insertParagraph: (tr) => splitBlock(tr),
   insertLineBreak: (tr) => splitBlock(tr),
 }
 
