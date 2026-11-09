@@ -17,8 +17,8 @@ These items were collected from the per-task reviews of the multi-selection mile
 - ✅ (documented, single-range parity) The selection after a mark split lands at offset 0 of the next text.
 - Any dispatch between a keydown and the timer cancels the WebKit delete fallback (from M4).
 - **Performance:**
-  - `docIds` is recomputed per insert, so it costs O(ranges × doc) per paste.
-  - A multi-range paste parses the clipboard once per range.
+  - ✅ `docIds` is recomputed per insert, so it costs O(ranges × doc) per paste.
+  - ✅ A multi-range paste parses the clipboard once per range.
   - Measured: 100 carets typing one character takes about 9 ms (target under 16 ms).
 
 ## Plugins

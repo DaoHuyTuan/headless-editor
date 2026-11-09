@@ -31,7 +31,7 @@ Status after M2 verification: every item below was closed in M2 except the histo
 - The readonly typing has gaps:
   - `getNode`, `nodeEntries` and `textEntries` return mutable types.
   - `tr.doc` is typed mutable.
-- `getJSON()` deep-clones on every call. That is O(doc) per keystroke for apps that autosave on update.
+- ✅ `getJSON()` deep-clones on every call. That is O(doc) per keystroke for apps that autosave on update.
 - Commands that dispatch internally become stale. Document this.
 - The stale-tr guard drops silently in prod; add a warning.
 - The constructor ignores `contentTransaction.rejected`.
@@ -40,7 +40,7 @@ Status after M2 verification: every item below was closed in M2 except the histo
 - `isActive` with an `undefined` data value returns false.
 - A throwing event listener skips the remaining events. Wrap each listener and rethrow after all have run.
 - `INPUT_ACTIONS` is a plain object, so inherited keys count as handled.
-- Backspace segments the whole block, which is O(n).
+- ✅ Backspace segments the whole block, which is O(n).
 - ✅ `insertText('')` clears stored marks, and the intent path doesn't dispatch a change to stored marks alone.
 - Marks:
   - ✅ `toggleMark` on a range covering no characters does nothing.

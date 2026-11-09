@@ -155,9 +155,9 @@ Items that cannot be acted on here (other machines, decisions, rulings already r
 ## Batch 8: Performance
 | # | Item | Src | Kind | Pri | Status |
 |---|---|---|---|---|---|
-| 8.1 | `getJSON()` deep-clones on every call: O(doc) per keystroke for autosave. | m1 | perf | P2 | confirmed |
-| 8.2 | Backspace segments the whole block (O(n)). | m1 | perf | P2 | open |
-| 8.3 | `docIds` recomputed per insert (O(ranges × doc) per paste); a multi-range paste parses the clipboard once per range. | ms | perf | P2 | open |
+| 8.1 | ✅ `getJSON()` deep-clones on every call: O(doc) per keystroke for autosave. Still a mutable copy (the contract is tested and typed), now a plain JSON walk: 5000 blocks ~42 ms → ~3.7 ms. Autosave can `JSON.stringify(editor.state.doc)` with no copy (README, JSDoc). A frozen, structurally shared snapshot (O(change)) would break the contract: left for the API review. | m1 | perf | P2 | fixed |
+| 8.2 | ✅ Backspace segments the whole block (O(n)). Segments a 256-character window on each side of the caret, falling back to the whole text when a cluster or word reaches the window edge (results identical; property test). 50k-character block: ~10 ms → ~0.14 ms per Backspace. | m1 | perf | P2 | fixed |
+| 8.3 | ✅ `docIds` recomputed per insert (O(ranges × doc) per paste); a multi-range paste parses the clipboard once per range. Ids kept per transaction and updated from its ops; the json/html flavor is parsed once for a multi-range paste. 3 blocks at 100 carets in 2000 blocks: ~330 ms → ~62 ms. | ms | perf | P2 | fixed |
 | 8.4 | Renderer lookups are linear; `boundaryPoint` is O(leaves); `nearestEditablePoint` is O(doc); `placedContentDOMs` runs `querySelectorAll` per added element; `renderHTML` builds a frozen options copy per call. | m1, m2, m3 | perf | P3 | open |
 
 ## Batch 9: Tooling and small cleanups
