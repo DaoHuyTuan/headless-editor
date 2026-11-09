@@ -253,3 +253,4 @@ The targets are desktop Chrome, Firefox and Safari. Mobile is best-effort. The c
 - [docs/plugin-authoring.md](docs/plugin-authoring.md): guide to customization levels and writing a plugin.
 - `docs/superpowers/specs/2026-10-27-headless-editor-design.md`: design spec.
 - `docs/superpowers/m*-followups.md`: known gaps and planned work.
+- [CHANGELOG.md](CHANGELOG.md): behaviour changes.

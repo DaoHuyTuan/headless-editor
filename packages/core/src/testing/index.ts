@@ -17,9 +17,15 @@ function reId(node: unknown): unknown {
 }
 
 /**
- * A headless editor for tests: `dev: true`, `platform: 'other'`, and element ids from a counter
- * reset on every call. The content's elements are re-id'd `n1`, `n2`, … in document order, so ids
- * created later (normalize, splits) continue after them and never collide. `doc` is the initial content.
+ * A headless editor for tests: `dev: true` and `platform: 'other'`. `doc` is the initial content.
+ *
+ * Two side effects to know about:
+ * - It re-ids the content: every element of `doc` (or `content`) gets a new id `n1`, `n2`, … in
+ *   document order; the ids you passed are not kept, so look nodes up by path, or read the ids back
+ *   from `editor.state.doc`. Ids created later (normalize, splits) continue after them and never collide.
+ * - It swaps the global id generator (`setIdGenerator`) for that counter, reset on every call, and
+ *   does not restore it: `createId()` anywhere afterwards, including in other editors, returns
+ *   `n…` ids from the latest call's counter.
  */
 export function createTestEditor<const P extends readonly AnyPlugin[]>(opts: TestEditorOptions<P>): Editor<P> {
   let n = 0
