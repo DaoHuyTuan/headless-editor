@@ -126,11 +126,16 @@ export function useAltDraft(props: ImageProps): ImageAltDraftApi {
 /** @experimental Level 4 customization API; may change after M3 without a deprecation cycle. */
 export interface ImageResizeHandleProps {
   'data-editor-ignore': ''
+  /** A vertical splitter beside the picture (not focusable: there is no keyboard resize). */
+  role: 'separator'
+  'aria-orientation': 'vertical'
+  'aria-label': string
   style: CSSProperties
   onPointerDown(e: PointerEvent<HTMLElement>): void
   onPointerMove(e: PointerEvent<HTMLElement>): void
   onPointerUp(e: PointerEvent<HTMLElement>): void
   onPointerCancel(e: PointerEvent<HTMLElement>): void
+  onLostPointerCapture(e: PointerEvent<HTMLElement>): void
 }
 
 /** @experimental Level 4 customization API; may change after M3 without a deprecation cycle. */
@@ -139,7 +144,10 @@ export interface ImageResizeApi {
   width: number | undefined
   /** Whether a resize drag is in progress. */
   resizing: boolean
-  /** Props for the resize handle element (`data-editor-ignore` and `touch-action: none` included). */
+  /**
+   * Props for the resize handle element: `data-editor-ignore`, `touch-action: none`, and
+   * `role="separator"` with `aria-orientation="vertical"` and `aria-label="Resize image"`.
+   */
   handleProps: ImageResizeHandleProps
 }
 
@@ -154,7 +162,9 @@ interface Drag {
 /**
  * Drag-resizing of an image with pointer capture: a live local width while dragging, committed
  * (rounded, one undo step) on pointerup, clamped between 32px and the width of the node view's
- * container. The start width is measured on the `<img>` inside the node view (falling back to
+ * container. A `pointercancel`, or a `lostpointercapture` before the pointerup (the browser or the
+ * app took the capture away), ends the drag without committing: the width goes back to `data.width`.
+ * The start width is measured on the `<img>` inside the node view (falling back to
  * `data.width`), so the handle needs no ref and may sit anywhere inside the view.
  * @experimental Level 4 customization API; may change after M3 without a deprecation cycle.
  */
@@ -180,6 +190,9 @@ export function useImageResize(props: ImageProps): ImageResizeApi {
     resizing: liveWidth !== null,
     handleProps: {
       'data-editor-ignore': '',
+      role: 'separator',
+      'aria-orientation': 'vertical',
+      'aria-label': 'Resize image',
       style: { touchAction: 'none' },
       onPointerDown: (e) => {
         if (e.button !== 0) return
@@ -206,6 +219,8 @@ export function useImageResize(props: ImageProps): ImageResizeApi {
       },
       onPointerUp: (e) => end(e, true),
       onPointerCancel: (e) => end(e, false),
+      // After a pointerup the drag is already over (its own release fires this too): a no-op then.
+      onLostPointerCapture: (e) => end(e, false),
     },
   }
 }

@@ -247,6 +247,35 @@ describe('ImageView', () => {
     expect(t.editor().state).toBe(before)
   })
 
+  it.each(['lostpointercapture', 'pointercancel'])('%s ends the drag without committing', (type) => {
+    const t = setup({ width: 100 })
+    const img = t.figure().querySelector('img')!
+    img.getBoundingClientRect = () => ({ width: 100 }) as DOMRect
+    const handle = t.handle()
+    handle.setPointerCapture = vi.fn()
+    handle.releasePointerCapture = vi.fn()
+    const ptr = (name: string, clientX: number) =>
+      fireEvent(handle, new MouseEvent(name, { bubbles: true, clientX, button: 0 }))
+    const before = t.editor().state
+    ptr('pointerdown', 10)
+    ptr('pointermove', 60)
+    expect(img.getAttribute('width')).toBe('150')
+    ptr(type, 60)
+    // The live width is gone and nothing was dispatched; a later stray move or up does nothing.
+    expect(img.getAttribute('width')).toBe('100')
+    ptr('pointermove', 90)
+    ptr('pointerup', 90)
+    expect(img.getAttribute('width')).toBe('100')
+    expect(t.editor().state).toBe(before)
+  })
+
+  it('the resize handle has an accessible role and label', () => {
+    const t = setup({ width: 100 })
+    expect(t.handle().getAttribute('role')).toBe('separator')
+    expect(t.handle().getAttribute('aria-orientation')).toBe('vertical')
+    expect(t.handle().getAttribute('aria-label')).toBe('Resize image')
+  })
+
   it('sets data-uploading while the upload is pending', async () => {
     const t = setup()
     let resolve!: (u: string) => void
