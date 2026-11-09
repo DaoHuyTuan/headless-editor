@@ -38,11 +38,11 @@ Collected from the per-task and final reviews of milestone M3 (branch `feat/m3`)
   - ✅ the meaning of `R.selectionBefore` after a fold;
   - ✅ untested: 3+ levels of appends, a selection-only append, a data-only append after an undo root.
 - Inline atoms (Task 5):
-  - a literal U+200B in source, and a duplicated ZW constant/attribute (use an escape and one shared helper);
+  - ✅ a literal U+200B in source, and a duplicated ZW constant/attribute (use an escape and one shared helper);
   - ✅ rule 10 changes the link-end caret (typing no longer extends a trailing link), untested;
   - ✅ `pastMiddle` asymmetry for text-less atoms;
   - ✅ `insertInlineNode` returns false with ops on the tr (only when rejected);
-  - `leafDomText` strips a real U+200B;
+  - ✅ `leafDomText` strips a real U+200B;
   - word-Backspace removes an atom (comment needed);
   - ✅ unknown inline elements get no rule-10 siblings;
   - coverage gaps: typing into a ZW leaf, IME before ZW, ZW to `<br>` after the last chip is removed.
@@ -54,25 +54,25 @@ Collected from the per-task and final reviews of milestone M3 (branch `feat/m3`)
   - a rule without `$` matches only the leftmost match;
   - missing tests: next char after a rule creates a new entry, Vietnamese/NFD query, composition triggers no rule.
 - Decorations (Task 7):
-  - a throwing `decorations` hook propagates out of update/mount (document or catch and log);
+  - ✅ a throwing `decorations` hook propagates out of update/mount (document or catch and log);
   - invalid decoration attribute names are caught mid-render (validate in `groupDecorations`);
   - widget at offset 0: caret side;
   - a same-key widget keeps its old element (JSDoc);
-  - duplicate keys rebuild the leaf on each render;
-  - decoration attrs are not checked by `leafIntact`;
+  - ✅ duplicate keys rebuild the leaf on each render;
+  - ✅ decoration attrs are not checked by `leafIntact`;
   - no explicit caret-at-widget test;
   - `WIDGET_ATTR` / `DECO_ATTR` are not exported.
-- `coordsAt` (Task 8): the leaf-rect fallback bottom is the whole leaf's bottom; a zero-height rect is accepted.
+- ✅ `coordsAt` (Task 8): the leaf-rect fallback bottom is the whole leaf's bottom; a zero-height rect is accepted.
 - Node views (Task 9):
-  - `isDev()` treats a missing `process` as dev;
-  - a missing `contentDOM` is never detected (dev warning);
-  - `NodeContent` is silent outside a non-atom view;
-  - `coordsAt` / `modelToDom` before `NodeContent` mounts give zero rects;
-  - the placement warning is not dev-gated;
+  - ✅ `isDev()` treats a missing `process` as dev;
+  - ✅ a missing `contentDOM` is never detected (dev warning);
+  - ✅ `NodeContent` is silent outside a non-atom view;
+  - ✅ `coordsAt` / `modelToDom` before `NodeContent` mounts give zero rects;
+  - ✅ the placement warning is not dev-gated;
   - `placedContentDOMs` runs `querySelectorAll` per added element;
-  - a stale-caret record can be invalidated if the same leaf is re-rendered while detached (re-snapshot after render);
+  - ✅ a stale-caret record can be invalidated if the same leaf is re-rendered while detached (re-snapshot after render);
   - composition across an `invalidateNodeView` rebuild is untested.
-- Selection (Task 17): a caret parked at (block element, n) is no longer rewritten by the leaf rewrite.
+- ✅ Selection (Task 17): a caret parked at (block element, n) is no longer rewritten by the leaf rewrite.
 - Normalize rule 10 changes the `getJSON()` output: inline elements now get (possibly empty) text siblings on each side, so stored JSON loaded and read back gains `{ text: '' }` nodes around mentions and other inline elements. Needs a changelog / docs note for integrators who diff or store JSON.
 
 ## Mention

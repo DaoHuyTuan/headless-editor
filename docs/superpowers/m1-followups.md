@@ -73,25 +73,25 @@ Status after M2 verification: every item below was closed in M2 except the histo
 ## View
 - Renderer:
   - Replaces the Text node instead of updating `.data`, which churns the caret.
-  - A throw mid-render leaves the id map inconsistent.
-  - `getPluginOptions` returns the live object.
+  - ✅ A throw mid-render leaves the id map inconsistent.
+  - ✅ `getPluginOptions` returns the live object.
   - Lookups are linear.
 - `skipLeaf`:
-  - The docs overstate the "never moved" guarantee.
+  - ✅ The docs overstate the "never moved" guarantee.
   - Anchor and before order is not checked.
-  - Text is duplicated without `skipPath`.
-  - An ancestor move can detach the composing leaf.
+  - ✅ Text is duplicated without `skipPath`.
+  - ✅ An ancestor move can detach the composing leaf.
 - dom-selection:
-  - The no-op write can leave the selection in a stray node.
-  - Non-editable positions ignore the offset.
+  - ✅ The no-op write can leave the selection in a stray node.
+  - ✅ Non-editable positions ignore the offset.
   - `boundaryPoint` is O(leaves).
 - EditorView:
-  - The old root stays `contenteditable` after `mount(other)`.
-  - `attach` and `listen` leak after `destroy`.
-  - Remounting rebuilds the DOM.
+  - ✅ The old root stays `contenteditable` after `mount(other)`.
+  - ✅ `attach` and `listen` leak after `destroy`.
+  - ✅ Remounting rebuilds the DOM.
 - Input:
-  - Delete intents ignore the target range.
-  - `targetRange` drops the direction.
+  - ✅ Delete intents ignore the target range.
+  - ✅ `targetRange` drops the direction.
   - When a plugin's `beforeinput` handler returns true, the event is not prevented, which is inconsistent with keydown.
   - `handleDOMEvent` and `transformPasted` should be documented as view-integration API.
 - Composition:
