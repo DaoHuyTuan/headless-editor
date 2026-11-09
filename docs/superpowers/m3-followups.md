@@ -44,7 +44,7 @@ Collected from the per-task and final reviews of milestone M3 (branch `feat/m3`)
   - `insertInlineNode` returns false with ops on the tr;
   - `leafDomText` strips a real U+200B;
   - word-Backspace removes an atom (comment needed);
-  - unknown inline elements get no rule-10 siblings;
+  - ✅ unknown inline elements get no rule-10 siblings;
   - coverage gaps: typing into a ZW leaf, IME before ZW, ZW to `<br>` after the last chip is removed.
 - Input rules (Task 6):
   - `toBlockOffset` at `input-rules.ts:32` is outside the try, but the throw is unreachable: `runAt` just succeeded for the same caret (move it inside the try for robustness only);

@@ -51,8 +51,8 @@ Kept open from "Start of M3" (no M3 plugin needed them, and each is a separate c
 - node-select's `mousedown` blocks native drag and shift-click.
 - Node-view options are looked up by node type, not plugin name.
 - Normalize and editing:
-  - a hoisted atom next to empty texts leaves a stray empty paragraph (rule 9 runs before rule 4);
-  - `edgeBlockOf` treats unknown inline elements as edge blocks;
+  - ✅ a hoisted atom next to empty texts leaves a stray empty paragraph (rule 9 runs before rule 4);
+  - ✅ `edgeBlockOf` treats unknown inline elements as edge blocks;
   - split halves share a `data` reference;
   - `nearestEditablePoint` is O(doc).
 - Node selection:

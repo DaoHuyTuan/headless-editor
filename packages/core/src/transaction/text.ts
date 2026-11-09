@@ -234,14 +234,51 @@ function removeTextBetween(tr: Transaction, start: Point, end: Point): void {
 }
 
 /**
+ * `point` moved out of the outermost inline opaque element containing it (an unknown type in inline
+ * content), to the end of the text before it (`'before'`) or the start of the text after it
+ * (`'after'`); normalization keeps a text on each side (rule 10). Unchanged when it is in none.
+ */
+function outOfInlineOpaque(tr: Transaction, point: Point, side: 'before' | 'after'): Point {
+  let parentType = 'doc'
+  for (let depth = 1; depth < point.path.length; depth++) {
+    const node = getNode(tr.doc, point.path.slice(0, depth))
+    if (!isElement(node)) break
+    if (isOpaque(node, tr.registry) && isInlineOpaque(tr, node, parentType)) {
+      const index = point.path[depth - 1]!
+      const at = [...point.path.slice(0, depth - 1), side === 'before' ? index - 1 : index + 1]
+      const sibling = index + (side === 'before' ? -1 : 1) >= 0 ? getNodeOrNull(tr, at) : null
+      if (!sibling || !isText(sibling)) return point
+      return { path: at, offset: side === 'before' ? sibling.text.length : 0 }
+    }
+    parentType = node.type
+  }
+  return point
+}
+
+function getNodeOrNull(tr: Transaction, path: Path): Node | null {
+  try {
+    return getNode(tr.doc, path)
+  } catch {
+    return null
+  }
+}
+
+/**
  * The block a range edge at `path` belongs to: the outermost opaque (unknown or atom) block-level
- * element containing it, else the nearest block.
+ * element containing it, else the nearest block. An unknown type inside inline content is inline
+ * there (`isInlineOpaque`), not an edge block: an edge inside it belongs to the block around it.
  */
 function edgeBlockOf(tr: Transaction, path: Path): Path {
+  let parentType = 'doc'
   for (let depth = 1; depth < path.length; depth++) {
     const p = path.slice(0, depth)
     const node = getNode(tr.doc, p)
-    if (isElement(node) && isOpaque(node, tr.registry) && tr.registry.node(node.type)?.kind !== 'inline') return p
+    if (!isElement(node)) break
+    if (isOpaque(node, tr.registry)) {
+      // Inline: the block around it (`blockPathOf` would take an unknown type itself for a block).
+      return isInlineOpaque(tr, node, parentType) ? blockPathOf(tr, p) : p
+    }
+    parentType = node.type
   }
   return blockPathOf(tr, path)
 }
@@ -282,11 +319,14 @@ export function deleteRange(tr: Transaction, range?: SelectionRange | Range): bo
  *
  * An opaque edge block (unknown type or atom: no caret can be inside it) counts as fully inside the
  * range: it is removed whole and nothing is merged into or out of it. When the start edge is
- * opaque, the caret lands at the nearest editable point instead.
+ * opaque, the caret lands at the nearest editable point instead. An edge inside an inline opaque
+ * element (only a raw range can have one) moves out of it, so that element is inside the range too.
  */
 export function deleteRangeStep(tr: Transaction, range: Range): Point | null {
-  const { start, end } = asRange(range)
-  if (comparePoint(start, end) === 0) return null
+  const ordered = asRange(range)
+  if (comparePoint(ordered.start, ordered.end) === 0) return null
+  const start = outOfInlineOpaque(tr, ordered.start, 'before')
+  const end = outOfInlineOpaque(tr, ordered.end, 'after')
   // A range still to run with a point strictly inside this removal is swallowed by it (its own step
   // would delete past it). "Strictly": with content on both sides, so a point at an edge written in
   // a neighbouring text leaf still counts as at the edge.
