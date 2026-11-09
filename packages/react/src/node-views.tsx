@@ -5,6 +5,10 @@ import type { AnyPlugin, Data, Editor, NodeViewFactory, NodeViewProps } from '@h
  * A React component rendered as a node view (a non-atom one shows its content with
  * `<NodeContent />`). Type it from the plugin with `ComponentType<NodeViewPropsOf<typeof plugin>>`
  * to get typed `storage` and `state`.
+ *
+ * `props.state` is read when accessed, but a change of plugin state alone does not re-render the
+ * view: what it rendered stays stale until its data, `selected` or options change. Render
+ * plugin state from `usePluginState(props.editor, plugin)` instead.
  */
 export type ReactNodeView<D = Data, O = unknown, T = unknown, S = unknown> = ComponentType<NodeViewProps<D, O, T, S>>
 

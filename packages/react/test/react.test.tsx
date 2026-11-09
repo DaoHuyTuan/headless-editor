@@ -481,3 +481,68 @@ describe('useEditorState', () => {
     expect(getByTestId('bold').textContent).toBe('true')
   })
 })
+
+describe('useEditorState under StrictMode', () => {
+  const strict = (node: ReactNode) => render(<StrictMode>{node}</StrictMode>)
+
+  it('does not re-render when the selected value is unchanged', () => {
+    let editor!: TestEditor
+    let renders = 0
+    function BlockCount({ editor: ed }: { editor: TestEditor }) {
+      const count = useEditorState(ed, (s) => s.doc.children.length)
+      renders++
+      return <span data-testid="count">{count}</span>
+    }
+    const { getByTestId } = strict(<Harness onEditor={(e) => (editor = e)}>{(e) => <BlockCount editor={e} />}</Harness>)
+    const before = renders
+    act(() => {
+      editor.commands.insertText('x')
+    })
+    act(() => {
+      editor.commands.toggleBold()
+    })
+    expect(renders).toBe(before)
+    expect(getByTestId('count').textContent).toBe('1')
+  })
+
+  it('supports a custom isEqual', () => {
+    let editor!: TestEditor
+    let renders = 0
+    function Text({ editor: ed }: { editor: TestEditor }) {
+      const value = useEditorState(
+        ed,
+        (s) => ({ len: JSON.stringify(s.doc).length }),
+        () => true,
+      )
+      renders++
+      return <span>{value.len}</span>
+    }
+    strict(<Harness onEditor={(e) => (editor = e)}>{(e) => <Text editor={e} />}</Harness>)
+    const before = renders
+    act(() => {
+      editor.commands.insertText('x')
+    })
+    expect(renders).toBe(before)
+  })
+
+  it('re-renders on a selection-only transaction that changes isActive', () => {
+    let editor!: TestEditor
+    function BoldState({ editor: ed }: { editor: TestEditor }) {
+      const active = useEditorState(ed, (_, e) => e.isActive('bold'))
+      return <span data-testid="bold">{String(active)}</span>
+    }
+    const { getByTestId } = strict(<Harness onEditor={(e) => (editor = e)}>{(e) => <BoldState editor={e} />}</Harness>)
+    act(() => {
+      editor.commands.toggleBold()
+    })
+    expect(getByTestId('bold').textContent).toBe('true')
+    act(() => {
+      editor.dispatch(editor.createTransaction().setSelection(sel([0, 0], 0, [0, 0], 1)))
+    })
+    expect(getByTestId('bold').textContent).toBe('false')
+    act(() => {
+      editor.dispatch(editor.createTransaction().setSelection(sel([0, 1], 0, [0, 1], 2)))
+    })
+    expect(getByTestId('bold').textContent).toBe('true')
+  })
+})

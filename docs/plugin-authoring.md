@@ -219,7 +219,7 @@ export const callout = definePlugin({
     0,
   ],
   onCreate: (ctx) => {
-    // Side-effect free: StrictMode may create (and drop) a throwaway editor.
+    // Side-effect free: no subscriptions or timers (there is no cleanup; start them in onMount).
     void ctx.storage.count()
   },
   onMount: (_ctx, view) => {
@@ -366,7 +366,7 @@ Checklist for a new plugin's view:
 
 ### Node views
 
-- Read plugin state with `usePluginState(props.editor, plugin)`, **not** `props.state`. A change of plugin state alone does not call the view's `update`.
+- Read plugin state with `usePluginState(props.editor, plugin)`, **not** `props.state`. A change of plugin state alone does not call the view's `update`, so a view rendering `props.state` shows the state of its last re-render (a change of its data, `selected` or options) until something else re-renders it. `props.state` is fine in event handlers, where it is read when accessed.
 - For an **atom** view the whole container is `contenteditable="false"`. Mark interactive controls `data-editor-ignore` so the editor leaves their events and mutations alone (the hooks' props already do).
 - For a **non-atom** view (one that renders `<NodeContent />`):
   - The elements on the path from the container down to the content must stay editable. Never render `NodeContent` inside a `contentEditable={false}` element: that makes a separate editing host (the core warns).
@@ -395,16 +395,17 @@ In addition to the data-flow hooks (`state`, `storage`, `parseHTML` / `renderHTM
 
 `at` is null only when the fragment goes to the main range. A hook that depends on the insertion position reads `at ?? mainRange(ctx.editor.state.selection)`. It never reads the selection alone: a drop lands where the pointer is, not at the caret. See [plugin-api.md: Selections and multiple ranges](plugin-api.md#selections-and-multiple-ranges).
 
-Plugins are called by priority. `onUpdate` / `onSelectionUpdate` / `onFocus` run after the editor's own event emission (transaction, update, selectionUpdate). `onMount` cleanups run in reverse order, and a StrictMode mount, unmount, mount leaves exactly one active mount. A throwing hook does not stop the others: the first error is rethrown after all ran.
+Plugins are called by priority. For each committed transaction the editor emits `transaction`, then (doc changed) `update` followed by the `onUpdate` hooks, then (selection changed) `selectionUpdate` followed by the `onSelectionUpdate` hooks: each hook runs right after its matching event's listeners (`editor.on`, and `EditorOptions.listeners`). `onFocus` / `onBlur` have no matching editor event. `onMount` cleanups run in reverse order. Under React StrictMode `useEditor` builds one editor (`onCreate` runs once) and `EditorContent` mounts it, unmounts it and mounts it again: `onMount` runs twice and its cleanup once, leaving exactly one active mount. A throwing hook does not stop the others: the first error is rethrown after all ran.
 
 Asymmetries to design around:
 
 - **Unmount fires no `onBlur`.** Close popups and reset per-view state in the `onMount` cleanup, not in `onBlur`.
 - **Mounting on an already-focused root fires no `onFocus`.** Check `document.activeElement` in `onMount` if you need the initial focus state.
 - **`editor.view` is `null` during `onMount`.** Use the `view` argument.
-- **`onCreate` may run twice under React StrictMode** (a throwaway editor is created and dropped). It must be side-effect free: no subscriptions, timers or network calls. Start those in `onMount` (with a cleanup) instead.
+- **`onCreate` has no cleanup.** Keep it side-effect free: no subscriptions, timers or network calls. Start those in `onMount` (with a cleanup) instead. `useEditor` builds its editor once, StrictMode included, but an editor built during a render React discards (a suspended first mount) is never destroyed.
+- **What `onCreate` dispatches is reported only to listeners given at construction** (`EditorOptions.listeners`; `useEditor`'s `onUpdate` uses them), since `editor.on` cannot be called before the constructor returns.
 - **`ctx.commands` is empty during the initial normalize**, and `editor.storage` is `undefined` while storage factories run.
-- `onUpdate` / `onSelectionUpdate` run outside the transaction pipeline: dispatching from them is a nested dispatch.
+- `onUpdate` / `onSelectionUpdate` run outside the transaction pipeline: dispatching from them is a nested dispatch. It is committed (and its events and hooks run) before `dispatch` returns, so the hooks of the outer transaction that run later see `editor.state` already past it: read what the outer transaction changed from `tr`, not by comparing with `editor.state`.
 
 ## `extend(parent => overrides)`
 

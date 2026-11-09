@@ -16,6 +16,12 @@ interface Cached<T, E> {
  * The snapshot is cached on (editor, state, selector). Every commit replaces the state object, so
  * the cache never goes stale. That keeps object-returning selectors stable without a custom
  * `isEqual`. When it does recompute, a value equal to the previous one keeps the previous identity.
+ *
+ * Types: leave the type arguments to inference, so the selector's `editor` has the type of the
+ * `editor` argument (typed commands). To fix the result type, annotate the selector's return
+ * (`(s, e): boolean => ...`) or pass both arguments (`useEditorState<boolean, typeof editor>`):
+ * TypeScript has no partial inference, so `useEditorState<boolean>(...)` types the selector's
+ * `editor` as a plain `Editor`.
  */
 export function useEditorState<T, E extends Editor<readonly AnyPlugin[]> = Editor<readonly AnyPlugin[]>>(
   editor: E,
