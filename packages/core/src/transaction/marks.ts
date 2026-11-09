@@ -271,7 +271,9 @@ function updateStored(tr: Transaction, ranges: readonly SelectionRange[], update
 /**
  * Adds `mark` over the range (default: every selection range), replacing a mark of the same type
  * with different data. Without an explicit range, collapsed selection ranges update the stored
- * marks (once, for all of them).
+ * marks (once, for all of them). The selection is mapped through the text splits, not set: an edge
+ * at a split point maps to offset 0 of the text after it, the same position as the end of the
+ * marked text (the recorded single-range behaviour). `removeMark` alike.
  */
 export function addMark(tr: Transaction, mark: Mark, range?: SelectionRange | Range): boolean {
   const valid = validated(tr, mark.type, mark.data)

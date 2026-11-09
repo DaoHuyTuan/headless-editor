@@ -268,3 +268,57 @@ describe('inline atoms (3.14)', () => {
     expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p('a', el('link', {}, txt('url')), 'x'))))
   })
 })
+
+describe('multi-range selections at commit (3.15)', () => {
+  const r = (ap: number[], ao: number, fp: number[], fo: number) => ({ anchor: { path: ap, offset: ao }, focus: { path: fp, offset: fo } })
+  const commit = (content: ReturnType<typeof doc>, ranges: ReturnType<typeof r>[]) => {
+    const ed = setup(content, sel([0, 0], 0))
+    const tr = ed.createTransaction()
+    // A raw op: the ranges go in exactly as written.
+    tr.apply({ type: 'set_selection', selection: { ranges, main: 0 }, prevSelection: tr.selection })
+    ed.dispatch(tr)
+    return ed.state.selection!
+  }
+  const twoTexts = () => doc(p('ab', { text: 'cd', marks: [bold] }))
+
+  it('ranges that touch across a text-node boundary merge', () => {
+    const out = commit(twoTexts(), [r([0, 0], 0, [0, 0], 2), r([0, 1], 0, [0, 1], 1)])
+    expect(out.ranges).toHaveLength(1)
+    expect(out.ranges[0]).toEqual(r([0, 0], 0, [0, 1], 1))
+  })
+
+  it('two carets at one position written in two leaves merge', () => {
+    const out = commit(twoTexts(), [r([0, 0], 2, [0, 0], 2), r([0, 1], 0, [0, 1], 0)])
+    expect(out.ranges).toEqual([r([0, 0], 2, [0, 0], 2)])
+  })
+
+  it('ranges with a character between them stay apart', () => {
+    const out = commit(twoTexts(), [r([0, 0], 0, [0, 0], 1), r([0, 1], 0, [0, 1], 1)])
+    expect(out.ranges).toHaveLength(2)
+  })
+
+  it('a half-invalid range collapses at its re-homed point instead of spanning blocks', () => {
+    const out = commit(doc(p('ab'), p('cd'), p('ef')), [r([0, 0], 1, [9, 0], 0), r([1, 0], 1, [1, 0], 1)])
+    for (const range of out.ranges) expect(range.anchor).toEqual(range.focus)
+    expect(out.ranges.map((x) => x.anchor)).toContainEqual({ path: [2, 0], offset: 2 })
+  })
+})
+
+describe('forEachRange and a delete-then-reinsert (3.15, documented)', () => {
+  it('a later caret inside the re-inserted text is swallowed: not run, mapped past the insert', () => {
+    const ed = setup(doc(p('abcd')), sel([0, 0], 0))
+    const c = (o: number) => ({ anchor: { path: [0, 0], offset: o }, focus: { path: [0, 0], offset: o } })
+    const tr = ed.createTransaction()
+    tr.setSelection({ ranges: [c(1), c(3)], main: 0 })
+    const runs: number[] = []
+    tr.forEachRange((_range, t, i) => {
+      runs.push(i)
+      if (i !== 0) return
+      t.deleteRange({ anchor: { path: [0, 0], offset: 0 }, focus: { path: [0, 0], offset: 4 } })
+      t.insertText('abcd', c(0))
+      return c(1)
+    })
+    expect(runs).toEqual([0])
+    expect(tr.selection!.ranges).toEqual([c(1), c(4)])
+  })
+})

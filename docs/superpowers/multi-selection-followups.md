@@ -8,13 +8,13 @@ These items were collected from the per-task reviews of the multi-selection mile
 - **Pasting N lines into N carets** (VS Code's "distribute") is deferred to the code view.
 
 ## Core
-- Ranges that touch across a text-node boundary stay as two ranges until the texts merge. This needs a normalization tweak in `createSelection`.
+- ✅ Ranges that touch across a text-node boundary stay as two ranges until the texts merge. This needs a normalization tweak in `createSelection`.
 - `comparePath` treats an ancestor and its descendant as equal. Selection points sit in leaves, so this is safe today; add a comment.
-- Commit-time `rehomeRanges` moves each invalid point on its own, so a half-invalid raw selection can span blocks.
-- Inside a transaction, one position can sit in two leaves (two carets) until commit merges them.
-- A `forEachRange` callback that deletes and then re-inserts text skips the later carets inside that text.
+- ✅ Commit-time `rehomeRanges` moves each invalid point on its own, so a half-invalid raw selection can span blocks.
+- ✅ (documented) Inside a transaction, one position can sit in two leaves (two carets) until commit merges them.
+- ✅ (documented) A `forEachRange` callback that deletes and then re-inserts text skips the later carets inside that text.
 - ✅ When every range covers no characters, `toggleMark` stays stuck on "add". This matches the old single-range behaviour.
-- The selection after a mark split lands at offset 0 of the next text.
+- ✅ (documented, single-range parity) The selection after a mark split lands at offset 0 of the next text.
 - Any dispatch between a keydown and the timer cancels the WebKit delete fallback (from M4).
 - **Performance:**
   - `docIds` is recomputed per insert, so it costs O(ranges × doc) per paste.
