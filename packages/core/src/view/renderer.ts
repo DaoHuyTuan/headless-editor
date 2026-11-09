@@ -264,6 +264,8 @@ export class Renderer {
    * path to `contentDOM` (headers, controls) may be non-editable.
    */
   checkContentPlacement(contentDOM: globalThis.Node): void {
+    // A dev-only warning, like the other node-view misuse warnings.
+    if (!this.editor.dev) return
     const entry = this.byContent.get(contentDOM as Element)
     if (!entry || this.warnedContent.has(contentDOM as Element)) return
     for (let cur = contentDOM.parentNode; cur && cur !== entry.dom; cur = cur.parentNode) {

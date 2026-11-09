@@ -104,7 +104,8 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
   private _view: EditorView | null = null
 
   private _state: EditorState
-  private readonly dev: boolean
+  /** The `dev` option (default false): bugs throw instead of being dropped, and dev-only warnings are on. */
+  readonly dev: boolean
   private readonly platform: Platform
   private readonly pluginOptions = new Map<string, Record<string, unknown>>()
   private readonly contexts = new Map<string, PluginContext<any, any, any, any>>()

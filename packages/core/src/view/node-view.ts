@@ -19,12 +19,8 @@ interface HostedView {
  */
 export class NodeViewHost {
   private readonly views = new Map<string, HostedView>()
-  /** The editor's `dev` option (read through a transaction: the editor keeps it private). */
-  private readonly dev: boolean
 
-  constructor(private readonly editor: Editor) {
-    this.dev = editor.createTransaction().dev
-  }
+  constructor(private readonly editor: Editor) {}
 
   has(id: string): boolean {
     return this.views.has(id)
@@ -52,7 +48,7 @@ export class NodeViewHost {
     const props = this.props(node, selected, contentDOM)
     const instance = factory(container, props)
     this.views.set(node.id, { instance, container, props })
-    if (this.dev && contentDOM) this.checkPlaced(node, instance, container, contentDOM)
+    if (this.editor.dev && contentDOM) this.checkPlaced(node, instance, container, contentDOM)
   }
 
   /** Dev mode: warns when the view of `node` has not placed `contentDOM` in `container` after a macrotask. */

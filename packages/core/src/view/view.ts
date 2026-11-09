@@ -158,7 +158,9 @@ export class EditorView {
       hadStyle: root.hasAttribute('style'),
     }
     this.renderer = new Renderer(root, editor)
-    this.renderer.render(editor.state.doc, { decorations: editor.getDecorations(editor.state) })
+    // The initial selection is shown too: a node selection marks its node, as later renders do.
+    const selectedNode = editor.state.selection ? mainRange(editor.state.selection).node : undefined
+    this.renderer.render(editor.state.doc, { selectedNode, decorations: editor.getDecorations(editor.state) })
 
     this.disposers.push(
       editor.on('options', ({ editor: ed, plugin }) => {
