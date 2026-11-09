@@ -81,8 +81,13 @@ describe('serializeHTML', () => {
   })
 
   it('renders mark styles and escapes attribute values', () => {
+    const d = doc(p(txt('a', { type: 'color', data: { value: '"red" & <b>' } })))
+    expect(serialize(d)).toBe('<p><span style="background-color: &quot;red&quot; &amp; &lt;b&gt;;">a</span></p>')
+  })
+
+  it('drops a mark style declaration with an unterminated string (it would swallow the rest in CSS)', () => {
     const d = doc(p(txt('a', { type: 'color', data: { value: 'red"' } })))
-    expect(serialize(d)).toBe('<p><span style="background-color: red&quot;;">a</span></p>')
+    expect(serialize(d)).toBe('<p><span>a</span></p>')
   })
 
   it('passes plugin options and handles attrs (undefined skipped, numbers stringified)', () => {
