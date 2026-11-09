@@ -1,13 +1,13 @@
 // @vitest-environment happy-dom
 import { StrictMode, type ComponentType } from 'react'
-import { act, cleanup, fireEvent, render } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Doc, Editor, ElementNode, NodeViewPropsOf, Selection, TextNode } from '@hte/core'
 import { doc, el, sel, txt } from '@hte/core/testing'
 import { paragraph } from '@hte/paragraph'
 import { EditorContent, useEditor } from '@hte/react'
 import { codeBlock } from '../src/index'
-import { CodeBlockView, type CodeBlockViewProps } from '../src/react'
+import { CodeBlockView, useCodeBlock, type CodeBlockApi, type CodeBlockViewProps } from '../src/react'
 
 let errors: ReturnType<typeof vi.spyOn>
 let warns: ReturnType<typeof vi.spyOn>
@@ -114,6 +114,39 @@ describe('CodeBlockView', () => {
     const values = Array.from(t.select()!.options).map((o) => o.value)
     expect(values).toEqual([...codeBlock.spec.options!.languages, 'rust'])
     expect(t.select()!.value).toBe('rust')
+    expect(warns).not.toHaveBeenCalled()
+    expect(errors).not.toHaveBeenCalled()
+  })
+
+  it('the select is labelled "Language" by default, or by the languageLabel option', () => {
+    expect(setup().select()!.getAttribute('aria-label')).toBe('Language')
+    cleanup()
+    const t = setup({ view: (p) => <CodeBlockView {...p} options={{ ...p.options, languageLabel: 'Langue' }} /> })
+    expect(t.select()!.getAttribute('aria-label')).toBe('Langue')
+    expect(errors).not.toHaveBeenCalled()
+  })
+
+  it('setLanguage with an unsafe name is rejected: false, the data and the select unchanged', () => {
+    let api!: CodeBlockApi
+    const t = setup({
+      view: (p) => {
+        api = useCodeBlock(p)
+        return <CodeBlockView {...p} />
+      },
+    })
+    let result: boolean | undefined
+    act(() => {
+      result = api.setLanguage('x"><script>')
+    })
+    expect(result).toBe(false)
+    expect(t.node().data.language).toBe('javascript')
+    expect(t.select()!.value).toBe('javascript')
+    act(() => {
+      result = api.setLanguage('python')
+    })
+    expect(result).toBe(true)
+    expect(t.node().data.language).toBe('python')
+    expect(errors).not.toHaveBeenCalled()
   })
 
   it('shows the highlight classes', () => {
@@ -146,6 +179,8 @@ describe('CodeBlockView', () => {
     })
     expect(t.select()).toBeNull()
     expect(t.block()!.querySelector('.tb b.ls')?.textContent).toBe('lang')
+    expect(warns).not.toHaveBeenCalled()
+    expect(errors).not.toHaveBeenCalled()
   })
 
   it('a paragraph turned into a code block keeps the caret and typing continues', () => {
@@ -160,5 +195,26 @@ describe('CodeBlockView', () => {
     expect(warns).not.toHaveBeenCalled()
     expect(t.block()!.querySelector('pre code')!.textContent).toBe('axb')
     expect(errors).not.toHaveBeenCalled()
+  })
+})
+
+describe('useCodeBlock', () => {
+  const props = (language: string, updateData = vi.fn(() => true), options = codeBlock.spec.options!) =>
+    ({ node: { data: { language } }, options, updateData }) as unknown as NodeViewPropsOf<typeof codeBlock>
+
+  it('returns the same api (and the same select props) while the language, options and updateData stay', () => {
+    const updateData = vi.fn(() => true)
+    const { result, rerender } = renderHook((p) => useCodeBlock(p), { initialProps: props('rust', updateData) })
+    const first = result.current
+    rerender(props('rust', updateData))
+    expect(result.current).toBe(first)
+    expect(result.current.selectProps).toBe(first.selectProps)
+    expect(result.current.languages).toBe(first.languages)
+    rerender(props('python', updateData))
+    expect(result.current).not.toBe(first)
+    expect(result.current.language).toBe('python')
+    expect(result.current.setLanguage).toBe(first.setLanguage)
+    result.current.setLanguage('css')
+    expect(updateData).toHaveBeenCalledWith({ language: 'css' })
   })
 })

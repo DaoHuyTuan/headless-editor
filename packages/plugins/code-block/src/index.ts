@@ -62,6 +62,8 @@ export interface CodeBlockOptions {
   languages: string[]
   /** Extra attributes merged into the `<pre>`. The `<code>`'s `language-*` class comes from the data. */
   HTMLAttributes: HTMLAttributes
+  /** The accessible name of a view's language select (`aria-label`). Default `'Language'`. */
+  languageLabel: string
 }
 
 const NAME = 'codeBlock'
@@ -210,7 +212,9 @@ const indentsLines = (code: CodeAt): boolean => code.from !== code.to && lineSta
  * Tab at every range in a code block: two spaces at a caret (replacing a selection within one line),
  * or an indent of every line a multi-line selection touches. A line touched by several ranges is
  * indented once: a caret or single-line selection on a line another range indents adds nothing of its
- * own. Ranges outside a code block are left alone (Tab has no default edit for them).
+ * own. A multi-line selection ending at the start of a line another range indents keeps ending
+ * before that line's new indent. Ranges outside a code block are left alone (Tab has no default edit
+ * for them).
  */
 function indent(tr: Transaction): boolean {
   const ranges = codeRanges(tr)
@@ -241,7 +245,28 @@ function indent(tr: Transaction): boolean {
     const { code } = ranges.find((r) => r.code.textPath.join() === key)!
     for (const start of set) planFor(plan, code).push({ offset: start, remove: '', insert: INDENT })
   }
+  // A multi-line selection ending at a line start leaves that line out; when another range indents
+  // that line, the mapping would carry the end over the new indent. Those ends are put back before it.
+  const before = tr.selection!
+  const pullBack = before.ranges.map((range) => {
+    const code = codeAtRange(tr, range)
+    if (!code || !indentsLines(code) || !lines.get(code.textPath.join())?.has(code.to)) return null
+    return code.anchor > code.focus ? 'anchor' : 'focus'
+  })
   applyPlan(tr, plan)
+  const after = tr.selection!
+  if (tr.rejected === null && pullBack.some(Boolean) && after.ranges.length === before.ranges.length) {
+    tr.setSelection(
+      createSelection(
+        after.ranges.map((range, i) => {
+          const end = pullBack[i]
+          if (!end) return range
+          return { ...range, [end]: { ...range[end], offset: range[end].offset - INDENT.length } }
+        }),
+        after.main,
+      ),
+    )
+  }
   return tr.rejected === null
 }
 
@@ -573,7 +598,9 @@ function subtreeTokens(node: Node, name: string, highlighter: Highlighter): read
  *   consumed there, so focus never tabs out of the block), Enter inserts `\n` (at the end of a block
  *   ending with `\n\n` it removes them and exits to a new paragraph), Shift-Enter inserts `\n`,
  *   Mod-Enter exits the block to a new paragraph after it, Backspace at the start of an empty block
- *   turns it into a paragraph. `insertParagraph` / `insertLineBreak` intents behave like Enter.
+ *   turns it into a paragraph. `insertParagraph` / `insertLineBreak` intents behave like Enter (a
+ *   mention popup open at the main caret claims `insertParagraph` first: `@hte/mention` has the
+ *   higher priority).
  * - Several ranges: every key works per range. Code-block behaviour applies only to ranges inside a
  *   code block; Enter and Shift-Enter give the other ranges the editor's default split, Tab and
  *   Shift-Tab leave them alone, and Backspace is the editor's unless every range is at the start of an
@@ -599,6 +626,7 @@ export const codeBlock = definePlugin({
     highlighter: defaultHighlighter,
     languages: ['plaintext', 'javascript', 'typescript', 'json', 'css', 'html', 'python', 'bash'],
     HTMLAttributes: {},
+    languageLabel: 'Language',
   } as CodeBlockOptions,
   // `commands` comes before every hook taking `ctx`: TypeScript types those hooks in order.
   commands: () => ({

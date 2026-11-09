@@ -204,6 +204,57 @@ describe('code block line-break intents (beforeinput without keydown)', () => {
       { type: 'paragraph', text: 'b' },
     ])
   })
+
+  // The main caret after "@an" in a paragraph (mention popup open), another caret in a code block:
+  // both plugins handle insertParagraph. The open popup wins, whichever plugin is registered first.
+  describe('with the mention popup open at the main caret and a caret in a code block', () => {
+    const flush = () => new Promise<void>((r) => setTimeout(r, 0))
+    const at = (path: number[], offset: number) => ({ anchor: { path, offset }, focus: { path, offset } })
+    const withPopup = async (codeFirst: boolean, users: { id: string; label: string }[]) => {
+      const m = mention.configure({ fetchUsers: async () => users })
+      const ed = createTestEditor({
+        plugins: codeFirst ? [paragraph, bold, codeBlock, m] : [paragraph, bold, m, codeBlock],
+        doc: doc(p(txt('@an')), code('xy')),
+        selection: caret([0, 0], 3),
+      }) as unknown as Ed
+      const root = document.createElement('div')
+      document.body.appendChild(root)
+      ed.mount(root)
+      ed.view!.focus()
+      const tr = ed.createTransaction()
+      tr.setSelection(createSelection([at([0, 0], 3), at([1, 0], 1)], 0))
+      ed.dispatch(tr)
+      await flush()
+      return ed
+    }
+    const popup = (ed: Ed) => ed.getPluginState<{ open: boolean; items: unknown[] }>('mention')
+
+    for (const codeFirst of [false, true]) {
+      const order = codeFirst ? 'code block registered first' : 'mention registered first'
+
+      it(`insertParagraph accepts the suggestion; the code caret gets no newline (${order})`, async () => {
+        const ed = await withPopup(codeFirst, [{ id: 'u1', label: 'Ann' }])
+        expect(popup(ed)).toMatchObject({ open: true, items: [{ id: 'u1' }] })
+        expect(intent(ed, 'insertParagraph')).toBe(true)
+        expect(blocks(ed)).toEqual([
+          { type: 'paragraph', text: '<mention> ' },
+          { type: 'codeBlock', text: 'xy' },
+        ])
+        expect(popup(ed).open).toBe(false)
+      })
+
+      it(`with zero results the popup lets the code block handle it (${order})`, async () => {
+        const ed = await withPopup(codeFirst, [])
+        expect(popup(ed)).toMatchObject({ open: true, items: [] })
+        expect(intent(ed, 'insertParagraph')).toBe(true)
+        expect(blocks(ed)).toEqual([
+          { type: 'paragraph', text: '@an' },
+          { type: 'paragraph', text: '' },
+          { type: 'codeBlock', text: 'x\ny' },
+        ])
+      })
+    }
+  })
 })
 
 describe('code block commands', () => {
@@ -420,6 +471,23 @@ describe('code block paste', () => {
       { type: 'paragraph', text: 'y' },
     ])
   })
+
+  it('multi-line plain text from another app pasted into a paragraph splits it, one paragraph per line', () => {
+    const ed = setup(doc(p(txt('ab'))), caret([0, 0], 1))
+    paste(ed, { 'text/plain': 'x\ny' })
+    expect(blocks(ed)).toEqual([
+      { type: 'paragraph', text: 'ax' },
+      { type: 'paragraph', text: 'yb' },
+    ])
+    expect(blocks(ed).some((b) => b.text.includes('\n'))).toBe(false)
+  })
+
+  it('HTML with a newline in its text (not from a code block) pasted into a paragraph collapses it', () => {
+    const ed = setup(doc(p(txt('ab'))), caret([0, 0], 1))
+    paste(ed, { 'text/html': '<span>x\ny</span>', 'text/plain': 'x\ny' })
+    // HTML whitespace rules: the newline collapses to a space.
+    expect(blocks(ed)).toEqual([{ type: 'paragraph', text: 'ax yb' }])
+  })
 })
 
 describe('code block HTML', () => {
@@ -606,6 +674,22 @@ describe('code block with several ranges', () => {
     const ed = setup(doc(code('a\nbc\nd')), multi(rng([0, 0], 0, 3), rng([0, 0], 4)))
     expect(ed.runKeymap('Tab')).toBe(true)
     expect(texts(ed)).toEqual(['  a\n  bc\nd'])
+  })
+
+  // "ab\ncd\nef\ngh": A = 0..6 (lines ab, cd; it ends at the start of ef), B = 7..10 (lines ef, gh).
+  // B indents ef: A keeps ending at the start of that line, before its new indent, as it ended
+  // before the line's text (it does not grow over B's indent).
+  it('Tab: a range ending at a line start another range indents stays before that indent', () => {
+    const ed = setup(doc(code('ab\ncd\nef\ngh')), multi(rng([0, 0], 0, 6), rng([0, 0], 7, 10)))
+    expect(ed.runKeymap('Tab')).toBe(true)
+    expect(texts(ed)).toEqual(['  ab\n  cd\n  ef\n  gh'])
+    expect(ed.state.selection).toEqual(multi(rng([0, 0], 2, 10), rng([0, 0], 13, 18)))
+  })
+
+  it('Tab: the same for a backward range (its anchor at the line start)', () => {
+    const ed = setup(doc(code('ab\ncd\nef\ngh')), multi(rng([0, 0], 6, 0), rng([0, 0], 7, 10)))
+    expect(ed.runKeymap('Tab')).toBe(true)
+    expect(ed.state.selection).toEqual(multi(rng([0, 0], 10, 2), rng([0, 0], 13, 18)))
   })
 
   it('Tab with a caret in a code block and a caret in a paragraph leaves the paragraph alone', () => {
