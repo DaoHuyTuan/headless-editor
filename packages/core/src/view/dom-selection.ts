@@ -263,31 +263,40 @@ function outermostNonEditable(r: Renderer, node: globalThis.Node): Element | nul
  * else the start of the first leaf after it there, else the same search over the whole document.
  */
 function boundaryPoint(r: Renderer, container: globalThis.Node, index: number): Point | null {
-  const leaves = Array.from(r.root.querySelectorAll(`[${LEAF_ATTR}]`)).filter((l) => r.pathOfLeaf(l))
+  // Every leaf span in document order; whether one is a current leaf (`pathOfLeaf`) is only asked of
+  // the few looked at below, not of all of them.
+  const leaves = Array.from(r.root.querySelectorAll(`[${LEAF_ATTR}]`))
   if (leaves.length === 0) return null
+  const valid = (l: Element) => r.pathOfLeaf(l) !== null
   const ref = container.childNodes[Math.max(0, index)] ?? null
   const start = (l: Element): Point => ({ path: r.pathOfLeaf(l)!, offset: 0 })
   const end = (l: Element): Point => ({ path: r.pathOfLeaf(l)!, offset: textLength(l) })
-
-  if (ref) {
-    const inside = leaves.find((l) => ref === l || ref.contains(l))
-    if (inside) return start(inside)
-  }
   const isBefore = (l: Element): boolean =>
     ref
       ? (ref.compareDocumentPosition(l) & PRECEDING) !== 0
       : container.contains(l) || (container.compareDocumentPosition(l) & PRECEDING) !== 0
-  const before = leaves.filter(isBefore)
-  const after = leaves.filter((l) => !isBefore(l))
-
+  // Leaves before the position come first in document order: the first one not before it, by bisection.
+  let lo = 0
+  let hi = leaves.length
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    if (isBefore(leaves[mid]!)) lo = mid + 1
+    else hi = mid
+  }
+  const split = lo
+  // A position right before an element holding leaves: the first (current) leaf inside it.
+  if (ref) {
+    for (let i = split; i < leaves.length && (ref === leaves[i] || ref.contains(leaves[i]!)); i++)
+      if (valid(leaves[i]!)) return start(leaves[i]!)
+  }
+  // The closest current leaf on each side, inside the position's element first (its leaves are
+  // contiguous in document order), else anywhere.
   const scope = closestElementRoot(r.root, container)
-  const prevIn = before.filter((l) => scope.contains(l)).at(-1)
-  if (prevIn) return end(prevIn)
-  const nextIn = after.find((l) => scope.contains(l))
-  if (nextIn) return start(nextIn)
-  const prev = before.at(-1)
-  if (prev) return end(prev)
-  return start(after[0]!)
+  for (let i = split - 1; i >= 0 && scope.contains(leaves[i]!); i--) if (valid(leaves[i]!)) return end(leaves[i]!)
+  for (let i = split; i < leaves.length && scope.contains(leaves[i]!); i++) if (valid(leaves[i]!)) return start(leaves[i]!)
+  for (let i = split - 1; i >= 0; i--) if (valid(leaves[i]!)) return end(leaves[i]!)
+  for (let i = split; i < leaves.length; i++) if (valid(leaves[i]!)) return start(leaves[i]!)
+  return null
 }
 
 /** The closest element root (`data-hte-id`) that is or contains `node`, or the root. */

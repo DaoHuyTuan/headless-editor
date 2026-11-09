@@ -92,6 +92,13 @@ interface RenderPass {
   decorations: Map<string, LeafDecorations>
   /** Widget elements by key, as shown after this render. */
   widgets: Map<string, HTMLElement>
+  /**
+   * Whether an element whose node is the one last rendered may keep its whole subtree as it is (see
+   * `Renderer.unchanged`); false while anything could change DOM under an unchanged node.
+   */
+  skipUnchanged: boolean
+  /** Path keys of every ancestor of a decorated text or of the selected node, in this render. */
+  touched: Set<string>
 }
 
 /** A leaf part with its widget element resolved. */
@@ -153,6 +160,13 @@ export class Renderer {
   private _rendering = false
   /** Run synchronously at the end of every render (the mutation observer drops the records of our own patches). */
   private readonly renderedHooks = new Set<() => void>()
+  /** `RenderPass.touched` of the last render: an element touched then or now is rendered in full. */
+  private lastTouched = new Set<string>()
+  /**
+   * The next render checks every element and leaf, unchanged or not: set by `checkAll` (the mutation
+   * module, after changes made outside the editor) and after a render around a composing leaf.
+   */
+  private fullCheck = true
 
   constructor(
     /** The contenteditable root the document renders into. */
@@ -176,14 +190,29 @@ export class Renderer {
   render(doc: DeepReadonly<Doc>, opts: RenderOptions = {}): void {
     const forced = new Set(this.deferred)
     this.deferred.clear()
+    const decorations = groupDecorations(doc, opts.decorations ?? [])
+    const touched = new Set<string>()
+    const touch = (path: Path) => {
+      for (let i = 1; i <= path.length; i++) touched.add(pathKey(path.slice(0, i)))
+    }
+    for (const key of decorations.keys()) touch(key === '' ? [] : key.split(',').map(Number))
+    if (opts.selectedNode) touch(opts.selectedNode)
     const pass: RenderPass = {
       next: new Map(),
       skipLeaf: opts.skipLeaf,
       skipPath: opts.skipPath,
       selectedNode: opts.selectedNode,
       forced,
-      decorations: groupDecorations(doc, opts.decorations ?? []),
+      decorations,
       widgets: new Map(),
+      skipUnchanged:
+        !this.fullCheck &&
+        !opts.skipLeaf &&
+        forced.size === 0 &&
+        this.invalidated.size === 0 &&
+        this.invalidatedMarks.size === 0 &&
+        this.rebuildViews.size === 0,
+      touched,
     }
     // The composing leaf keeps its DOM, widgets included: keep their keys.
     if (opts.skipLeaf) {
@@ -197,6 +226,9 @@ export class Renderer {
       this.byId = pass.next
       this.widgets = pass.widgets
       this.lastDoc = doc
+      this.lastTouched = touched
+      // After a render around a composing leaf, the IME may have changed DOM the renderer kept.
+      this.fullCheck = opts.skipLeaf !== undefined
       // Destroy the node views whose element left the doc (or is no longer shown by a node view).
       const live = new Set<string>()
       for (const [id, entry] of pass.next) if (entry.nodeView) live.add(id)
@@ -230,6 +262,15 @@ export class Renderer {
   /** Re-renders, on the next render, every text leaf that carries a mark of `type` (after its plugin's options changed). */
   invalidateMark(type: string): void {
     this.invalidatedMarks.add(type)
+  }
+
+  /**
+   * Makes the next render check every element and leaf, even those whose node did not change (by
+   * default an unchanged subtree with no decoration and no selected node is kept as it is). For DOM
+   * changed outside the editor.
+   */
+  checkAll(): void {
+    this.fullCheck = true
   }
 
   /** Rebuilds the node view of the element `id` on the next render: a new container and a new instance. */
@@ -464,6 +505,10 @@ export class Renderer {
     const { next } = pass
     const duplicate = next.has(node.id)
     const prev = duplicate ? undefined : this.byId.get(node.id)
+    if (prev && this.unchanged(prev, node, path, pass)) {
+      this.carry(prev, next)
+      return prev.dom
+    }
     const selected = pass.selectedNode !== undefined && samePath(path, pass.selectedNode)
     let entry: ElementEntry
     const forced = pass.forced.has(node.id)
@@ -518,6 +563,28 @@ export class Renderer {
     if (!duplicate) next.set(node.id, entry)
     if (entry.rendersChildren) this.reconcile(entry, node.children ?? [], path, pass)
     return entry.dom
+  }
+
+  /**
+   * Whether `prev` can be kept with its whole subtree as last rendered: its node is the very same
+   * object (the doc is immutable, so the subtree is the same too), nothing pending could change its
+   * DOM (`RenderPass.skipUnchanged`), and no decoration or selected node is in it, in this render or
+   * the last one. Its DOM is not re-read: changes made outside the editor reach the renderer through
+   * `checkAll` (the mutation module), which makes the next render check everything.
+   */
+  private unchanged(prev: ElementEntry, node: ElementNode, path: Path, pass: RenderPass): boolean {
+    if (!pass.skipUnchanged || prev.node !== node) return false
+    const key = pathKey(path)
+    return !pass.touched.has(key) && !this.lastTouched.has(key)
+  }
+
+  /** Keeps `entry` and every element entry below it (as last rendered) for this render. */
+  private carry(entry: ElementEntry, next: Map<string, ElementEntry>): void {
+    if (this.byId.get(entry.node.id) === entry) next.set(entry.node.id, entry)
+    for (const kid of entry.kids) {
+      const child = this.byDom.get(kid)
+      if (child) this.carry(child, next)
+    }
   }
 
   /** Whether the hole and its static boundary nodes are still where the spec put them. */

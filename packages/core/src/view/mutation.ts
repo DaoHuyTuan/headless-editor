@@ -76,8 +76,12 @@ export const attachMutation: ViewModule = (view) => {
       revert = true
       if (action !== 'revert') view.renderer.invalidateNodeView(action.rebuild)
     }
-    // The update shows the selection; otherwise a newly placed contentDOM can now show it.
-    if (revert) view.update(view.editor.state)
+    // The update shows the selection; otherwise a newly placed contentDOM can now show it. The
+    // changed DOM can be under nodes the model did not change: the render checks every element.
+    if (revert) {
+      view.renderer.checkAll()
+      view.update(view.editor.state)
+    }
     else if (placed) view.refreshSelection()
   })
   observer.observe(view.root, {
