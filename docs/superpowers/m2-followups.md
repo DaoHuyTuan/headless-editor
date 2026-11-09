@@ -42,19 +42,19 @@ Kept open from "Start of M3" (no M3 plugin needed them, and each is a separate c
 - Only the first destroy-hook error is rethrown (use `AggregateError`).
 - The renderer:
   - clears `invalidated` even when a render throws;
-  - builds a frozen options copy on every `renderHTML` call;
+  - ✅ builds a frozen options copy on every `renderHTML` call;
   - doesn't pass the node selection on the initial render.
-- `NodeViewHost.update` comment is wrong (stale `props.node`).
+- ✅ `NodeViewHost.update` comment is wrong (stale `props.node`).
 - JSDoc hazards:
-  - `ignoreMutation` returning false can loop with async view rendering;
+  - ✅ `ignoreMutation` returning false can loop with async view rendering;
   - `stopEvent` should point focusable controls to `data-editor-ignore`.
 - node-select's `mousedown` blocks native drag and shift-click.
-- Node-view options are looked up by node type, not plugin name.
+- ✅ Node-view options are looked up by node type, not plugin name.
 - Normalize and editing:
   - ✅ a hoisted atom next to empty texts leaves a stray empty paragraph (rule 9 runs before rule 4);
   - ✅ `edgeBlockOf` treats unknown inline elements as edge blocks;
   - ✅ split halves share a `data` reference;
-  - `nearestEditablePoint` is O(doc).
+  - ✅ `nearestEditablePoint` is O(doc).
 - Node selection:
   - ✅ an op that removes the anchor text while the node survives leaves the selection null;
   - ✅ `isMarkActive` shows caret marks while a node is selected;
@@ -64,21 +64,21 @@ Kept open from "Start of M3" (no M3 plugin needed them, and each is a separate c
 - ✅ History replay runs on every data-only change made outside history; add a guard when the stacks hold no `set_node_data`.
 - ✅ `rewriteHistoryData` doesn't validate its data.
 - ✅ Validated data from insert can alias the caller's object.
-- A default block whose schema has required fields would make normalize's inserts reject.
-- The mutation.ts JSDoc is garbled.
-- Duplicate `samePath` helpers.
+- ✅ A default block whose schema has required fields would make normalize's inserts reject.
+- ✅ The mutation.ts JSDoc is garbled.
+- ✅ Duplicate `samePath` helpers.
 
 ## React adapter
-- StrictMode builds a throwaway editor in the `useState` initializer.
+- ✅ StrictMode builds a throwaway editor in the `useState` initializer.
 - ✅ Node views get one commit with stale options after a `pluginOptions` change.
-- No tests yet for a dispatch from a node view's `useEffect`, or for `EditorContent` receiving a different editor.
+- ✅ No tests yet for a dispatch from a node view's `useEffect`, or for `EditorContent` receiving a different editor.
 
 ## Tests / tooling
 - Gaps:
-  - e2e for undo during a pending upload;
+  - ✅ e2e for undo during a pending upload;
   - font-size e2e that selects with the mouse instead of the editor API;
   - ✅ multi-entry redo replay and replay-failure fallback (the fallback is unreachable through the API);
-  - the non-sibling opaque `deleteRange` branch;
-  - `fragment.test.ts` assertions on unknown subtrees.
+  - ✅ the non-sibling opaque `deleteRange` branch;
+  - ✅ `fragment.test.ts` assertions on unknown subtrees.
 - `image.test.ts` has a prettier formatting nit (`toRange,   type Doc,`).
-- The playground's `fakeUpload` never revokes its URLs, and the playground sets no `onUploadError`.
+- ✅ The playground's `fakeUpload` never revokes its URLs, and the playground sets no `onUploadError`.

@@ -22,7 +22,7 @@ Status after M2 verification: every item below was closed in M2 except the histo
 
 ## Core / model
 - ✅ Undoing the duplicate-mark dedupe (normalize rule 6) throws. Only corrupted input can reach this.
-- `coerceDoc` keeps `children` on known atoms, but the spec says they should be absent.
+- ✅ `coerceDoc` keeps `children` on known atoms, but the spec says they should be absent.
 - ✅ Normalize rule 4 can leave a block with no text leaf when its other children are inline atoms or unknown elements (M3).
 - ✅ Plugin `normalize` hooks also visit entries inside unknown elements and atoms.
 - The result of `onInvalidData` is not validated again.
@@ -84,7 +84,7 @@ Status after M2 verification: every item below was closed in M2 except the histo
 - dom-selection:
   - ✅ The no-op write can leave the selection in a stray node.
   - ✅ Non-editable positions ignore the offset.
-  - `boundaryPoint` is O(leaves).
+  - ✅ `boundaryPoint` is O(leaves).
 - EditorView:
   - ✅ The old root stays `contenteditable` after `mount(other)`.
   - ✅ `attach` and `listen` leak after `destroy`.
@@ -93,7 +93,7 @@ Status after M2 verification: every item below was closed in M2 except the histo
   - ✅ Delete intents ignore the target range.
   - ✅ `targetRange` drops the direction.
   - When a plugin's `beforeinput` handler returns true, the event is not prevented, which is inconsistent with keydown.
-  - `handleDOMEvent` and `transformPasted` should be documented as view-integration API.
+  - ✅ `handleDOMEvent` and `transformPasted` should be documented as view-integration API.
 - Composition:
   - Text written outside the composing leaf is lost.
   - Composing with no leaf, or resuming after blur, fights the IME.
@@ -105,22 +105,22 @@ Status after M2 verification: every item below was closed in M2 except the histo
   - ✅ A throw in `transformPasted` after `preventDefault` loses the paste.
   - Plain-text paste doesn't take the surrounding marks.
   - ✅ A paste with no model selection is swallowed.
-  - Malformed payloads spam warnings.
+  - ✅ Malformed payloads spam warnings.
 
 ## React adapter
 - ✅ `onUpdate` can be missed for dispatches during the first commit.
-- Passing an explicit `T` to `useEditorState` loses the editor type.
+- ✅ Passing an explicit `T` to `useEditorState` loses the editor type.
 - Coverage gaps: StrictMode for the selector tests.
 
 ## Tests / tooling
 - Test gaps flagged in reviews:
-  - Backspace at `[0,1]:0`.
-  - A multi-mark delete across blocks.
-  - A block paste at the end of a block.
+  - ✅ Backspace at `[0,1]:0`.
+  - ✅ A multi-mark delete across blocks.
+  - ✅ A block paste at the end of a block.
   - ✅ A vetoed undo.
-  - Arrow keys and modifiers.
-  - Mount on a destroyed editor.
-- `reuseExistingServer` should be `!process.env.CI`.
-- The undo e2e depends on history grouping.
-- `createTestEditor` re-ids content and swaps the global id generator; document this.
+  - ✅ Arrow keys and modifiers.
+  - ✅ Mount on a destroyed editor.
+- ✅ `reuseExistingServer` should be `!process.env.CI`.
+- ✅ The undo e2e depends on history grouping.
+- ✅ `createTestEditor` re-ids content and swaps the global id generator; document this.
 - Real OS IME typing (Vietnamese Telex, Japanese) has not been checked by a human yet.
