@@ -724,3 +724,24 @@ describe('mention with several ranges', () => {
     expect(labels(editor.getJSON(), 1)).toEqual(['c', '[Ann]', ' d'])
   })
 })
+
+describe('mention suggestion: triggers next to links (6.10 follow-up)', () => {
+  const link = definePlugin({ name: 'link', node: { kind: 'inline' } }) as unknown as typeof code
+  const caretAt = (editor: ReturnType<typeof setup>['editor'], path: number[], offset: number) => {
+    const tr = editor.createTransaction()
+    tr.setSelection(sel(path, offset))
+    editor.dispatch(tr)
+  }
+
+  it('an @ inside a link glued to the word before it is no trigger', () => {
+    const { editor, state } = setup(doc(p(txt('abc'), el('link', {}, txt('@x')), txt(''))), {}, [link])
+    caretAt(editor, [0, 1, 0], 2)
+    expect(state().open).toBe(false)
+  })
+
+  it('a trigger before a link reads the query across it', () => {
+    const { editor, state } = setup(doc(p(txt('hi @'), el('link', {}, txt('jo')), txt(''))), {}, [link])
+    caretAt(editor, [0, 1, 0], 2)
+    expect(state()).toMatchObject({ open: true, query: 'jo' })
+  })
+})

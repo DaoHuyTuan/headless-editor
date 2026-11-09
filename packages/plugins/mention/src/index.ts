@@ -302,7 +302,7 @@ function insertAtTriggers(ctx: Ctx, tr: Transaction, user: User, query: string):
     // A real state (the tr's start state) with the live doc and this range alone: the same
     // `findTrigger` the popup runs at the main caret, asked at this caret.
     const at: EditorState = { ...t.before, doc: t.doc, selection: single(range) }
-    const match = findTrigger(at, { char: ctx.options.trigger })
+    const match = findTrigger(at, { char: ctx.options.trigger, registry: t.registry })
     if (!match || match.query !== query || inTextOnlyBlock(t.doc, t.registry, match.range.start.path)) return
     // The space takes the trigger text's marks, as the single-range path's insertText takes the caret's.
     const lead = getNode(t.doc, match.range.start.path)
@@ -385,7 +385,7 @@ function refresh(ctx: Ctx, rt: Runtime): void {
   const trigger = ctx.options.trigger
   let match =
     editor.view && typeof ctx.options.fetchUsers === 'function' && typeof trigger === 'string' && trigger.length > 0
-      ? findTrigger(state, { char: trigger })
+      ? findTrigger(state, { char: trigger, registry: editor.registry })
       : null
   if (match && inTextOnlyBlock(state.doc, editor.registry, match.range.start.path)) match = null
   if (match && isDismissed(st.dismissed, match.range.start)) match = null
@@ -423,8 +423,9 @@ function closeQuietly(ctx: Ctx): void {
  * `insertMention`) replaces the trigger at every caret that has the same trigger and query; the other
  * ranges are untouched.
  *
- * Limitations of the trigger detection (`findTrigger`): inside a link only the link's text is
- * searched, and a trigger glued to an inline atom without a space does not open the popup.
+ * Trigger detection (`findTrigger` with the editor's registry) reads the same text input rules do:
+ * the caret's run in its block, across inline elements such as links. Limitation: a trigger glued to
+ * an inline atom without a space does not open the popup.
  *
  * Contract for popup views: clicking an item must not move focus out of the editor (prevent the
  * default of the item's `mousedown`), because a blur closes the popup.

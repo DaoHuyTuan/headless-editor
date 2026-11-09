@@ -49,7 +49,8 @@ export interface InputIntent {
 /**
  * A rule run after the core inserts text from an `insertText` intent (not composition, not paste).
  * `match` is tested against the text of the caret's block from the start of its text run (an inline
- * atom ends a run) to the caret; anchor it with `$` (a match not ending at the caret is ignored).
+ * atom ends a run; inline elements such as links do not) to the caret, anchored there: only a match
+ * that ends at the caret counts, with or without a trailing `$` (the leftmost such match).
  * `range` covers the matched text. Returning true applies the changes made on `tr`, dispatched as
  * their own history step (so one undo reverts the rule and keeps the typed text), and stops the
  * remaining rules; returning false discards `tr`.
