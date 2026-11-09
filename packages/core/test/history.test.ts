@@ -74,6 +74,17 @@ describe('history plugin', () => {
     expect(text()).toEqual(stripIds(doc(p('xya'))))
   })
 
+  it('closing a group sets an explicit flag and keeps the entry time', () => {
+    const { ed, type, stacks } = setup(doc(p('xy')), sel([0, 0], 2))
+    type('a')
+    const top = () => stacks().undo[0] as { time: number; closed: boolean }
+    expect(top()).toMatchObject({ time: 1000, closed: false })
+    const tr = ed.createTransaction()
+    tr.setSelection(sel([0, 0], 0))
+    ed.dispatch(tr)
+    expect(top()).toMatchObject({ time: 1000, closed: true })
+  })
+
   it('a selection-only tr that leaves the caret where typing put it keeps the group', () => {
     const { ed, type, text } = setup()
     type('a')
@@ -116,6 +127,36 @@ describe('history plugin', () => {
     ed.commands.insertText('b')
     ed.commands.undo()
     expect(text()).toEqual(stripIds(doc(p('a'))))
+  })
+
+  it('undoes a step whose normalization deduped repeated marks (rule 6)', () => {
+    const { ed, text } = setup(doc(p('ab')), sel([0, 0], 1))
+    const bold = { type: 'bold', data: {} }
+    const tr = ed.createTransaction()
+    tr.meta.origin = 'command'
+    // A raw op skips validation: the inserted text carries the same mark twice.
+    tr.apply({ type: 'insert_node', path: [0, 1], node: { text: 'X', marks: [bold, bold] } })
+    tr.setSelection(sel([0, 1], 1))
+    ed.dispatch(tr)
+    const after = text()
+    expect(after).toEqual(stripIds(doc(p('ab', { text: 'X', marks: [bold] }))))
+    expect(ed.state.selection).toEqual(sel([0, 1], 1))
+    expect(ed.commands.undo()).toBe(true)
+    expect(text()).toEqual(stripIds(doc(p('ab'))))
+    expect(ed.commands.redo()).toBe(true)
+    expect(text()).toEqual(after)
+    expect(ed.commands.undo()).toBe(true)
+    expect(text()).toEqual(stripIds(doc(p('ab'))))
+  })
+
+  it('rule 6 keeps a caret inside the deduped text where it was', () => {
+    const { ed } = setup(doc(p('ab')), sel([0, 0], 1))
+    const bold = { type: 'bold', data: {} }
+    const tr = ed.createTransaction()
+    tr.apply({ type: 'insert_node', path: [0, 1], node: { text: 'XYZ', marks: [bold, bold] } })
+    tr.setSelection(sel([0, 1], 2))
+    ed.dispatch(tr)
+    expect(ed.state.selection).toEqual(sel([0, 1], 2))
   })
 
   it('undo restores the caret', () => {
@@ -231,6 +272,15 @@ describe('history plugin', () => {
     expect(ed.runKeymap('Ctrl-Shift-z')).toBe(true)
     expect(text()).toEqual(stripIds(doc(p('a'))))
     expect(ed.runKeymap('Ctrl-y')).toBe(false)
+  })
+
+  it('the keymap and intents return false when the undo/redo dispatch is dropped', () => {
+    const { ed, type, stacks } = setup()
+    type('a')
+    ed.destroy()
+    expect(ed.runKeymap('Ctrl-z')).toBe(false)
+    expect(ed.handleIntent({ inputType: 'historyUndo', data: null, range: null })).toBe(false)
+    expect(stacks().undo).toHaveLength(1)
   })
 
   it('handles historyUndo / historyRedo intents', () => {
@@ -395,6 +445,24 @@ describe('history rewrites data-only changes made outside history', () => {
     expect(dataOf(id)).toEqual({ src: 'https://x/1.png', alt: '' })
     ed.commands.redo()
     expect(dataOf(id)).toEqual({ src: 'https://x/1.png', alt: 'cat' })
+  })
+
+  it('rewriteHistoryData replays several redo entries to find its set_node_data ops', () => {
+    const { ed, stacks, insertImage, dataOf, setInHistory } = imageSetup()
+    const a = insertImage({ src: 'blob:a', alt: '' })
+    setInHistory(a, { alt: 'one' })
+    const b = insertImage({ src: 'blob:b', alt: '' })
+    setInHistory(b, { alt: 'two' })
+    for (let i = 0; i < 4; i++) expect(ed.commands.undo()).toBe(true)
+    expect(stacks().redo).toHaveLength(4)
+    rewriteHistoryData(ed, a, { src: 'https://x/a.png' })
+    for (let i = 0; i < 4; i++) expect(ed.commands.redo()).toBe(true)
+    expect(dataOf(a)).toEqual({ src: 'https://x/a.png', alt: 'one' })
+    expect(dataOf(b)).toEqual({ src: 'blob:b', alt: 'two' })
+    ed.commands.undo()
+    ed.commands.undo()
+    ed.commands.undo()
+    expect(dataOf(a)).toEqual({ src: 'https://x/a.png', alt: '' })
   })
 
   it('leaves set_node_data ops on other elements alone', () => {
@@ -1385,5 +1453,120 @@ describe('history fuzz: several carets, then undo all and redo all', () => {
       expect(ed.commands.redo(), msg).toBe(false)
     }
     expect(multiEntries).toBeGreaterThan(500)
+  })
+})
+
+describe('history: appends and vetoes (coverage)', () => {
+  function chainSetup(extra: AnyPlugin[], content: Doc = doc(p('')), selection: Selection = sel([0, 0], 0)) {
+    const ed = createTestEditor({
+      plugins: [testParagraph, historyPlugin.configure({ now: () => 0 }), ...extra],
+      history: false,
+      doc: content,
+      selection,
+    })
+    const type = (data: string) => ed.handleIntent({ inputType: 'insertText', data, range: null })
+    const text = () => (ed.state.doc.children[0]!.children![0] as { text: string }).text
+    const stacks = () => ed.getPluginState<HistoryState>('history')
+    return { ed, type, text, stacks }
+  }
+
+  /** Appends `ch` at the end of the first text when one of `trs` matches `when`; tags its tr with `tag`. */
+  const appender = (name: string, ch: string, when: (t: Transaction) => boolean) =>
+    definePlugin({
+      name,
+      appendTransaction: (trs, _old, state) => {
+        if (!trs.some(when)) return null
+        const end = (getNode(state.doc, [0, 0]) as { text: string }).text.length
+        const t = new Transaction(state, trs[0]!.registry)
+        t.setMeta('tag', name)
+        t.apply({ type: 'insert_text', path: [0, 0], offset: end, text: ch })
+        return t
+      },
+    })
+
+  it('three levels of appends (each fired by the one before) join one step', () => {
+    const a = appender('a', '1', (t) => t.meta.origin === 'input')
+    const b = appender('b', '2', (t) => t.meta.tag === 'a')
+    const c = appender('c', '3', (t) => t.meta.tag === 'b')
+    const { ed, type, text, stacks } = chainSetup([a, b, c])
+    type('x')
+    expect(text()).toBe('x123')
+    expect(stacks().undo).toHaveLength(1)
+    expect(ed.commands.undo()).toBe(true)
+    expect(text()).toBe('')
+    expect(ed.commands.undo()).toBe(false)
+    expect(ed.commands.redo()).toBe(true)
+    expect(text()).toBe('x123')
+  })
+
+  it('a selection-only append is the selection redo restores', () => {
+    const home = definePlugin({
+      name: 'home',
+      appendTransaction: (trs, _old, state) => {
+        if (!trs.some((t) => t.meta.origin === 'input')) return null
+        const t = new Transaction(state, trs[0]!.registry)
+        t.setSelection(sel([0, 0], 0))
+        return t
+      },
+    })
+    const { ed, type, text, stacks } = chainSetup([home], doc(p('ab')), sel([0, 0], 2))
+    type('x')
+    expect(text()).toBe('abx')
+    expect(ed.state.selection).toEqual(sel([0, 0], 0))
+    expect(stacks().undo).toHaveLength(1)
+    ed.commands.undo()
+    expect(text()).toBe('ab')
+    expect(ed.state.selection).toEqual(sel([0, 0], 2))
+    ed.commands.redo()
+    expect(text()).toBe('abx')
+    expect(ed.state.selection).toEqual(sel([0, 0], 0))
+  })
+
+  it('a data-only append fired by undo and redo keeps the cycles consistent', () => {
+    const box = definePlugin({ name: 'box', node: { kind: 'block', atom: true } })
+    /** Counts history actions in the box's data. */
+    const counter = definePlugin({
+      name: 'counter',
+      appendTransaction: (trs, _old, state) => {
+        if (!trs.some((t) => t.meta.origin === 'history')) return null
+        const node = getNode(state.doc, [1]) as ElementNode
+        const t = new Transaction(state, trs[0]!.registry)
+        t.setNodeData([1], { n: (node.data.n as number) + 1 })
+        return t
+      },
+    })
+    const { ed, type, text, stacks } = chainSetup([box, counter], doc(p(''), el('box', { n: 0 })))
+    type('x')
+    const n = () => (getNode(ed.state.doc, [1]) as ElementNode).data.n as number
+    const sizes: number[] = []
+    let last = n()
+    for (let i = 0; i < 8; i++) {
+      expect(ed.commands.undo()).toBe(true)
+      expect(text()).toBe('')
+      expect(n()).toBeGreaterThan(last)
+      last = n()
+      expect(stacks().undo).toHaveLength(0)
+      expect(stacks().redo).toHaveLength(1)
+      expect(ed.commands.redo()).toBe(true)
+      expect(text()).toBe('x')
+      expect(n()).toBeGreaterThan(0)
+      last = n()
+      expect(stacks().undo).toHaveLength(1)
+      expect(stacks().redo).toHaveLength(0)
+      sizes.push((stacks().undo as { ops: unknown[] }[])[0]!.ops.length)
+    }
+    // Back-to-back data changes of the box merge: the entry does not grow with the cycles.
+    expect(Math.max(...sizes.slice(4))).toBeLessThanOrEqual(Math.max(...sizes.slice(0, 4)))
+  })
+
+  it('an undo vetoed by filterTransaction applies nothing and returns false', () => {
+    const veto = definePlugin({ name: 'veto', filterTransaction: (tr) => tr.meta.origin !== 'history' })
+    const { ed, type, text, stacks } = chainSetup([veto])
+    type('a')
+    const before = stacks()
+    expect(ed.commands.undo()).toBe(false)
+    expect(ed.runKeymap('Ctrl-z')).toBe(false)
+    expect(text()).toBe('a')
+    expect(stacks()).toBe(before)
   })
 })

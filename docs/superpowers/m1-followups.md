@@ -21,7 +21,7 @@ Status after M2 verification: every item below was closed in M2 except the histo
   - An append fired by undo clears redo.
 
 ## Core / model
-- Undoing the duplicate-mark dedupe (normalize rule 6) throws. Only corrupted input can reach this.
+- ✅ Undoing the duplicate-mark dedupe (normalize rule 6) throws. Only corrupted input can reach this.
 - `coerceDoc` keeps `children` on known atoms, but the spec says they should be absent.
 - Normalize rule 4 can leave a block with no text leaf when its other children are inline atoms or unknown elements (M3).
 - Plugin `normalize` hooks also visit entries inside unknown elements and atoms.
@@ -53,8 +53,8 @@ Status after M2 verification: every item below was closed in M2 except the histo
   - An empty-string id is kept.
   - Nested containers are flattened.
 - History:
-  - `runHistory` returns true even when the dispatch is vetoed.
-  - It uses a `-Infinity` time sentinel.
+  - ✅ `runHistory` returns true even when the dispatch is vetoed.
+  - ✅ It uses a `-Infinity` time sentinel.
   - ✅ There is no stack depth limit.
   - A selection change between keystrokes doesn't break the typing group.
   - Cut merges with a previous Backspace.
@@ -117,7 +117,7 @@ Status after M2 verification: every item below was closed in M2 except the histo
   - Backspace at `[0,1]:0`.
   - A multi-mark delete across blocks.
   - A block paste at the end of a block.
-  - A vetoed undo.
+  - ✅ A vetoed undo.
   - Arrow keys and modifiers.
   - Mount on a destroyed editor.
 - `reuseExistingServer` should be `!process.env.CI`.

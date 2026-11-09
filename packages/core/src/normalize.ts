@@ -260,6 +260,16 @@ function fixMarks(tr: Transaction, text: TextNode, path: Path): boolean {
   for (const m of text.marks) if (!target.some((t) => t.type === m.type)) target.push(m)
   target.sort((a, b) => tr.registry.markRank(a.type) - tr.registry.markRank(b.type))
   if (target.length === text.marks.length && target.every((m, i) => m === text.marks[i])) return false
+  if (target.length < text.marks.length) {
+    // Repeated types: no mark op sequence can be undone back to this state (`add_mark` refuses a type
+    // that is already there), so the text node is replaced instead; its inverse restores the original.
+    // The doc keeps its shape, so the selection (and the stored marks) is put back exactly as it was.
+    const sel = tr.selection
+    tr.apply({ type: 'remove_node', path, node: text })
+    tr.apply({ type: 'insert_node', path, node: { ...text, marks: target } })
+    if (tr.selection !== sel) tr.apply({ type: 'set_selection', selection: sel, prevSelection: tr.selection })
+    return true
+  }
   // Remove last-to-first so that undo (which appends) restores the original order.
   for (const m of [...text.marks].reverse()) tr.apply({ type: 'remove_mark', path, mark: m })
   for (const m of target) tr.apply({ type: 'add_mark', path, mark: m })

@@ -33,10 +33,10 @@ Collected from the per-task and final reviews of milestone M3 (branch `feat/m3`)
   - the `mergeAttrs` JSDoc is spliced awkwardly.
 - History (Task 4):
   - ✅ entries grow across undo/redo cycles with appends (no compaction);
-  - appended trs cannot be separate undo steps (JSDoc);
+  - ✅ appended trs cannot be separate undo steps (JSDoc);
   - ✅ a structural append under `addToHistory: false` clears the stacks (stale since M4);
-  - the meaning of `R.selectionBefore` after a fold;
-  - untested: 3+ levels of appends, a selection-only append, a data-only append after an undo root.
+  - ✅ the meaning of `R.selectionBefore` after a fold;
+  - ✅ untested: 3+ levels of appends, a selection-only append, a data-only append after an undo root.
 - Inline atoms (Task 5):
   - a literal U+200B in source, and a duplicated ZW constant/attribute (use an escape and one shared helper);
   - rule 10 changes the link-end caret (typing no longer extends a trailing link), untested;

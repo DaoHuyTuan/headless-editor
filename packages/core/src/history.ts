@@ -16,11 +16,23 @@ import type { Transaction } from './transaction/transaction'
 export interface HistoryEntry {
   /** Doc ops of the recorded tr(s), normalization ops included, in application order. */
   ops: Operation[]
+  /**
+   * The selection at the doc `ops` start from; undo restores it. After a fold (`joinOps`) of a redo
+   * entry, that start is the doc the appended (or normalization) ops left, so this is their selection,
+   * not the one from before the entry's own step.
+   */
   selectionBefore: Selection | null
+  /** The selection at the doc `ops` end at; redo restores it. A fold of an undo entry sets it the same way. */
   selectionAfter: Selection | null
+  /** `now()` when the step was recorded or last grew by grouping. */
   time: number
   /** 'insert' / 'delete' for groupable input; anything else never groups. */
   kind: string
+  /**
+   * True once nothing may group into this entry any more: the selection moved away from where it
+   * left it, an undo/redo or an outside structural change happened. `time` is kept as it was.
+   */
+  closed: boolean
 }
 
 export interface HistoryState {
@@ -163,8 +175,10 @@ function rewriteStacks(prev: HistoryState, doc: Doc, rewrites: Rewrite[]): Histo
   const byId = new Map<string, DataPatch[]>()
   for (const { id, patch } of rewrites) byId.set(id, [...(byId.get(id) ?? []), patch])
   let targets: Map<SetNodeDataOp, string>
+  // The replay only resolves `set_node_data` targets: skip it (O(stacks × doc)) when there are none.
+  const hasDataOps = [...prev.undo, ...prev.redo].some((e) => e.ops.some((op) => op.type === 'set_node_data'))
   try {
-    targets = setNodeDataTargets(prev, doc)
+    targets = hasDataOps ? setNodeDataTargets(prev, doc) : new Map()
   } catch {
     return EMPTY // stacks not replayable from `doc`: fall back to the M1 behaviour
   }
@@ -261,17 +275,22 @@ function joinAppended(prev: HistoryState, tr: Transaction): HistoryState {
 
 /**
  * `ops` with every op that directly follows its own inverse removed along with it (an op then its
- * inverse leaves the doc as it was), repeatedly. Keeps folded entries from growing when an append
- * fires on every undo and redo: what one fold adds, the next one often takes back. Never empty when
- * `ops` isn't: an entry with no doc ops would undo as a tr that changes nothing, which history never
- * moves between the stacks.
+ * inverse leaves the doc as it was), repeatedly, and back-to-back `set_node_data` ops on one path
+ * merged into one (dropped when the merge changes nothing). Keeps folded entries from growing when an
+ * append fires on every undo and redo: what one fold adds, the next one often takes back or
+ * overwrites. Never empty when `ops` isn't: an entry with no doc ops would undo as a tr that changes
+ * nothing, which history never moves between the stacks.
  */
 function compactOps(ops: Operation[]): Operation[] {
   const out: Operation[] = []
   for (const op of ops) {
     const top = out[out.length - 1]
-    if (top && deepEqualJson(invertOp(top) as never, op as never)) out.pop()
-    else out.push(op)
+    if (top && deepEqualJson(invertOp(top) as never, op as never)) {
+      out.pop()
+    } else if (top?.type === 'set_node_data' && op.type === 'set_node_data' && deepEqualJson(top.path, op.path)) {
+      out.pop()
+      if (!deepEqualJson(top.prevData, op.data)) out.push({ ...op, prevData: top.prevData })
+    } else out.push(op)
   }
   return out.length === 0 ? ops : out
 }
@@ -299,8 +318,8 @@ function applyHistory(prev: HistoryState, tr: Transaction, options: HistoryOptio
     if (appended) return joinAppended(prev, tr)
     // Moving the selection away from where the last step left it ends that step's typing group.
     const top = prev.undo[prev.undo.length - 1]
-    if (top && top.time !== -Infinity && !selectionEquals(top.selectionAfter, tr.selection))
-      return { undo: [...prev.undo.slice(0, -1), { ...top, time: -Infinity }], redo: prev.redo }
+    if (top && !top.closed && !selectionEquals(top.selectionAfter, tr.selection))
+      return { undo: [...prev.undo.slice(0, -1), { ...top, closed: true }], redo: prev.redo }
     return prev
   }
 
@@ -320,7 +339,7 @@ function applyHistory(prev: HistoryState, tr: Transaction, options: HistoryOptio
     const redo = action === 'undo' ? moved : rest
     // Nothing typed after an undo/redo may merge into the entry now on top of the undo stack.
     const top = undo[undo.length - 1]
-    if (top && top.time !== -Infinity) undo = [...undo.slice(0, -1), { ...top, time: -Infinity }]
+    if (top && !top.closed) undo = [...undo.slice(0, -1), { ...top, closed: true }]
     // The tr is the entry's ops (inverted and reversed for undo), then whatever normalization added:
     // a rebased entry can land on a doc that is not normalized (e.g. two adjacent plain text nodes).
     const docOps = tr.ops.filter((op) => op.type !== 'set_selection')
@@ -357,7 +376,7 @@ function applyHistory(prev: HistoryState, tr: Transaction, options: HistoryOptio
     const undo = rebaseStack(rewritten.undo, structural, 'undo')
     // Typing right after must not merge into the rebased top entry: it is its own step.
     const top = undo[undo.length - 1]
-    if (top && top.time !== -Infinity) undo[undo.length - 1] = { ...top, time: -Infinity }
+    if (top && !top.closed) undo[undo.length - 1] = { ...top, closed: true }
     return { undo, redo: rebaseStack(rewritten.redo, structural, 'redo') }
   }
 
@@ -365,11 +384,11 @@ function applyHistory(prev: HistoryState, tr: Transaction, options: HistoryOptio
   const time = options.now()
   const kind = entryKind(tr)
   const last = prev.undo[prev.undo.length - 1]
-  if (last && isGroupable(kind) && last.kind === kind && time - last.time <= options.groupDelay) {
+  if (last && !last.closed && isGroupable(kind) && last.kind === kind && time - last.time <= options.groupDelay) {
     const merged: HistoryEntry = { ...last, ops: [...last.ops, ...ops], selectionAfter: tr.selection, time }
     return { undo: [...prev.undo.slice(0, -1), merged], redo: [] }
   }
-  const entry: HistoryEntry = { ops, selectionBefore: tr.before.selection, selectionAfter: tr.selection, time, kind }
+  const entry: HistoryEntry = { ops, selectionBefore: tr.before.selection, selectionAfter: tr.selection, time, kind, closed: false }
   // The bottom entry is the oldest step and nothing depends on it, so dropping it keeps the rest valid.
   const undo = [...prev.undo, entry]
   return { undo: undo.length > options.depth ? undo.slice(undo.length - Math.max(options.depth, 0)) : undo, redo: [] }
@@ -393,12 +412,17 @@ function fillHistoryTr(action: HistoryAction, tr: Transaction, state: EditorStat
   return true
 }
 
-/** Undo/redo on a fresh tr, dispatched (keymap and intents; commands go through the Editor). */
+/**
+ * Undo/redo on a fresh tr, dispatched (keymap and intents; commands go through the Editor). False
+ * when there is no entry, or when the pipeline dropped the dispatch (a destroyed editor, a dispatch
+ * that is not allowed now): like a bound command, it did not apply.
+ */
 function runHistory(action: HistoryAction, ctx: PluginContext<HistoryOptions, HistoryState>): boolean {
   const tr = ctx.editor.createTransaction()
   if (!fillHistoryTr(action, tr, ctx.editor.state)) return false
+  const before = ctx.editor.state
   ctx.editor.dispatch(tr)
-  return true
+  return ctx.editor.state !== before
 }
 
 /**
@@ -480,7 +504,10 @@ export function clearHistory(editor: Editor): void {
  * Trs with `addToHistory: false` don't record: their `set_node_data` ops rewrite the stored payloads
  * of the changed elements, and their other ops map both stacks (`rebaseStack`), dropping entries that
  * can't be rebased and all below them.
- * `appendTransaction` trs (meta `appendedTo`) join the triggering step (see `joinAppended`).
+ * `appendTransaction` trs (meta `appendedTo`) join the triggering step (see `joinAppended`). They
+ * cannot be undo steps of their own: an appended tr either joins the step or, with its own
+ * `addToHistory: false`, stays outside history. To record a separate step, dispatch a tr later (not
+ * from `appendTransaction`).
  *
  * The `undo` / `redo` commands fill the tr with the entry's ops and mark it `origin: 'history'`.
  * Ops a composed command adds to that same tr after them (e.g. `undo` then `insertText` in one

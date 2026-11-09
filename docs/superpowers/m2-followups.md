@@ -61,7 +61,7 @@ Kept open from "Start of M3" (no M3 plugin needed them, and each is a separate c
   - `caretAfterNode` can skip past a following atom.
 - Pasting several blocks with an atom at an edge can leave an empty paragraph next to it.
 - A drop within 500 ms of typing joins the typing undo step, and a drop moves the caret even when nothing was inserted.
-- History replay runs on every data-only change made outside history; add a guard when the stacks hold no `set_node_data`.
+- ✅ History replay runs on every data-only change made outside history; add a guard when the stacks hold no `set_node_data`.
 - ✅ `rewriteHistoryData` doesn't validate its data.
 - Validated data from insert can alias the caller's object.
 - A default block whose schema has required fields would make normalize's inserts reject.
@@ -77,7 +77,7 @@ Kept open from "Start of M3" (no M3 plugin needed them, and each is a separate c
 - Gaps:
   - e2e for undo during a pending upload;
   - font-size e2e that selects with the mouse instead of the editor API;
-  - multi-entry redo replay and replay-failure fallback;
+  - ✅ multi-entry redo replay and replay-failure fallback (the fallback is unreachable through the API);
   - the non-sibling opaque `deleteRange` branch;
   - `fragment.test.ts` assertions on unknown subtrees.
 - `image.test.ts` has a prettier formatting nit (`toRange,   type Doc,`).
