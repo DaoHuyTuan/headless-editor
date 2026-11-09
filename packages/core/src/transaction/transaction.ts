@@ -1,10 +1,10 @@
 import { createId } from '../model/id'
-import { getNode, isElement, isText } from '../model/node'
-import { nearestEditablePoint } from '../model/editable'
+import { cloneJson, getNode, isElement, isText } from '../model/node'
+import { isOpaqueAt, nearestEditablePoint, nodeSelection } from '../model/editable'
 import { createSelection, selectionEquals } from '../model/selection'
 import type { Data, Doc, ElementNode, Mark, Node, Path, Point, Range, Selection, SelectionRange, TextNode } from '../model/types'
 import { applyOp } from '../ops/apply'
-import { transformRange, transformSelection } from '../ops/transform'
+import { transformPath, transformRange, transformSelection } from '../ops/transform'
 import type { Operation } from '../ops/types'
 import type { Registry } from '../plugin/registry'
 import type { EditorState } from '../state'
@@ -105,10 +105,21 @@ export class Transaction {
    * point's text was removed) becomes a caret at the nearest editable point of the new doc
    * (`nearestEditablePoint` at the removed path), even when every range was lost; it is dropped only
    * if there is none, and the selection is null only when no range is left. A single range keeps the
-   * plain rule: null when it can't be mapped. (Several ranges never hold a node range.)
+   * plain rule: null when it can't be mapped, except a node range whose node survives (only its
+   * caret's text went): it becomes that node's `nodeSelection` again. (Several ranges never hold a
+   * node range.)
    */
   private mapSelection(sel: Selection, op: Operation): Selection | null {
-    if (sel.ranges.length === 1) return transformSelection(sel, op)
+    if (sel.ranges.length === 1) {
+      const out = transformSelection(sel, op)
+      const node = !out && sel.ranges[0]!.node ? transformPath(sel.ranges[0]!.node, op) : null
+      if (!node || !isOpaqueAt(this._doc, this.registry, node)) return out
+      try {
+        return nodeSelection(this._doc, this.registry, node)
+      } catch {
+        return null // no editable text left to anchor it
+      }
+    }
     let target: Point | null | undefined
     const rehome = () => {
       if (target === undefined)
@@ -139,6 +150,11 @@ export class Transaction {
     const lock = this.dev ? selectionLock(this) : null
     if (lock) throw new Error(lock)
     if (sel) sel = createSelection(sel.ranges, sel.main)
+    // A node range must name an opaque element (an atom or unknown type): a bug in dev mode.
+    if (this.dev && sel)
+      for (const r of sel.ranges)
+        if (r.node && !isOpaqueAt(this._doc, this.registry, r.node))
+          throw new Error(`setSelection: the node [${r.node}] is not an opaque element`)
     if (selectionEquals(sel, this._selection)) return this
     this.apply({ type: 'set_selection', selection: sel, prevSelection: this._selection })
     this._storedMarks = null
@@ -176,7 +192,8 @@ export class Transaction {
       this.rejected = result.message
       return null
     }
-    const out: ElementNode = { ...node, data: result.data }
+    // A copy: the caller's object (returned as is by a schemaless validator) never enters the doc.
+    const out: ElementNode = { ...node, data: cloneJson(result.data) }
     if (node.children) {
       const children: Node[] = []
       for (const child of node.children) {
@@ -309,6 +326,6 @@ export class Transaction {
       this.rejected = result.message
       return this
     }
-    return this.apply({ type: 'set_node_data', path, data: result.data, prevData: node.data })
+    return this.apply({ type: 'set_node_data', path, data: cloneJson(result.data), prevData: node.data })
   }
 }

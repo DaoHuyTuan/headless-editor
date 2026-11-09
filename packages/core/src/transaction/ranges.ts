@@ -152,6 +152,13 @@ export function mapRun(tr: Transaction, op: Operation): void {
  * nothing in the doc. A run with any doc change keeps the marks above through its final selection
  * change; a pure selection move clears them, as a plain `setSelection` would.
  *
+ * Mapping is positional, as everywhere: a step that removes text and then inserts it again (even the
+ * same characters) collapses the later ranges inside that text at the removal point: they count as
+ * swallowed, are not run, and are only mapped on (past the re-inserted text). Edit in place
+ * (`insertText` over a sub-range, marks) to keep them.
+ * Mapped results can also name one position in two leaves (the end of a text and the start of the
+ * next); they stay two ranges until commit, where the editor merges them (`rehomeRanges`).
+ *
  * With one range this adds exactly the callback's ops, plus a `set_selection` only when its result
  * differs from `tr.selection`. Calls do not nest.
  */

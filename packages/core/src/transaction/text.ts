@@ -234,14 +234,51 @@ function removeTextBetween(tr: Transaction, start: Point, end: Point): void {
 }
 
 /**
+ * `point` moved out of the outermost inline opaque element containing it (an unknown type in inline
+ * content), to the end of the text before it (`'before'`) or the start of the text after it
+ * (`'after'`); normalization keeps a text on each side (rule 10). Unchanged when it is in none.
+ */
+function outOfInlineOpaque(tr: Transaction, point: Point, side: 'before' | 'after'): Point {
+  let parentType = 'doc'
+  for (let depth = 1; depth < point.path.length; depth++) {
+    const node = getNode(tr.doc, point.path.slice(0, depth))
+    if (!isElement(node)) break
+    if (isOpaque(node, tr.registry) && isInlineOpaque(tr, node, parentType)) {
+      const index = point.path[depth - 1]!
+      const at = [...point.path.slice(0, depth - 1), side === 'before' ? index - 1 : index + 1]
+      const sibling = index + (side === 'before' ? -1 : 1) >= 0 ? getNodeOrNull(tr, at) : null
+      if (!sibling || !isText(sibling)) return point
+      return { path: at, offset: side === 'before' ? sibling.text.length : 0 }
+    }
+    parentType = node.type
+  }
+  return point
+}
+
+function getNodeOrNull(tr: Transaction, path: Path): Node | null {
+  try {
+    return getNode(tr.doc, path)
+  } catch {
+    return null
+  }
+}
+
+/**
  * The block a range edge at `path` belongs to: the outermost opaque (unknown or atom) block-level
- * element containing it, else the nearest block.
+ * element containing it, else the nearest block. An unknown type inside inline content is inline
+ * there (`isInlineOpaque`), not an edge block: an edge inside it belongs to the block around it.
  */
 function edgeBlockOf(tr: Transaction, path: Path): Path {
+  let parentType = 'doc'
   for (let depth = 1; depth < path.length; depth++) {
     const p = path.slice(0, depth)
     const node = getNode(tr.doc, p)
-    if (isElement(node) && isOpaque(node, tr.registry) && tr.registry.node(node.type)?.kind !== 'inline') return p
+    if (!isElement(node)) break
+    if (isOpaque(node, tr.registry)) {
+      // Inline: the block around it (`blockPathOf` would take an unknown type itself for a block).
+      return isInlineOpaque(tr, node, parentType) ? blockPathOf(tr, p) : p
+    }
+    parentType = node.type
   }
   return blockPathOf(tr, path)
 }
@@ -282,11 +319,14 @@ export function deleteRange(tr: Transaction, range?: SelectionRange | Range): bo
  *
  * An opaque edge block (unknown type or atom: no caret can be inside it) counts as fully inside the
  * range: it is removed whole and nothing is merged into or out of it. When the start edge is
- * opaque, the caret lands at the nearest editable point instead.
+ * opaque, the caret lands at the nearest editable point instead. An edge inside an inline opaque
+ * element (only a raw range can have one) moves out of it, so that element is inside the range too.
  */
 export function deleteRangeStep(tr: Transaction, range: Range): Point | null {
-  const { start, end } = asRange(range)
-  if (comparePoint(start, end) === 0) return null
+  const ordered = asRange(range)
+  if (comparePoint(ordered.start, ordered.end) === 0) return null
+  const start = outOfInlineOpaque(tr, ordered.start, 'before')
+  const end = outOfInlineOpaque(tr, ordered.end, 'after')
   // A range still to run with a point strictly inside this removal is swallowed by it (its own step
   // would delete past it). "Strictly": with content on both sides, so a point at an edge written in
   // a neighbouring text leaf still counts as at the edge.
@@ -342,9 +382,20 @@ function emptyDefaultBlock(tr: Transaction, text = '', marks: Mark[] = []): Elem
 
 /**
  * The start of the first editable text after the node at `path` (texts inside it excluded); when
- * none follows, an empty default block is inserted right after the node and its start returned.
+ * none follows, or a block-level node is directly followed by an opaque block (the caret would skip
+ * past it), an empty default block is inserted right after the node and its start returned.
  */
 function caretAfterNode(tr: Transaction, path: Path): Point {
+  const node = getNode(tr.doc, path)
+  const blockLevel = isElement(node) && tr.registry.node(node.type)?.kind !== 'inline'
+  const parent = parentPath(path)
+  const siblings = parent.length === 0 ? tr.doc.children : ((getNode(tr.doc, parent) as ElementNode).children ?? [])
+  const next = siblings[path[path.length - 1]! + 1]
+  if (blockLevel && next && isElement(next) && isOpaque(next, tr.registry)) {
+    const at = nextPath(path)
+    tr.insertNode(at, emptyDefaultBlock(tr))
+    return { path: [...at, 0], offset: 0 }
+  }
   for (const [, p] of editableTextEntries(tr.doc, tr.registry)) {
     if (comparePath(p, path) > 0) return { path: p, offset: 0 }
   }
@@ -458,6 +509,8 @@ export function insertText(tr: Transaction, text: string, at?: SelectionRange | 
 
 function insertTextStep(tr: Transaction, text: string, range: Range): SelectionRange {
   const stored = tr.storedMarks
+  // Nothing to insert at a caret: a no-op, the stored marks are kept for the next typed text.
+  if (text === '' && pointEquals(range.start, range.end)) return caret(range.start)
   // Typing over a range keeps the marks of its first covered character (read before deleting).
   const replaced = stored ? null : marksOfRange(tr.doc, range, tr.registry)
   const point = deleteRangeStep(tr, range) ?? range.start
@@ -704,10 +757,17 @@ function splitBlockStep(tr: Transaction, range: Range): SelectionRange {
 
 /**
  * Splits the text at `point`, then every ancestor up to and including the block at `blockPath`;
- * the new right-hand block gets `props` (inline ancestors get fresh ids). Returns the start of the
- * new block (its first text, at offset 0).
+ * the new right-hand block gets `props` (inline ancestors get ids from `newId`, by default
+ * `createId`; pass one that checks the ids in use when the generator may repeat them). Returns the
+ * start of the new block (its first text, at offset 0).
  */
-export function splitBlockAt(tr: Transaction, point: Point, blockPath: Path, props: Partial<ElementNode>): Point {
+export function splitBlockAt(
+  tr: Transaction,
+  point: Point,
+  blockPath: Path,
+  props: Partial<ElementNode>,
+  newId: () => string = createId,
+): Point {
   let path = point.path
   let position = point.offset
   tr.apply({ type: 'split_node', path, position, properties: { marks: textAt(tr, path).marks } })
@@ -715,7 +775,7 @@ export function splitBlockAt(tr: Transaction, point: Point, blockPath: Path, pro
     position = path[path.length - 1]! + 1
     path = parentPath(path)
     const inline = getNode(tr.doc, path) as ElementNode
-    tr.apply({ type: 'split_node', path, position, properties: { id: createId(), type: inline.type, data: inline.data } })
+    tr.apply({ type: 'split_node', path, position, properties: { id: newId(), type: inline.type, data: inline.data } })
   }
   tr.apply({ type: 'split_node', path: blockPath, position: path[path.length - 1]! + 1, properties: props })
   const newBlock = nextPath(blockPath)

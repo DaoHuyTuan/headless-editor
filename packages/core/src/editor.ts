@@ -90,6 +90,9 @@ function detectPlatform(): Platform {
 }
 
 /** Rethrows the first collected error, if any. */
+/** Trs `contentTransaction` already normalized: the pipeline doesn't normalize them again. */
+const normalizedContent = new WeakSet<Transaction>()
+
 function throwFirst(errors: unknown[]): void {
   if (errors.length > 0) throw errors[0]
 }
@@ -166,7 +169,17 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
       }
     }
 
-    throwFirst(this.runHooks((plugin, ctx) => plugin.spec.onCreate?.(ctx)))
+    const createErrors = this.runHooks((plugin, ctx) => plugin.spec.onCreate?.(ctx))
+    if (createErrors.length > 0) {
+      // The caller never gets this editor: destroy it now, so what the hooks set up is released.
+      // Destroy errors are dropped; the onCreate error is the one to report.
+      try {
+        this.destroy()
+      } catch {
+        // ignored
+      }
+      throwFirst(createErrors)
+    }
   }
 
   /** The mounted DOM view, or null when not mounted. */
@@ -240,17 +253,17 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     } finally {
       this.computing = false
     }
-    // Lifecycle hook errors are collected over the whole loop, so one throwing hook neither stops the
-    // other hooks nor the events of later trs; listener errors propagate as before.
+    // Listener and lifecycle hook errors are collected over the whole loop, so one throw stops neither
+    // the other listeners and hooks nor the events of later trs; the first is rethrown at the end.
     const errors: unknown[] = []
     for (const { tr: t, selectionChanged } of committed) {
-      this.emit('transaction', t)
+      errors.push(...this.emit('transaction', t))
       if (t.docChanged) {
-        this.emit('update', t)
+        errors.push(...this.emit('update', t))
         errors.push(...this.runHooks((plugin, ctx) => plugin.spec.onUpdate?.(ctx, { tr: t })))
       }
       if (selectionChanged) {
-        this.emit('selectionUpdate', t)
+        errors.push(...this.emit('selectionUpdate', t))
         errors.push(...this.runHooks((plugin, ctx) => plugin.spec.onSelectionUpdate?.(ctx, { tr: t })))
       }
     }
@@ -362,6 +375,13 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     return fragment
   }
 
+  /**
+   * Subscribes to an editor event; returns the unsubscribe function. Events of a dispatch run after
+   * its state is committed. A listener may dispatch (a nested dispatch, committed at once): later
+   * listeners and hooks of the outer tr then see `editor.state` already past it, so read what the
+   * outer tr changed from `e.tr`, not by comparing with `editor.state`. A throwing listener does not
+   * stop the others; its error is rethrown once the dispatch's events all ran.
+   */
   on(event: 'options', fn: (e: OptionsEvent) => void): () => void
   on(event: EditorEventName, fn: (e: EditorEvent) => void): () => void
   on(event: EditorEventName | 'options', fn: (e: any) => void): () => void {
@@ -391,7 +411,8 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
 
   /**
    * True only when every selection range has it (spec §5.4). Marks: `isMarkActive`. Elements: per
-   * range, the block containing the range's start.
+   * range, the block containing the range's start. `data` entries must deep-equal the node's; an
+   * `undefined` entry is ignored, like a missing key.
    */
   isActive(type: string, data?: Partial<Data>): boolean {
     if (this.registry.mark(type)) return isMarkActive(this._state, type, data, this.registry)
@@ -402,7 +423,7 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
       const block = this.blockAt(start.path)
       if (!block || block.type !== type) return false
       if (!data) return true
-      return Object.entries(data).every(([k, v]) => v !== undefined && k in block.data && deepEqualJson(block.data[k]!, v))
+      return Object.entries(data).every(([k, v]) => v === undefined || (k in block.data && deepEqualJson(block.data[k]!, v)))
     })
   }
 
@@ -448,8 +469,9 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
 
   /**
    * Unmounts, then runs every plugin's `destroy` hook in reverse priority order. A throwing hook
-   * does not stop the others; the first error is rethrown once all ran. Idempotent, including when
-   * called again from a destroy hook (the nested call returns immediately).
+   * does not stop the others; once all ran, its error is rethrown, or with several, an
+   * `AggregateError` of all of them (in run order, its message naming the first). Idempotent,
+   * including when called again from a destroy hook (the nested call returns immediately).
    */
   destroy(): void {
     if (this.destroyed || this.destroying) return
@@ -471,7 +493,11 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     }
     this.destroyed = true
     this.listeners.clear()
-    if (errors.length > 0) throw errors[0]
+    if (errors.length === 1) throw errors[0]
+    if (errors.length > 1) {
+      const first = errors[0] instanceof Error ? errors[0].message : String(errors[0])
+      throw new AggregateError(errors, `${errors.length} destroy hooks failed; the first: ${first}`)
+    }
   }
 
   // --- internals ---
@@ -548,6 +574,7 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     } else if (!sel || !isEditableRange(tr.doc, this.registry, mainRange(sel))) {
       tr.setSelection(firstEditableCaret(tr.doc, this.registry))
     }
+    normalizedContent.add(tr)
     return tr
   }
 
@@ -558,11 +585,14 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
       return null
     }
     if (tr.before !== this._state) {
-      if (this.dev) throw new Error('Transaction was created from an outdated state')
+      const message = 'Transaction was created from an outdated state'
+      if (this.dev) throw new Error(message)
+      // Dropped: a stale tr would overwrite the changes made since it was created.
+      console.warn(`@hte/core: ${message}; it was dropped`)
       return null
     }
     if (!this.passesFilters(tr)) return null
-    if (tr.docChanged) normalize(tr, this.contextFn)
+    if (tr.docChanged && !normalizedContent.has(tr)) normalize(tr, this.contextFn)
     // Several ranges: each one not at an editable point moves to its nearest one (dropped only when
     // there is none). Applied as an op so stored marks are kept. A single range is left as it was.
     const sel = tr.selection
@@ -589,11 +619,20 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     return true
   }
 
-  private emit(event: EditorEventName, tr: Transaction): void {
+  /** Calls every listener of `event`; returns what they threw (a throw does not skip the others). */
+  private emit(event: EditorEventName, tr: Transaction): unknown[] {
     const set = this.listeners.get(event)
-    if (!set) return
+    if (!set) return []
     const e: EditorEvent = { editor: this as unknown as Editor, tr }
-    for (const fn of [...set]) fn(e)
+    const errors: unknown[] = []
+    for (const fn of [...set]) {
+      try {
+        fn(e)
+      } catch (error) {
+        errors.push(error)
+      }
+    }
+    return errors
   }
 
   private bindCommands(

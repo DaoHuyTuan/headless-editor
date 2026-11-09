@@ -361,6 +361,15 @@ describe('node views: click to select', () => {
     expect(container(root).hasAttribute('data-hte-selected')).toBe(true)
   })
 
+  it('shift-mousedown on the container is left to the browser, so it extends the selection', () => {
+    const { editor, root } = mount(doc(p('a'), img(), p('b')))
+    const before = editor.state.selection
+    const e = new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, shiftKey: true })
+    container(root).querySelector('.label')!.dispatchEvent(e)
+    expect(e.defaultPrevented).toBe(false)
+    expect(editor.state.selection).toBe(before)
+  })
+
   it('mousedown on the ignored input is left alone', () => {
     const { editor, root } = mount(doc(p('a'), img(), p('b')))
     const before = editor.state.selection

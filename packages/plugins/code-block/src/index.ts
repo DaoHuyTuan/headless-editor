@@ -611,8 +611,14 @@ export const codeBlock = definePlugin({
   // An Enter that arrives only as `beforeinput` (Android keyboards; desktop Shift-Enter when no
   // keydown binding ran) would otherwise split the block: inside a code block both line-break intents
   // take Enter's newline / exit path.
-  onBeforeInput: (intent, ctx) =>
-    (intent.inputType === 'insertParagraph' || intent.inputType === 'insertLineBreak') && run(ctx, newline),
+  // Consumed whenever a range is in a code block, even when the pipeline drops the tr: falling
+  // through would let the core split the code block instead.
+  onBeforeInput: (intent, ctx) => {
+    if (intent.inputType !== 'insertParagraph' && intent.inputType !== 'insertLineBreak') return false
+    let applied = false
+    run(ctx, (tr) => (applied = newline(tr)))
+    return applied
+  },
   // Loaded content with an invalid (e.g. unsafe) language keeps its code, as plaintext.
   onInvalidData: () => ({ language: 'plaintext' }),
   // History is never vetoed: an undo/redo tr is the inverse of states the pipeline already accepted,
@@ -625,7 +631,15 @@ export const codeBlock = definePlugin({
     const target = at ?? (state.selection && mainRange(state.selection))
     if (target && !isNodeRange(target) && inCodeBlock(state.doc, registry, target.anchor.path)) {
       const options = editorOptions(ctx.editor)
-      const text = fragment.map((n) => nodeText(n, registry, options)).join(isBlockFragment(fragment, registry) ? '\n' : '')
+      // One line per block, nested ones (a list's items) included; inline content joins as is.
+      const isBlockEl = (n: Node): n is ElementNode => isElement(n) && registry.node(n.type)?.kind !== 'inline'
+      const lines = (n: Node): string[] => {
+        const kids = isBlockEl(n) && !registry.node(n.type)?.plugin.spec.renderText ? (n.children ?? []) : []
+        return kids.length > 0 && kids.every(isBlockEl) ? kids.flatMap(lines) : [nodeText(n, registry, options)]
+      }
+      const text = isBlockFragment(fragment, registry)
+        ? fragment.flatMap(lines).join('\n')
+        : fragment.map((n) => nodeText(n, registry, options)).join('')
       return text ? [{ text, marks: [] }] : []
     }
     if (!isBlockFragment(fragment, registry) && fragment.some((n) => isText(n) && n.text.includes('\n')))

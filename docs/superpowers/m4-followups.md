@@ -11,14 +11,14 @@ Longer-term direction (View interface extraction, incremental normalize/decorati
 
 ## Core / history
 - Any caller can set `meta.origin = history` to bypass the code-block veto (the doc stays valid via rule 8). Pre-existing. Hardened: a doc-changing `origin: history` tr that is not a valid undo/redo of the top entry (no or an unknown `historyAction`, or an empty stack) now empties both stacks instead of leaving them desynced.
-- A mixed data+structural outside tr drops entries the data path would rewrite.
+- ✅ A mixed data+structural outside tr drops entries the data path would rewrite.
 - A failed image upload while the preview (and every copy) is still in the doc keeps history: the removal is mapped like any outside structural tr, so the upload step and every entry below it are dropped, while later unrelated steps stay undoable. If a preview or copy was undone or deleted, history is still cleared (the dead `blob:` src must not come back).
 - A composed command that runs `undo` then `insertText` on one tr folds the insert into the stacks (it joins the entry now on top of the undo stack) instead of recording it as its own undo step (safe; documented on `historyPlugin`).
 
 ## Normalize / clipboard
 - No multi-newline selection-mapping test for rule 11.
 - The rule 11 perf bound is machine-dependent (~3x margin).
-- Split pieces share data by reference (pre-existing).
+- ✅ Split pieces share data by reference (pre-existing).
 - A lone non-opaque block pasted over a node selection takes the placeholder type (heading becomes paragraph), per caret rules.
 - `nodeSelection` accepts inline atoms programmatically (the view never does).
 - Non-atom block node views cannot be node-selected (`nodeSelection` throws); no test.

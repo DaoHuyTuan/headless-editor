@@ -3,9 +3,11 @@ import { serializeHTML } from '../html/serialize'
 import { parseHTML } from '../html/parse'
 import { defaultBlock, isBlock, sanitizeFragment } from './sanitize'
 import { nodeText } from './text'
-import type { Doc, ElementNode, Node, Path, Range, SelectionRange } from '../model/types'
+import { mainRange, single } from '../model/selection'
+import type { Doc, ElementNode, Mark, Node, Path, Range, SelectionRange } from '../model/types'
 import type { Registry } from '../plugin/registry'
 import { getFragment, type Fragment } from '../transaction/fragment'
+import { marksAt, marksOfRange } from '../transaction/marks'
 
 /** The MIME type of the lossless JSON flavor (a `JSON.stringify`-ed `Fragment`). */
 export const FRAGMENT_MIME = 'application/x-hte-fragment'
@@ -46,17 +48,30 @@ function fromJson(json: string, registry: Registry): Fragment {
   return Array.isArray(raw) ? sanitizeFragment(raw, registry) : []
 }
 
-function fromText(text: string, registry: Registry): Fragment {
+function fromText(text: string, registry: Registry, marks: Mark[]): Fragment {
   const lines = text.split(/\r\n|\r|\n/)
-  if (lines.length === 1) return [{ text, marks: [] }]
-  return lines.map((line) => defaultBlock(registry, [{ text: line, marks: [] }]))
+  // A copied line usually ends with its newline: that one does not start another block.
+  if (lines.length > 1 && lines[lines.length - 1] === '') lines.pop()
+  if (lines.length === 1) return [{ text: lines[0]!, marks }]
+  return lines.map((line) => defaultBlock(registry, [{ text: line, marks }]))
+}
+
+/** The marks plain text pasted at `at` (else the selection) gets: those typing there would get. */
+function pasteMarks(editor: Editor, at: SelectionRange | null): Mark[] {
+  const { doc, selection, storedMarks } = editor.state
+  const range = at ?? (selection && mainRange(selection))
+  if (!range) return []
+  if (!at && storedMarks) return storedMarks
+  const covered = marksOfRange(doc, range, editor.registry)
+  return covered ?? marksAt({ doc, selection: single(range), storedMarks: null })
 }
 
 /**
  * Turns clipboard data into a fragment ready for `insertFragment`. Tries `json` (the
  * `application/x-hte-fragment` flavor), then `html`, then `text`, moving on when a flavor is
  * missing, malformed or yields nothing. JSON and HTML are untrusted: data is validated and unknown
- * types are dropped. Text lines become default blocks; a single line is inline text without marks.
+ * types are dropped. Text lines become default blocks (one trailing newline is dropped); a single
+ * line is inline text. Text takes the marks typing at the target would get.
  * Finally every plugin's `transformPasted` runs, in priority order, with `options.at`: where the
  * fragment will be inserted (a drop's drop point, or one range of a multi-range paste); omitted or
  * null, at the selection.
@@ -70,6 +85,6 @@ export function parseFromClipboard(
   let fragment: Fragment = []
   if (data.json) fragment = fromJson(data.json, registry)
   if (fragment.length === 0 && data.html) fragment = sanitizeFragment(parseHTML(data.html, registry), registry)
-  if (fragment.length === 0 && data.text) fragment = fromText(data.text, registry)
+  if (fragment.length === 0 && data.text) fragment = fromText(data.text, registry, pasteMarks(editor, options.at ?? null))
   return editor.transformPasted(fragment, options.at ?? null)
 }

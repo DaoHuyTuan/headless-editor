@@ -1,0 +1,127 @@
+import { describe, expect, it } from 'vitest'
+import { definePlugin } from '../src/plugin/define'
+import { nodeSelection } from '../src/model/editable'
+import { testBold as testBoldPlugin } from './fixtures'
+import type { Doc, ElementNode, Node } from '../src/model/types'
+import type { AnyPlugin } from '../src/plugin/types'
+import { createTestEditor, doc, el, sel, stripIds, txt } from '../src/testing/index'
+import { testParagraph } from './fixtures'
+
+const img = definePlugin({ name: 'img', node: { kind: 'block', atom: true } })
+const p = (...children: (Node | string)[]): ElementNode =>
+  el('paragraph', ...children.map((c) => (typeof c === 'string' ? txt(c) : c)))
+const load = (d: Doc, extra: AnyPlugin[] = [img]) => createTestEditor({ plugins: [testParagraph, ...extra], doc: d })
+const shape = (d: Doc) => stripIds(d)
+
+describe('normalize: a hoisted atom block next to empty texts (3.2b)', () => {
+  it('leaves no stray empty paragraph before it', () => {
+    expect(shape(load(doc(p('', el('img', {}), ''))).getJSON())).toEqual(shape(doc(el('img', {}), p(''))))
+    expect(shape(load(doc(p('', el('img', {}), 'b'))).getJSON())).toEqual(shape(doc(el('img', {}), p('b'))))
+  })
+
+  it('leaves no stray empty paragraph after it', () => {
+    expect(shape(load(doc(p('a', el('img', {}), ''))).getJSON())).toEqual(shape(doc(p('a'), el('img', {}))))
+  })
+})
+
+describe('normalize: unknown elements in inline content (3.6)', () => {
+  it('keep a text leaf on each side, like inline atoms', () => {
+    const weird = el('weird', {}, txt('q'))
+    expect(shape(load(doc(p('', weird))).getJSON())).toEqual(shape(doc(p('', weird, ''))))
+    expect(shape(load(doc(p(weird))).getJSON())).toEqual(shape(doc(p('', weird, ''))))
+  })
+
+  it('a caret can be placed in such a block', () => {
+    const ed = load(doc(p(el('weird', {}, txt('q')))))
+    expect(ed.state.selection).toEqual(sel([0, 0], 0))
+  })
+})
+
+describe('plugin normalize hooks (3.7)', () => {
+  it('visit opaque elements but not their descendants', () => {
+    const seen: string[] = []
+    const spy = definePlugin({
+      name: 'spy',
+      normalize: ([node]) => {
+        seen.push('type' in node ? node.type : `text:${node.text}`)
+      },
+    })
+    const content = doc(p('a'), el('img', {}), el('weird', {}, p('inner')))
+    load(content, [img, spy])
+    expect(seen).toContain('img')
+    expect(seen).toContain('weird')
+    expect(seen).not.toContain('text:inner')
+    expect(seen.filter((t) => t === 'paragraph')).toHaveLength(1)
+  })
+})
+
+describe('range delete edges (3.11)', () => {
+  it('an unknown inline element is no edge block: the paragraphs still merge', () => {
+    const ed = load(doc(p('ab', el('weird', {}, txt('q')), 'cd'), p('ef')))
+    const tr = ed.createTransaction()
+    // From the text right after the unknown element to inside the next paragraph.
+    tr.deleteRange({ anchor: { path: [0, 2], offset: 1 }, focus: { path: [1, 0], offset: 1 } })
+    ed.dispatch(tr)
+    expect(shape(ed.getJSON())).toEqual(shape(doc(p('ab', el('weird', {}, txt('q')), 'cf'))))
+  })
+
+  it('a range starting inside an unknown inline element removes it whole and merges', () => {
+    const ed = load(doc(p('ab', el('weird', {}, txt('q')), 'cd'), p('ef')))
+    const tr = ed.createTransaction()
+    tr.deleteRange({ anchor: { path: [0, 1, 0], offset: 0 }, focus: { path: [1, 0], offset: 1 } })
+    ed.dispatch(tr)
+    expect(shape(ed.getJSON())).toEqual(shape(doc(p('abf'))))
+  })
+})
+
+describe('selection when its node goes away (3.9, 3.13)', () => {
+  const quote = definePlugin({ name: 'quote', node: { kind: 'block' } })
+  const chip = definePlugin({ name: 'chip', node: { kind: 'inline', atom: true } })
+  const bold = { type: 'bold', data: {} }
+
+  it('a caret in an empty text that rule 4 drops, with no text beside it, moves to the nearest editable text', () => {
+    // The quote holds an empty text and an atom block: no sibling has a text to re-home to.
+    const ed = createTestEditor({ plugins: [testParagraph, img, quote], doc: doc(p('ab'), el('quote', el('img', {}))) })
+    const tr = ed.createTransaction()
+    tr.apply({ type: 'insert_node', path: [1, 0], node: txt('') })
+    tr.setSelection(sel([1, 0], 0))
+    ed.dispatch(tr)
+    expect(ed.state.selection).toEqual(sel([0, 0], 2))
+  })
+
+  it('a node selection survives an op that removes its anchor text while the node stays', () => {
+    const ed = createTestEditor({
+      plugins: [testParagraph, img],
+      doc: doc(p('ab'), el('img', {}), p('cd')),
+    })
+    const tr = ed.createTransaction()
+    tr.setSelection(nodeSelection(tr.doc, ed.registry, [1]))
+    // The anchor (end of "ab") goes with its paragraph; the image stays.
+    tr.removeNode([0])
+    expect(tr.selection?.ranges[0]?.node).toEqual([0])
+    expect(tr.selection?.ranges[0]?.anchor).toEqual({ path: [1, 0], offset: 0 })
+  })
+
+  it('isMarkActive is false while a node is selected, unless the stored marks have the mark', () => {
+    const content = doc(p({ text: 'ab', marks: [bold] }, el('chip', {}), { text: 'cd', marks: [bold] }))
+    const ed = createTestEditor({ plugins: [testParagraph, testBoldPlugin, chip], doc: content })
+    const tr = ed.createTransaction()
+    tr.setSelection(nodeSelection(tr.doc, ed.registry, [0, 1]))
+    ed.dispatch(tr)
+    expect(ed.isActive('bold')).toBe(false)
+    const t2 = ed.createTransaction()
+    t2.setStoredMarks([bold])
+    ed.dispatch(t2)
+    expect(ed.isActive('bold')).toBe(true)
+  })
+
+  it('a block node inserted right before another atom block gets an empty block after it for the caret', () => {
+    const ed = createTestEditor({ plugins: [testParagraph, img], doc: doc(el('img', { n: 1 }), p(''), el('img', { n: 2 }), p('x')) })
+    const tr = ed.createTransaction()
+    tr.setSelection(sel([1, 0], 0))
+    tr.insertBlockNode(el('img', { n: 3 }))
+    ed.dispatch(tr)
+    expect(shape(ed.getJSON())).toEqual(shape(doc(el('img', { n: 1 }), el('img', { n: 3 }), p(''), el('img', { n: 2 }), p('x'))))
+    expect(ed.state.selection).toEqual(sel([2, 0], 0))
+  })
+})

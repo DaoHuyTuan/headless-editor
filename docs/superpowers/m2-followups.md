@@ -51,19 +51,19 @@ Kept open from "Start of M3" (no M3 plugin needed them, and each is a separate c
 - node-select's `mousedown` blocks native drag and shift-click.
 - Node-view options are looked up by node type, not plugin name.
 - Normalize and editing:
-  - a hoisted atom next to empty texts leaves a stray empty paragraph (rule 9 runs before rule 4);
-  - `edgeBlockOf` treats unknown inline elements as edge blocks;
-  - split halves share a `data` reference;
+  - ✅ a hoisted atom next to empty texts leaves a stray empty paragraph (rule 9 runs before rule 4);
+  - ✅ `edgeBlockOf` treats unknown inline elements as edge blocks;
+  - ✅ split halves share a `data` reference;
   - `nearestEditablePoint` is O(doc).
 - Node selection:
-  - an op that removes the anchor text while the node survives leaves the selection null;
-  - `isMarkActive` shows caret marks while a node is selected;
-  - `caretAfterNode` can skip past a following atom.
+  - ✅ an op that removes the anchor text while the node survives leaves the selection null;
+  - ✅ `isMarkActive` shows caret marks while a node is selected;
+  - ✅ `caretAfterNode` can skip past a following atom.
 - Pasting several blocks with an atom at an edge can leave an empty paragraph next to it.
 - A drop within 500 ms of typing joins the typing undo step, and a drop moves the caret even when nothing was inserted.
-- History replay runs on every data-only change made outside history; add a guard when the stacks hold no `set_node_data`.
-- `rewriteHistoryData` doesn't validate its data.
-- Validated data from insert can alias the caller's object.
+- ✅ History replay runs on every data-only change made outside history; add a guard when the stacks hold no `set_node_data`.
+- ✅ `rewriteHistoryData` doesn't validate its data.
+- ✅ Validated data from insert can alias the caller's object.
 - A default block whose schema has required fields would make normalize's inserts reject.
 - The mutation.ts JSDoc is garbled.
 - Duplicate `samePath` helpers.
@@ -77,7 +77,7 @@ Kept open from "Start of M3" (no M3 plugin needed them, and each is a separate c
 - Gaps:
   - e2e for undo during a pending upload;
   - font-size e2e that selects with the mouse instead of the editor API;
-  - multi-entry redo replay and replay-failure fallback;
+  - ✅ multi-entry redo replay and replay-failure fallback (the fallback is unreachable through the API);
   - the non-sibling opaque `deleteRange` branch;
   - `fragment.test.ts` assertions on unknown subtrees.
 - `image.test.ts` has a prettier formatting nit (`toRange,   type Doc,`).

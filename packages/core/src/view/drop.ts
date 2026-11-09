@@ -1,4 +1,4 @@
-import { mainRange, single } from '../model/selection'
+import { mainRange } from '../model/selection'
 import type { Point, SelectionRange } from '../model/types'
 import { FRAGMENT_MIME } from '../content/clipboard'
 import { domToModel } from './dom-selection'
@@ -34,17 +34,11 @@ function onDrop(view: EditorView, e: DragEvent): void {
   // The composition owns the DOM: moving the selection now would break it.
   if (view.composing) return
   const { editor } = view
-  // A drop goes to one place: the selection collapses to the drop point (the browser cannot tell
-  // where: to the main range).
+  // A drop goes to one place: the drop point (the browser cannot tell where: the main range). The
+  // selection only moves there with the insert, so a drop with nothing to insert leaves it alone.
   const point = pointAt(view, e.clientX, e.clientY)
   const sel = editor.state.selection
-  const target = point ? { anchor: point, focus: point } : sel && sel.ranges.length > 1 ? mainRange(sel) : null
-  if (target) {
-    const tr = editor.createTransaction()
-    tr.setSelection(single(target)).setMeta('origin', 'selection').setMeta('addToHistory', false)
-    editor.dispatch(tr)
-  }
-  const range: SelectionRange | null = editor.state.selection && mainRange(editor.state.selection)
+  const range: SelectionRange | null = point ? { anchor: point, focus: point } : sel && mainRange(sel)
   view.focus()
   editor.handleIntent({ inputType: 'insertFromDrop', data: null, dataTransfer: e.dataTransfer, range })
 }

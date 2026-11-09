@@ -1,7 +1,7 @@
 import { nodeText, type OptionsLookup } from './content/text'
-import { isOpaque } from './model/editable'
+import { isOpaque, nearestEditablePoint } from './model/editable'
 import { createId } from './model/id'
-import { getNode, isElement, isText, nodeEntries, sameMarkSet } from './model/node'
+import { getNode, isElement, isText, sameMarkSet } from './model/node'
 import { nextPath } from './model/path'
 import { createSelection } from './model/selection'
 import type { ElementNode, Mark, Node, Path, Point, TextNode } from './model/types'
@@ -35,8 +35,17 @@ export function normalize(tr: Transaction, getContext: (plugin: AnyPlugin) => Pl
 function runPluginHooks(tr: Transaction, getContext: (plugin: AnyPlugin) => PluginContext<any, any>): void {
   const plugins = tr.registry.plugins.filter((p) => p.spec.normalize)
   if (plugins.length === 0) return
-  // Snapshot entry paths and map them through every op a hook adds, so they stay valid.
-  const paths: (Path | null)[] = [...nodeEntries(tr.doc)].map(([, p]) => p)
+  // Snapshot entry paths and map them through every op a hook adds, so they stay valid. Opaque
+  // elements (unknown types, atoms) are visited, their descendants not: like the core rules (rule 7),
+  // hooks leave what is inside them alone.
+  const paths: (Path | null)[] = []
+  const walk = (nodes: readonly Node[], parent: Path) =>
+    nodes.forEach((n, i) => {
+      const path = [...parent, i]
+      paths.push(path)
+      if (isElement(n) && !isOpaque(n, tr.registry)) walk(n.children ?? [], path)
+    })
+  walk(tr.doc.children as Node[], [])
   for (let i = 0; i < paths.length; i++) {
     for (const plugin of plugins) {
       const path = paths[i]
@@ -105,8 +114,15 @@ function fixElement(tr: Transaction, node: ElementNode, path: Path, options: Opt
       if (isText(c)) continue
       const childSpec = registry.node(c.type)
       if (childSpec?.kind !== 'block') continue
-      if (childSpec.atom) hoist(tr, node, path, i)
-      else unwrap(tr, c, [...path, i])
+      if (childSpec.atom) {
+        // Empty texts first (rule 4, which runs later otherwise): hoisting past them would split off
+        // halves holding only them, left behind as stray empty blocks.
+        const empty = children.findIndex(
+          (t, k) => isText(t) && t.text === '' && !neededByRule10(children, k, registry, true),
+        )
+        if (empty >= 0) dropEmptyText(tr, children, path, empty)
+        else hoist(tr, node, path, i)
+      } else unwrap(tr, c, [...path, i])
       return true
     }
   }
@@ -155,14 +171,8 @@ function fixElement(tr: Transaction, node: ElementNode, path: Path, options: Opt
     }
     // Rule 4: drop empty texts when the element has other children, except one that rule 10 needs
     // (beside an inline element, with no other text on that side).
-    // Merging into a previous text keeps a caret inside it valid (it maps to the end of `prev`).
-    if (c.text === '' && children.length > 1 && !neededByRule10(children, i, registry)) {
-      if (prev && isText(prev)) {
-        tr.apply({ type: 'merge_node', path: [...path, i], position: prev.text.length, properties: { marks: c.marks } })
-      } else {
-        rehomeSelection(tr, children, path, i)
-        tr.removeNode([...path, i])
-      }
+    if (c.text === '' && children.length > 1 && !neededByRule10(children, i, registry, holdsInline(spec))) {
+      dropEmptyText(tr, children, path, i)
       return true
     }
     // Rule 6: marks are sorted by rank (duplicate types keep the first).
@@ -173,7 +183,7 @@ function fixElement(tr: Transaction, node: ElementNode, path: Path, options: Opt
   // is added where needed), so a caret can always sit right before and right after it.
   if (holdsInline(spec)) {
     for (let i = 0; i < children.length; i++) {
-      if (!isInlineElement(children[i]!, registry)) continue
+      if (!isInlineElement(children[i]!, registry, true)) continue
       const prev = children[i - 1]
       const next = children[i + 1]
       if (!prev || !isText(prev)) {
@@ -228,6 +238,29 @@ function splitAtNewlines(tr: Transaction, block: ElementNode, path: Path, at: Po
 }
 
 /** Moves the children of the element at `at` out before it (selection points follow), then removes it. */
+/**
+ * Removes the empty text `children[i]` of the element at `path` (it has other children). Merging it
+ * into a previous text keeps a caret inside it valid (it maps to the end of that text); otherwise
+ * the selection points in it move to a neighbouring text first (`rehomeSelection`). With no sibling
+ * text to move to, a selection lost with the text becomes a caret at the nearest editable point of
+ * the doc (`nearestEditablePoint`), as several ranges are re-homed by the transaction.
+ */
+function dropEmptyText(tr: Transaction, children: Node[], path: Path, i: number): void {
+  const prev = children[i - 1]
+  const c = children[i] as TextNode
+  if (prev && isText(prev)) {
+    tr.apply({ type: 'merge_node', path: [...path, i], position: prev.text.length, properties: { marks: c.marks } })
+    return
+  }
+  rehomeSelection(tr, children, path, i)
+  const had = tr.selection
+  tr.removeNode([...path, i])
+  if (had && !tr.selection) {
+    const at = nearestEditablePoint(tr.doc, tr.registry, [...path, i])
+    if (at) tr.apply({ type: 'set_selection', selection: createSelection([{ anchor: at, focus: at }], 0), prevSelection: null })
+  }
+}
+
 function unwrap(tr: Transaction, node: ElementNode, at: Path): void {
   const parent = at.slice(0, -1)
   const i = at[at.length - 1]!
@@ -260,6 +293,16 @@ function fixMarks(tr: Transaction, text: TextNode, path: Path): boolean {
   for (const m of text.marks) if (!target.some((t) => t.type === m.type)) target.push(m)
   target.sort((a, b) => tr.registry.markRank(a.type) - tr.registry.markRank(b.type))
   if (target.length === text.marks.length && target.every((m, i) => m === text.marks[i])) return false
+  if (target.length < text.marks.length) {
+    // Repeated types: no mark op sequence can be undone back to this state (`add_mark` refuses a type
+    // that is already there), so the text node is replaced instead; its inverse restores the original.
+    // The doc keeps its shape, so the selection (and the stored marks) is put back exactly as it was.
+    const sel = tr.selection
+    tr.apply({ type: 'remove_node', path, node: text })
+    tr.apply({ type: 'insert_node', path, node: { ...text, marks: target } })
+    if (tr.selection !== sel) tr.apply({ type: 'set_selection', selection: sel, prevSelection: tr.selection })
+    return true
+  }
   // Remove last-to-first so that undo (which appends) restores the original order.
   for (const m of [...text.marks].reverse()) tr.apply({ type: 'remove_mark', path, mark: m })
   for (const m of target) tr.apply({ type: 'add_mark', path, mark: m })
@@ -312,19 +355,25 @@ function holdsInline(spec: { kind: 'block' | 'inline'; content?: 'inline' | 'tex
   return spec.kind === 'inline' || spec.content === 'inline'
 }
 
-/** A registered inline element (atom or not); unknown types are left alone (rule 7). */
-function isInlineElement(n: Node, registry: Registry): boolean {
-  return isElement(n) && registry.node(n.type)?.kind === 'inline'
+/**
+ * A registered inline element (atom or not), or, in inline content (`inInline`), an unknown type: it
+ * stands in the text there as one opaque character (`isInlineOpaque`), so it needs a text on each
+ * side too. Its own subtree is still left alone (rule 7).
+ */
+function isInlineElement(n: Node, registry: Registry, inInline: boolean): boolean {
+  if (!isElement(n)) return false
+  const spec = registry.node(n.type)
+  return spec ? spec.kind === 'inline' : inInline
 }
 
 /** Whether the empty text `children[i]` is the only text between an inline element and its other side. */
-function neededByRule10(children: Node[], i: number, registry: Registry): boolean {
+function neededByRule10(children: Node[], i: number, registry: Registry, inInline: boolean): boolean {
   const prev = children[i - 1]
   const next = children[i + 1]
   const notText = (n: Node | undefined) => !n || !isText(n)
   return (
-    (!!prev && isInlineElement(prev, registry) && notText(next)) ||
-    (!!next && isInlineElement(next, registry) && notText(prev))
+    (!!prev && isInlineElement(prev, registry, inInline) && notText(next)) ||
+    (!!next && isInlineElement(next, registry, inInline) && notText(prev))
   )
 }
 

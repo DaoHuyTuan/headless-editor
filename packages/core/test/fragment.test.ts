@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { definePlugin } from '../src/plugin/define'
 import type { DeepReadonly, Doc, ElementNode, Node, Range, Selection } from '../src/model/types'
-import { getFragment, isElement, nodeEntries, type Fragment } from '../src/index'
+import { getFragment, isElement, nodeEntries, nodeSelection, type Fragment } from '../src/index'
 import { createTestEditor, doc, el, sel, stripIds, txt } from '../src/testing/index'
 import { testBold, testParagraph } from './fixtures'
 
@@ -98,6 +98,27 @@ describe('insertFragment / insertContent', () => {
     ed.commands.insertContent([txt('Z')])
     expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p('aZb'))))
     expect(ed.state.selection).toEqual(sel([0, 0], 2))
+  })
+
+  it('pasting [heading, paragraph] into an empty paragraph keeps the heading', () => {
+    const ed = setup(doc(p('')), sel([0, 0], 0))
+    ed.commands.insertContent([el('heading', { level: 1 }, txt('T')), p('body')])
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(el('heading', { level: 1 }, txt('T')), p('body'))))
+    expect(ed.state.selection).toEqual(sel([1, 0], 4))
+  })
+
+  it('a single heading pasted into an empty paragraph keeps its type', () => {
+    const ed = setup(doc(p('a'), p(''), p('b')), sel([1, 0], 0))
+    ed.commands.insertContent([el('heading', { level: 2 }, txt('T'))])
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p('a'), el('heading', { level: 2 }, txt('T')), p('b'))))
+    expect(ed.state.selection).toEqual(sel([1, 0], 1))
+  })
+
+  it('a last block landing in an empty right half keeps its type', () => {
+    const ed = setup(doc(p('ab')), sel([0, 0], 2))
+    ed.commands.insertContent([p('X'), el('heading', { level: 1 }, txt('T'))])
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p('abX'), el('heading', { level: 1 }, txt('T')))))
+    expect(ed.state.selection).toEqual(sel([1, 0], 1))
   })
 
   it('treats a single-block fragment as inline content', () => {
@@ -243,6 +264,34 @@ describe('insertFragment of opaque blocks', () => {
     const e = ed(doc(p('ab'), p('')), sel([1, 0], 0))
     insert(e, [el('atom')])
     expect(e.getJSON().children.map((b) => b.type)).toEqual(['paragraph', 'atom', 'paragraph'])
+  })
+
+  it('a leading atom block pasted at the start of a block leaves no empty paragraph before it', () => {
+    const e = ed(doc(p('a'), p('cd')), sel([1, 0], 0))
+    insert(e, [el('atom', { k: 1 }), p('x')])
+    expect(stripIds(e.getJSON())).toEqual(stripIds(doc(p('a'), el('atom', { k: 1 }), p('xcd'))))
+    expect(e.state.selection).toEqual(sel([2, 0], 1))
+  })
+
+  it('a lone heading pasted over a node selection keeps its type', () => {
+    const e = createTestEditor({
+      plugins: [testParagraph, testBold, atom, heading],
+      doc: doc(p('a'), el('atom'), p('b')),
+      selection: sel([0, 0], 1),
+    })
+    const tr = e.createTransaction()
+    tr.setSelection(nodeSelection(tr.doc, e.registry, [1]))
+    e.dispatch(tr)
+    insert(e, [el('heading', { level: 1 }, txt('T'))])
+    expect(stripIds(e.getJSON())).toEqual(stripIds(doc(p('a'), el('heading', { level: 1 }, txt('T')), p('b'))))
+    expect(e.state.selection).toEqual(sel([1, 0], 1))
+  })
+
+  it('a trailing atom block keeps the empty right half: the caret goes there', () => {
+    const e = ed(doc(p('ab')), sel([0, 0], 2))
+    insert(e, [p('x'), el('atom', { k: 1 })])
+    expect(stripIds(e.getJSON())).toEqual(stripIds(doc(p('abx'), el('atom', { k: 1 }), p(''))))
+    expect(e.state.selection).toEqual(sel([2, 0], 0))
   })
 
   it('atom blocks at the edges of a block fragment are inserted whole', () => {

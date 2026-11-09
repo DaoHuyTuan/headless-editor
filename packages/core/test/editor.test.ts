@@ -651,6 +651,30 @@ describe('plugin storage', () => {
     expect(calls).toEqual(['other', 'reentrant', 'first'])
   })
 
+  it('several throwing destroy hooks: an AggregateError carries every error, the first first', () => {
+    const errA = new Error('a failed')
+    const errB = new Error('b failed')
+    const a = definePlugin({ name: 'a', priority: 300, destroy: () => { throw errA } })
+    const b = definePlugin({ name: 'b', priority: 200, destroy: () => { throw errB } })
+    const ed = createTestEditor({ plugins: [testParagraph, a, b] })
+    let caught: unknown
+    try {
+      ed.destroy()
+    } catch (e) {
+      caught = e
+    }
+    expect(caught).toBeInstanceOf(AggregateError)
+    expect((caught as AggregateError).errors).toEqual([errB, errA])
+    expect((caught as AggregateError).message).toContain('b failed')
+  })
+
+  it('one throwing destroy hook: its own error is rethrown', () => {
+    const err = new Error('only')
+    const a = definePlugin({ name: 'a', destroy: () => { throw err } })
+    const ed = createTestEditor({ plugins: [testParagraph, a] })
+    expect(() => ed.destroy()).toThrow(err)
+  })
+
   it('a throwing destroy hook does not stop the others; the first error is rethrown', () => {
     const calls: string[] = []
     const a = definePlugin({ name: 'a', priority: 300, destroy: () => void calls.push('a') })
@@ -693,5 +717,65 @@ describe('keymap factory and storage', () => {
     })
     createTestEditor({ plugins: [testParagraph, plug] })
     expect(seen).toEqual({ n: 1 })
+  })
+})
+
+describe('dropped transactions outside dev mode', () => {
+  it('a tr created from an outdated state is dropped with a warning', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const editor = new Editor({ plugins: [testParagraph], content: doc(el('paragraph', txt('ab'))), dev: false })
+    const stale = editor.createTransaction()
+    editor.commands.insertText('x')
+    stale.insertText('y')
+    editor.dispatch(stale)
+    expect(editor.getHTML()).not.toContain('y')
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/outdated state/))
+    warn.mockRestore()
+  })
+})
+
+describe('setContent', () => {
+  it('normalizes the new content once, as the constructor does', () => {
+    let calls = 0
+    const counter = definePlugin({ name: 'counter', normalize: () => void calls++ })
+    const content = doc(el('paragraph', txt('a')), el('paragraph', txt('b')))
+    const editor = createTestEditor({ plugins: [testParagraph, counter], doc: content })
+    const once = calls
+    calls = 0
+    editor.setContent(content)
+    expect(calls).toBe(once)
+  })
+})
+
+describe('isActive with an undefined data value', () => {
+  it('treats an undefined value as "any value", like a key left out', () => {
+    const heading = definePlugin({ name: 'heading', node: { kind: 'block', content: 'inline' } })
+    const editor = createTestEditor({
+      plugins: [testParagraph, heading],
+      doc: doc(el('heading', { level: 1 }, txt('a'))),
+      selection: sel([0, 0], 0),
+    })
+    expect(editor.isActive('heading', { level: undefined })).toBe(editor.isActive('heading', {}))
+    expect(editor.isActive('heading', { level: undefined })).toBe(true)
+  })
+})
+
+describe('isActive with an undefined mark data value', () => {
+  it('ignores it for marks too', () => {
+    const editor = createTestEditor({
+      plugins: [testParagraph, testBold],
+      doc: doc(el('paragraph', txt('ab', 'bold'))),
+      selection: sel([0, 0], 1),
+    })
+    expect(editor.isActive('bold', { x: undefined })).toBe(true)
+  })
+})
+
+describe('handleIntent with an inputType named like an Object.prototype key', () => {
+  it('leaves it unhandled', () => {
+    const editor = createTestEditor({ plugins: [testParagraph], doc: doc(el('paragraph', txt('ab'))), selection: sel([0, 0], 1) })
+    for (const inputType of ['toString', 'constructor', 'hasOwnProperty'])
+      expect(editor.handleIntent({ inputType, data: null, range: null })).toBe(false)
+    expect(editor.getHTML()).toBe('<p>ab</p>')
   })
 })

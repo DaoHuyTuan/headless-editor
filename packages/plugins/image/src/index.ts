@@ -14,12 +14,13 @@ import {
   definePlugin,
   findPathById,
   isElement,
-  isNodeSelection,
+  comparePath,
   mergeAttrs,
   nodeEntries,
   rewriteHistoryData,
   single,
   clearHistory,
+  getNode,
   type Command,
   type Data,
   type Node,
@@ -165,25 +166,53 @@ function report(error: unknown): void {
   console.error('@hte/image:', error)
 }
 
-function onFailed(ctx: Ctx, ids: ReadonlySet<string>, blob: string, file: File, error: unknown): void {
+/** Whether `node` is an element holding only empty texts. */
+function isEmptyBlock(node: Node | undefined): boolean {
+  return !!node && isElement(node) && (node.children ?? []).every((c) => !isElement(c) && c.text === '')
+}
+
+/**
+ * `added`: ids of the blocks the preview's insert created around it (the empty block a caret at the
+ * end of the last block goes to); removed with the preview while they are still empty.
+ */
+function onFailed(ctx: Ctx, ids: ReadonlySet<string>, blob: string, file: File, error: unknown, added: readonly string[]): void {
   const editor = ctx.editor
   try {
-    // One deleted or undone (checked before the removal below, which takes every id out of the doc):
-    // history still holds the blob preview, which will never be uploaded, so undo / redo must not
-    // bring it back. Otherwise every stored copy is in the doc, and the removal below maps history
-    // through itself: the steps that inserted a preview can't be rebased over its removal and are
-    // dropped (with every entry below them), while later unrelated steps stay undoable.
-    const missing = [...ids].some((id) => !findPathById(editor.state.doc, id))
-    // The preview and every copy of it: removed outside history (deepest / last first, so the
-    // earlier paths stay valid).
+    // One deleted, undone, or given another src (checked before the removal below, which takes every
+    // id out of the doc): history still holds the blob preview, which will never be uploaded, so
+    // undo / redo must not bring it back. Otherwise every stored copy is in the doc, and the removal
+    // below maps history through itself: the steps that inserted a preview can't be rebased over its
+    // removal and are dropped (with every entry below them), while later unrelated steps stay undoable.
+    const missing = [...ids].some((id) => {
+      const path = findPathById(editor.state.doc, id)
+      const node = path && getNode(editor.state.doc, path)
+      return !node || !isElement(node) || node.data.src !== blob
+    })
+    // The preview and every copy of it, and the empty blocks its insert added: removed outside
+    // history (deepest / last first, so the earlier paths stay valid). The doc keeps one block.
     const paths: Path[] = []
     for (const [node, path] of nodeEntries(editor.state.doc))
       if (isElement(node) && node.type === ctx.name && node.data.src === blob) paths.push(path)
     if (paths.length > 0) {
+      for (const id of added) {
+        const path = findPathById(editor.state.doc, id)
+        if (path && isEmptyBlock(getNode(editor.state.doc, path) as Node)) paths.push(path)
+      }
+      paths.sort((a, b) => comparePath(b, a))
       const tr = editor.createTransaction()
       tr.meta.origin = 'plugin'
       tr.meta.addToHistory = false
-      for (const path of paths.reverse()) tr.removeNode(path)
+      const sel = tr.selection
+      const inside = (p: Path) => paths.some((r) => r.every((v, k) => p[k] === v))
+      for (const path of paths) if (tr.doc.children.length > 1) tr.removeNode(path)
+      // A caret in a removed empty block goes to the end of the text before it (texts before the
+      // first removed path keep their paths).
+      if (sel && tr.selection === null) {
+        let end: { path: Path; offset: number } | null = null
+        for (const [node, path] of nodeEntries(editor.state.doc))
+          if (!isElement(node) && !inside(path) && comparePath(path, paths[paths.length - 1]!) < 0) end = { path, offset: node.text.length }
+        if (end) tr.setSelection(single({ anchor: end, focus: end }))
+      }
       editor.dispatch(tr)
     }
     if (missing) clearHistory(editor)
@@ -217,6 +246,10 @@ function uploadFiles(ctx: Ctx, files: readonly File[], at?: SelectionRange | nul
     tr.setMeta('imageUpload', { start: id } satisfies ImageUploadMeta)
     if (i === 0 && at) tr.setSelection(single(at))
     tr.insertBlockNode({ id, type: ctx.name, data: { src: blob, alt: '' } })
+    // Empty blocks the insert created (for the caret after the preview), to remove with it on failure.
+    const added = tr.ops.flatMap((op) =>
+      op.type === 'insert_node' && isElement(op.node) && op.node.type !== ctx.name && isEmptyBlock(op.node) ? [op.node.id] : [],
+    )
     if (tr.rejected === null && tr.docChanged) editor.dispatch(tr)
     // Every preview this file made: with several ranges the copies got fresh ids (all show the one
     // blob), and all of them are tracked as holders of this upload.
@@ -250,12 +283,13 @@ function uploadFiles(ctx: Ctx, files: readonly File[], at?: SelectionRange | nul
               blob,
               file,
               new Error(`@hte/image: upload resolved with an unsafe or invalid URL: ${String(url)}`),
+              added,
             )
           else onUploaded(ctx, holders, blob, url)
         },
         (error: unknown) => {
           rt.holders.delete(blob)
-          if (!rt.destroyed) onFailed(ctx, holders, blob, file, error)
+          if (!rt.destroyed) onFailed(ctx, holders, blob, file, error, added)
         },
       )
       // A throw while applying a successful upload is reported, not treated as an upload failure.
@@ -352,8 +386,8 @@ export const image = definePlugin({
     const files = Array.from(intent.dataTransfer?.files ?? [])
     // Without an upload function there is nowhere to put the files: let the default insert the rest.
     if (!files.some(isImageFile) || typeof ctx.options.upload !== 'function') return false
-    if (intent.inputType === 'insertFromDrop' && intent.range && !isNodeSelection(ctx.editor.state.selection))
-      uploadFiles(ctx, files, intent.range)
+    // A drop goes to its drop point, even while a node is selected (it never replaces that node).
+    if (intent.inputType === 'insertFromDrop' && intent.range) uploadFiles(ctx, files, intent.range)
     else ctx.storage.upload(files)
     return true
   },

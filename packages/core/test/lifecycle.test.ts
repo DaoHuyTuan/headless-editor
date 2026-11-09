@@ -75,6 +75,30 @@ describe('lifecycle hooks: onCreate', () => {
     expect(() => createTestEditor({ plugins: [testParagraph, p3, p2, p1], doc: content() })).toThrow(first)
     expect(calls).toEqual(['p1', 'p2', 'p3'])
   })
+
+  it('a throwing onCreate destroys the editor first, so earlier plugins release what they set up', () => {
+    const calls: string[] = []
+    const boom = new Error('boom')
+    const owner = definePlugin({
+      name: 'owner',
+      priority: 300,
+      onCreate: () => void calls.push('owner:create'),
+      destroy: () => void calls.push('owner:destroy'),
+    })
+    const thrower = definePlugin({
+      name: 'thrower',
+      priority: 100,
+      onCreate: () => {
+        throw boom
+      },
+      destroy: () => {
+        calls.push('thrower:destroy')
+        throw new Error('ignored')
+      },
+    })
+    expect(() => createTestEditor({ plugins: [testParagraph, owner, thrower], doc: content() })).toThrow(boom)
+    expect(calls).toEqual(['owner:create', 'thrower:destroy', 'owner:destroy'])
+  })
 })
 
 describe('lifecycle hooks: onUpdate / onSelectionUpdate', () => {
@@ -179,6 +203,22 @@ describe('lifecycle hooks: onUpdate / onSelectionUpdate', () => {
     })
     expect(() => editor.dispatch(editor.createTransaction().insertText('x', mainRange(sel([0, 0], 1))))).toThrow(boom)
     expect(calls).toEqual(['thrower:update', 'other:update', 'thrower:selection', 'other:selection'])
+    expect(editor.getHTML()).toBe('<p>axbcd</p>')
+  })
+
+  it('a throwing editor.on listener does not stop the other listeners or the hooks; its error is rethrown', () => {
+    const calls: string[] = []
+    const boom = new Error('listener')
+    const hook = definePlugin({ name: 'hook', onUpdate: () => void calls.push('hook:update') })
+    const editor = createTestEditor({ plugins: [testParagraph, hook], doc: content(), selection: sel([0, 0], 1) })
+    editor.on('update', () => {
+      calls.push('first')
+      throw boom
+    })
+    editor.on('update', () => void calls.push('second'))
+    editor.on('selectionUpdate', () => void calls.push('selection'))
+    expect(() => editor.commands.insertText('x')).toThrow(boom)
+    expect(calls).toEqual(['first', 'second', 'hook:update', 'selection'])
     expect(editor.getHTML()).toBe('<p>axbcd</p>')
   })
 

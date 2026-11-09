@@ -43,7 +43,7 @@ function warnDrop(what: string, raw: unknown, reason: string): void {
 
 /**
  * Validates `data` for a registered node/mark type. Returns the data to use, or null when the
- * value is invalid and the plugin's `onInvalidData` hook is missing, returns null, or throws.
+ * value is invalid and the plugin's `onInvalidData` hook is missing, returns null or invalid data, or throws.
  */
 function resolveData(registry: Registry, plugin: AnyPlugin, raw: unknown): { data: Data } | { error: string } {
   let message: string
@@ -56,7 +56,12 @@ function resolveData(registry: Registry, plugin: AnyPlugin, raw: unknown): { dat
   }
   try {
     const repaired = plugin.spec.onInvalidData?.(raw)
-    if (isObject(repaired)) return { data: cloneData(repaired) }
+    // The repair is validated too: a hook returning still-invalid data drops the node.
+    if (isObject(repaired)) {
+      const result = registry.validateData(plugin.name, repaired)
+      if (result.ok) return { data: cloneData(result.data) }
+      message = `onInvalidData returned invalid data: ${result.message}`
+    }
   } catch {
     // treated like returning null
   }

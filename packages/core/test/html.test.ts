@@ -210,6 +210,13 @@ describe('parseHTML', () => {
     expect(parse('<p>a<!-- c --><script>x()</script></p>')).toEqual(stripIds([p('a')]))
   })
 
+  it('skips embedded content and form controls', () => {
+    const html =
+      '<p>a<iframe>f</iframe><object>o</object><embed><svg><text>s</text></svg>' +
+      '<select><option>x</option></select><textarea>t</textarea><button>b</button>c</p>'
+    expect(parse(html)).toEqual(stripIds([p('ac')]))
+  })
+
   it('gives each element an id', () => {
     const [block] = parseHTML('<p>a</p>', reg) as ElementNode[]
     expect(typeof block!.id).toBe('string')

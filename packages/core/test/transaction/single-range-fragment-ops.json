@@ -10857,7 +10857,22 @@
  "editor: drop over a node selection": {
   "returned": true,
   "pastedAt": [
-   null
+   {
+    "anchor": {
+     "path": [
+      2,
+      0
+     ],
+     "offset": 1
+    },
+    "focus": {
+     "path": [
+      2,
+      0
+     ],
+     "offset": 1
+    }
+   }
   ],
   "trs": [
    {
@@ -10867,53 +10882,23 @@
     },
     "ops": [
      {
-      "type": "insert_node",
-      "path": [
-       2
-      ],
-      "node": {
-       "id": "n4",
-       "type": "paragraph",
-       "data": {},
-       "children": [
-        {
-         "text": "",
-         "marks": []
-        }
-       ]
-      }
-     },
-     {
-      "type": "remove_node",
-      "path": [
-       1
-      ],
-      "node": {
-       "id": "n2",
-       "type": "atom",
-       "data": {
-        "k": 0
-       }
-      }
-     },
-     {
       "type": "set_selection",
       "selection": {
        "ranges": [
         {
          "anchor": {
           "path": [
-           1,
+           2,
            0
           ],
-          "offset": 0
+          "offset": 1
          },
          "focus": {
           "path": [
-           1,
+           2,
            0
           ],
-          "offset": 0
+          "offset": 1
          }
         }
        ],
@@ -10935,17 +10920,31 @@
            0
           ],
           "offset": 2
-         }
+         },
+         "node": [
+          1
+         ]
         }
        ],
        "main": 0
       }
      },
      {
+      "type": "split_node",
+      "path": [
+       2,
+       0
+      ],
+      "position": 1,
+      "properties": {
+       "marks": []
+      }
+     },
+     {
       "type": "insert_node",
       "path": [
-       1,
-       0
+       2,
+       1
       ],
       "node": {
        "text": "XY",
@@ -10959,15 +10958,15 @@
         {
          "anchor": {
           "path": [
-           1,
-           0
+           2,
+           1
           ],
           "offset": 2
          },
          "focus": {
           "path": [
-           1,
-           0
+           2,
+           1
           ],
           "offset": 2
          }
@@ -10980,15 +10979,15 @@
         {
          "anchor": {
           "path": [
-           1,
-           1
+           2,
+           2
           ],
           "offset": 0
          },
          "focus": {
           "path": [
-           1,
-           1
+           2,
+           2
           ],
           "offset": 0
          }
@@ -11000,10 +10999,21 @@
      {
       "type": "merge_node",
       "path": [
-       1,
+       2,
        1
       ],
-      "position": 2,
+      "position": 1,
+      "properties": {
+       "marks": []
+      }
+     },
+     {
+      "type": "merge_node",
+      "path": [
+       2,
+       1
+      ],
+      "position": 3,
       "properties": {
        "marks": []
       }
@@ -11016,17 +11026,17 @@
     {
      "anchor": {
       "path": [
-       1,
+       2,
        0
       ],
-      "offset": 2
+      "offset": 3
      },
      "focus": {
       "path": [
-       1,
+       2,
        0
       ],
-      "offset": 2
+      "offset": 3
      }
     }
    ],
@@ -11048,15 +11058,11 @@
      ]
     },
     {
-     "id": "n4",
-     "type": "paragraph",
-     "data": {},
-     "children": [
-      {
-       "text": "XY",
-       "marks": []
-      }
-     ]
+     "id": "n2",
+     "type": "atom",
+     "data": {
+      "k": 0
+     }
     },
     {
      "id": "n3",
@@ -11064,7 +11070,7 @@
      "data": {},
      "children": [
       {
-       "text": "cd",
+       "text": "cXYd",
        "marks": []
       }
      ]

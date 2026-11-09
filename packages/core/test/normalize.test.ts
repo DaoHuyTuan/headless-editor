@@ -92,13 +92,22 @@ describe('normalize: core rules', () => {
     expect(tr.selection).toEqual(sel([0, 2], 0))
   })
 
-  it('rule 4 re-homes a caret past an unknown (opaque) element to the nearest editable text', () => {
+  it('rule 4 keeps the empty text beside an unknown element in inline content (rule 10), and the caret in it', () => {
+    // An unknown type in inline content is one opaque character there, like an inline atom: the
+    // empty text on its far side is where a caret sits after (or before) it.
     const widget: ElementNode = { id: 'w', type: 'widget', data: {}, children: [txt('hidden')] }
     const after = run(doc(el('paragraph', txt('a'), widget, txt('', 'bold'))), base, sel([0, 2], 0))
-    expect(stripIds(after.doc)).toEqual(stripIds(doc(el('paragraph', txt('a'), widget))))
-    expect(after.selection).toEqual(sel([0, 0], 1))
+    expect(stripIds(after.doc)).toEqual(stripIds(doc(el('paragraph', txt('a'), widget, txt('', 'bold')))))
+    expect(after.selection).toEqual(sel([0, 2], 0))
     const before = run(doc(el('paragraph', txt('', 'bold'), widget, txt('b'))), base, sel([0, 0], 0))
-    expect(before.selection).toEqual(sel([0, 1], 0))
+    expect(before.selection).toEqual(sel([0, 0], 0))
+  })
+
+  it('rule 4 re-homes a caret in a dropped empty text to the nearest editable text', () => {
+    const d = doc(el('paragraph', txt('', 'bold'), txt('b')))
+    const out = run(d, base, sel([0, 0], 0))
+    expect(stripIds(out.doc)).toEqual(stripIds(doc(el('paragraph', txt('b')))))
+    expect(out.selection).toEqual(sel([0, 0], 0))
   })
 
   it('rule 5:a non-atom block with no children gets an empty text; atoms are left alone', () => {
@@ -165,7 +174,10 @@ describe('normalize: core rules', () => {
     expect(normalized(doc(el('code', txt('a'), el('paragraph', txt('b', 'bold')))))).toEqual(stripIds(doc(el('code', txt('ab')))))
     const widget: ElementNode = { id: 'w', type: 'widget', data: {}, children: [el('paragraph', txt('x'))] }
     const d = doc(el('paragraph', txt('a'), widget))
-    expect(run(d).doc).toBe(d)
+    // Its subtree is not touched; rule 10 only gives it a text on its far side.
+    const out = run(d).doc
+    expect(out.children[0]!.children![1]).toBe(widget)
+    expect(stripIds(out)).toEqual(stripIds(doc(el('paragraph', txt('a'), widget, txt('')))))
   })
 
   describe('rule 9 hoists a nested atom block instead of unwrapping it', () => {

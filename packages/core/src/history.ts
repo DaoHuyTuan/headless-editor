@@ -1,5 +1,6 @@
 import type { Editor } from './editor'
 import { findPathById } from './model/find'
+import { selectionEquals } from './model/selection'
 import { deepEqualJson, getNode, isElement } from './model/node'
 import type { Data, Doc, ElementNode, Node, Selection } from './model/types'
 import { applyOp } from './ops/apply'
@@ -15,11 +16,23 @@ import type { Transaction } from './transaction/transaction'
 export interface HistoryEntry {
   /** Doc ops of the recorded tr(s), normalization ops included, in application order. */
   ops: Operation[]
+  /**
+   * The selection at the doc `ops` start from; undo restores it. After a fold (`joinOps`) of a redo
+   * entry, that start is the doc the appended (or normalization) ops left, so this is their selection,
+   * not the one from before the entry's own step.
+   */
   selectionBefore: Selection | null
+  /** The selection at the doc `ops` end at; redo restores it. A fold of an undo entry sets it the same way. */
   selectionAfter: Selection | null
+  /** `now()` when the step was recorded or last grew by grouping. */
   time: number
   /** 'insert' / 'delete' for groupable input; anything else never groups. */
   kind: string
+  /**
+   * True once nothing may group into this entry any more: the selection moved away from where it
+   * left it, an undo/redo or an outside structural change happened. `time` is kept as it was.
+   */
+  closed: boolean
 }
 
 export interface HistoryState {
@@ -30,6 +43,8 @@ export interface HistoryState {
 export interface HistoryOptions {
   groupDelay: number
   now: () => number
+  /** Most undo steps kept; recording one more drops the oldest. Default 100. */
+  depth: number
 }
 
 type HistoryAction = 'undo' | 'redo'
@@ -40,6 +55,8 @@ function entryKind(tr: Transaction): string {
   // A fired input rule is its own step: never merged into the typing before or after it.
   if (tr.meta.origin !== 'input' || tr.meta.inputRule === true) return 'other'
   const inputType = tr.meta.inputType ?? ''
+  // Paste, drop, cut and drag (`insertFrom*`, `deleteBy*`) are steps of their own.
+  if (inputType.startsWith('insertFrom') || inputType.startsWith('deleteBy')) return 'other'
   if (inputType.startsWith('insert')) return 'insert'
   if (inputType.startsWith('delete')) return 'delete'
   return 'other'
@@ -158,8 +175,10 @@ function rewriteStacks(prev: HistoryState, doc: Doc, rewrites: Rewrite[]): Histo
   const byId = new Map<string, DataPatch[]>()
   for (const { id, patch } of rewrites) byId.set(id, [...(byId.get(id) ?? []), patch])
   let targets: Map<SetNodeDataOp, string>
+  // The replay only resolves `set_node_data` targets: skip it (O(stacks × doc)) when there are none.
+  const hasDataOps = [...prev.undo, ...prev.redo].some((e) => e.ops.some((op) => op.type === 'set_node_data'))
   try {
-    targets = setNodeDataTargets(prev, doc)
+    targets = hasDataOps ? setNodeDataTargets(prev, doc) : new Map()
   } catch {
     return EMPTY // stacks not replayable from `doc`: fall back to the M1 behaviour
   }
@@ -240,7 +259,9 @@ function isHistoryRewrite(v: unknown): v is { id: string; data: Data } {
  * - `'history'` root (undo): R is the entry just undone, U the one below it. A later redo of R first
  *   reverts the append, then redoes; undoing U reverts the append too. (redo: U is the entry just
  *   redone, R the next one.) Neither stack is cleared, so undo→redo cycles stay op-consistent
- *   however many times the append fires, and each fold only grows the entries it touches.
+ *   however many times the append fires. Each fold only changes the entries it touches, and
+ *   `compactOps` cancels an op that meets its inverse, so an append that fires on every cycle does
+ *   not keep growing them.
  *
  * `kind` and `time` are left alone, so grouping of later input is unaffected.
  */
@@ -252,14 +273,36 @@ function joinAppended(prev: HistoryState, tr: Transaction): HistoryState {
   )
 }
 
+/**
+ * `ops` with every op that directly follows its own inverse removed along with it (an op then its
+ * inverse leaves the doc as it was), repeatedly, and back-to-back `set_node_data` ops on one path
+ * merged into one (dropped when the merge changes nothing). Keeps folded entries from growing when an
+ * append fires on every undo and redo: what one fold adds, the next one often takes back or
+ * overwrites. Never empty when `ops` isn't: an entry with no doc ops would undo as a tr that changes
+ * nothing, which history never moves between the stacks.
+ */
+function compactOps(ops: Operation[]): Operation[] {
+  const out: Operation[] = []
+  for (const op of ops) {
+    const top = out[out.length - 1]
+    if (top && deepEqualJson(invertOp(top) as never, op as never)) {
+      out.pop()
+    } else if (top?.type === 'set_node_data' && op.type === 'set_node_data' && deepEqualJson(top.path, op.path)) {
+      out.pop()
+      if (!deepEqualJson(top.prevData, op.data)) out.push({ ...op, prevData: top.prevData })
+    } else out.push(op)
+  }
+  return out.length === 0 ? ops : out
+}
+
 /** The fold of `joinAppended`, for doc ops `ops` that moved the boundary doc, ending at `selection`. */
 function joinOps(prev: HistoryState, ops: Operation[], selection: Selection | null): HistoryState {
   const u = prev.undo[prev.undo.length - 1]
   const r = prev.redo[prev.redo.length - 1]
   const inverse = ops.map(invertOp).reverse()
   return {
-    undo: u ? [...prev.undo.slice(0, -1), { ...u, ops: [...u.ops, ...ops], selectionAfter: selection }] : prev.undo,
-    redo: r ? [...prev.redo.slice(0, -1), { ...r, ops: [...inverse, ...r.ops], selectionBefore: selection }] : prev.redo,
+    undo: u ? [...prev.undo.slice(0, -1), { ...u, ops: compactOps([...u.ops, ...ops]), selectionAfter: selection }] : prev.undo,
+    redo: r ? [...prev.redo.slice(0, -1), { ...r, ops: compactOps([...inverse, ...r.ops]), selectionBefore: selection }] : prev.redo,
   }
 }
 
@@ -273,6 +316,10 @@ function applyHistory(prev: HistoryState, tr: Transaction, options: HistoryOptio
       return rewriteStacks(prev, tr.doc, [{ id: rewrite.id, patch: { set: rewrite.data, unset: [] } }])
     // A selection-only append still moves the selection the joined step restores.
     if (appended) return joinAppended(prev, tr)
+    // Moving the selection away from where the last step left it ends that step's typing group.
+    const top = prev.undo[prev.undo.length - 1]
+    if (top && !top.closed && !selectionEquals(top.selectionAfter, tr.selection))
+      return { undo: [...prev.undo.slice(0, -1), { ...top, closed: true }], redo: prev.redo }
     return prev
   }
 
@@ -292,7 +339,7 @@ function applyHistory(prev: HistoryState, tr: Transaction, options: HistoryOptio
     const redo = action === 'undo' ? moved : rest
     // Nothing typed after an undo/redo may merge into the entry now on top of the undo stack.
     const top = undo[undo.length - 1]
-    if (top && top.time !== -Infinity) undo = [...undo.slice(0, -1), { ...top, time: -Infinity }]
+    if (top && !top.closed) undo = [...undo.slice(0, -1), { ...top, closed: true }]
     // The tr is the entry's ops (inverted and reversed for undo), then whatever normalization added:
     // a rebased entry can land on a doc that is not normalized (e.g. two adjacent plain text nodes).
     const docOps = tr.ops.filter((op) => op.type !== 'set_selection')
@@ -306,34 +353,45 @@ function applyHistory(prev: HistoryState, tr: Transaction, options: HistoryOptio
   }
 
   if (tr.meta.addToHistory === false) {
-    // Data-only changes keep the structure, so the stacks stay valid once their payloads agree.
+    // Data changes keep the structure, so the stacks stay valid once their payloads agree: rewrite
+    // them first (each op's element resolved where the op ran), then map the stacks through the rest.
+    // Dropping the data ops from the sequence leaves the other ops' paths valid.
     const docOps = tr.ops.filter((op) => op.type !== 'set_selection')
-    if (docOps.every((op) => op.type === 'set_node_data')) {
-      const rewrites: Rewrite[] = []
-      for (const op of docOps as Extract<Operation, { type: 'set_node_data' }>[]) {
-        const node = getNode(tr.before.doc, op.path)
+    const rewrites: Rewrite[] = []
+    const structural: Operation[] = []
+    let lastData = -1
+    docOps.forEach((op, i) => op.type === 'set_node_data' && (lastData = i))
+    // Replaying up to the last data op is enough to resolve every data op's path to its element.
+    let d = tr.before.doc as Doc
+    docOps.forEach((op, i) => {
+      if (op.type === 'set_node_data') {
+        const node = getNode(d, op.path)
         if (isElement(node)) rewrites.push({ id: node.id, patch: diffData(op.prevData, op.data) })
-      }
-      return rewriteStacks(prev, tr.before.doc as Doc, rewrites)
-    }
+      } else structural.push(op)
+      if (i < lastData) d = applyOp(d, op)
+    })
+    const rewritten = rewriteStacks(prev, tr.before.doc as Doc, rewrites)
+    if (structural.length === 0) return rewritten
     // Structural changes: map both stacks through them, dropping what can't be rebased.
-    const undo = rebaseStack(prev.undo, docOps, 'undo')
+    const undo = rebaseStack(rewritten.undo, structural, 'undo')
     // Typing right after must not merge into the rebased top entry: it is its own step.
     const top = undo[undo.length - 1]
-    if (top && top.time !== -Infinity) undo[undo.length - 1] = { ...top, time: -Infinity }
-    return { undo, redo: rebaseStack(prev.redo, docOps, 'redo') }
+    if (top && !top.closed) undo[undo.length - 1] = { ...top, closed: true }
+    return { undo, redo: rebaseStack(rewritten.redo, structural, 'redo') }
   }
 
   const ops = tr.ops.filter((op) => op.type !== 'set_selection')
   const time = options.now()
   const kind = entryKind(tr)
   const last = prev.undo[prev.undo.length - 1]
-  if (last && isGroupable(kind) && last.kind === kind && time - last.time <= options.groupDelay) {
+  if (last && !last.closed && isGroupable(kind) && last.kind === kind && time - last.time <= options.groupDelay) {
     const merged: HistoryEntry = { ...last, ops: [...last.ops, ...ops], selectionAfter: tr.selection, time }
     return { undo: [...prev.undo.slice(0, -1), merged], redo: [] }
   }
-  const entry: HistoryEntry = { ops, selectionBefore: tr.before.selection, selectionAfter: tr.selection, time, kind }
-  return { undo: [...prev.undo, entry], redo: [] }
+  const entry: HistoryEntry = { ops, selectionBefore: tr.before.selection, selectionAfter: tr.selection, time, kind, closed: false }
+  // The bottom entry is the oldest step and nothing depends on it, so dropping it keeps the rest valid.
+  const undo = [...prev.undo, entry]
+  return { undo: undo.length > options.depth ? undo.slice(undo.length - Math.max(options.depth, 0)) : undo, redo: [] }
 }
 
 /** Fills `tr` with the undo (inverted ops, reversed) or redo of the top entry. False when there is none. */
@@ -354,24 +412,75 @@ function fillHistoryTr(action: HistoryAction, tr: Transaction, state: EditorStat
   return true
 }
 
-/** Undo/redo on a fresh tr, dispatched (keymap and intents; commands go through the Editor). */
+/**
+ * Undo/redo on a fresh tr, dispatched (keymap and intents; commands go through the Editor). False
+ * when there is no entry, or when the pipeline dropped the dispatch (a destroyed editor, a dispatch
+ * that is not allowed now): like a bound command, it did not apply.
+ */
 function runHistory(action: HistoryAction, ctx: PluginContext<HistoryOptions, HistoryState>): boolean {
   const tr = ctx.editor.createTransaction()
   if (!fillHistoryTr(action, tr, ctx.editor.state)) return false
+  const before = ctx.editor.state
   ctx.editor.dispatch(tr)
-  return true
+  return ctx.editor.state !== before
+}
+
+/**
+ * Every data the stacks store for element `id`, with its type: node payloads, split/merge properties
+ * and both sides of the `set_node_data` ops that target it (resolved from `doc`, which the stacks are
+ * consistent with; skipped when they can't be replayed from it).
+ */
+function storedCopies(stacks: HistoryState, doc: Doc, id: string): { type: string; data: Data }[] {
+  const copies: { type: string; data: Data }[] = []
+  const walk = (node: Node) => {
+    if (!isElement(node)) return
+    if (node.id === id) copies.push({ type: node.type, data: node.data })
+    node.children?.forEach(walk)
+  }
+  const all = [...stacks.undo, ...stacks.redo].flatMap((e) => e.ops)
+  for (const op of all) {
+    if (op.type === 'insert_node' || op.type === 'remove_node') walk(op.node)
+    else if (op.type === 'split_node' || op.type === 'merge_node') {
+      const props = op.properties as Partial<ElementNode>
+      if (props.id === id && typeof props.type === 'string' && props.data) copies.push({ type: props.type, data: props.data })
+    }
+  }
+  const type = copies[0]?.type
+  if (type === undefined || !all.some((op) => op.type === 'set_node_data')) return copies
+  let targets: Map<SetNodeDataOp, string>
+  try {
+    targets = setNodeDataTargets(stacks, doc)
+  } catch {
+    return copies
+  }
+  for (const [op, target] of targets) {
+    if (target === id) copies.push({ type, data: op.data }, { type, data: op.prevData })
+  }
+  return copies
 }
 
 /**
  * Rewrites the stored history data of element `id` (merging `data` into every stored copy), for an
  * element that is not in the doc (e.g. an undone image whose upload finished). For one in the doc,
  * use `setNodeData` with `addToHistory: false` instead: history rewrites itself from that.
+ *
+ * Every merged copy is validated against its type's data schema, like `setNodeData`. When one fails,
+ * the rewrite is rejected as a whole: it throws in dev mode, and otherwise leaves the stacks alone.
+ * The merge itself is what gets stored: a validator's transformed output is not.
  */
 export function rewriteHistoryData(editor: Editor, id: string, data: Data): void {
   const tr = editor.createTransaction()
   tr.meta.origin = 'plugin'
   tr.meta.addToHistory = false
   tr.meta.historyRewrite = { id, data }
+  const stacks = editor.getPluginState<HistoryState | undefined>('history') ?? EMPTY
+  for (const copy of storedCopies(stacks, editor.state.doc as Doc, id)) {
+    const result = editor.registry.validateData(copy.type, { ...copy.data, ...data })
+    if (!result.ok) {
+      tr.rejected = `rewriteHistoryData: ${result.message}`
+      break
+    }
+  }
   editor.dispatch(tr)
 }
 
@@ -391,10 +500,14 @@ export function clearHistory(editor: Editor): void {
 /**
  * Built-in undo/redo plugin, prepended by the Editor unless `history: false`.
  * Records every doc-changing tr (as finally normalized); consecutive input of the same kind
- * within `groupDelay` ms is one step. Trs with `addToHistory: false` don't record: data-only ones
- * (all `set_node_data`) rewrite the stored payloads of the changed elements; structural ones map both
- * stacks through their ops (`rebaseStack`), dropping entries that can't be rebased and all below them.
- * `appendTransaction` trs (meta `appendedTo`) join the triggering step (see `joinAppended`).
+ * within `groupDelay` ms is one step. At most `depth` undo steps are kept (the oldest is dropped).
+ * Trs with `addToHistory: false` don't record: their `set_node_data` ops rewrite the stored payloads
+ * of the changed elements, and their other ops map both stacks (`rebaseStack`), dropping entries that
+ * can't be rebased and all below them.
+ * `appendTransaction` trs (meta `appendedTo`) join the triggering step (see `joinAppended`). They
+ * cannot be undo steps of their own: an appended tr either joins the step or, with its own
+ * `addToHistory: false`, stays outside history. To record a separate step, dispatch a tr later (not
+ * from `appendTransaction`).
  *
  * The `undo` / `redo` commands fill the tr with the entry's ops and mark it `origin: 'history'`.
  * Ops a composed command adds to that same tr after them (e.g. `undo` then `insertText` in one
@@ -407,7 +520,7 @@ export function clearHistory(editor: Editor): void {
 export const historyPlugin = definePlugin({
   name: 'history',
   priority: 0,
-  options: { groupDelay: 500, now: () => Date.now() } as HistoryOptions,
+  options: { groupDelay: 500, now: () => Date.now(), depth: 100 } as HistoryOptions,
   state: {
     init: (): HistoryState => EMPTY,
     apply: (tr, prev, ctx) => applyHistory(prev, tr, ctx.options),

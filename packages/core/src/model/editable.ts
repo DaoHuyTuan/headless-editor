@@ -1,4 +1,4 @@
-import { comparePath } from './path'
+import { comparePath, comparePoint } from './path'
 import { createSelection, isNodeRange, mainRange, selectionEquals, single } from './selection'
 import { getNode, isText, type ReadableRoot } from './node'
 import type { Doc, ElementNode, Node, Path, Point, Range, Selection, SelectionRange, TextNode } from './types'
@@ -119,29 +119,73 @@ export function isEditableRange(doc: ReadableRoot, types: NodeTypes, range: Sele
 
 /**
  * `input` with every range that is not at an editable point moved there: each bad point goes to
- * `nearestEditablePoint`, and a `node` that is not an opaque element is dropped. A range is dropped
- * only when the doc has no editable point; null when every range is. Normalized (moved ranges may
- * merge, `main` follows its range; several ranges are normalized even when all are valid, e.g. after a
- * raw `set_selection` op); `input` itself when it is already normalized and every range is valid.
+ * `nearestEditablePoint`, and a `node` that is not an opaque element is dropped. A range with one bad
+ * point collapses at that point's new place (as `Transaction` re-homes a half-lost range), so it never
+ * stretches across blocks. A range is dropped only when the doc has no editable point; null when every
+ * range is. Normalized (moved ranges may merge, `main` follows its range; several ranges are
+ * normalized even when all are valid, e.g. after a raw `set_selection` op), and ranges that touch
+ * across a text-node boundary (one ends where the next text starts) merge too; `input` itself when
+ * it is already normalized and every range is valid.
  */
 export function rehomeRanges(doc: ReadableRoot, types: NodeTypes, input: Selection): Selection | null {
   // Normalized first: ranges set by a raw `set_selection` op never went through `createSelection`.
-  const normalized = input.ranges.length > 1 ? createSelection(input.ranges, input.main) : input
+  const normalized = input.ranges.length > 1 ? mergeAcrossLeaves(doc, createSelection(input.ranges, input.main)) : input
   const sel = selectionEquals(normalized, input) ? input : normalized
   if (sel.ranges.every((r) => isEditableRange(doc, types, r))) return sel
   const out: SelectionRange[] = []
   let main = 0
   sel.ranges.forEach((range, i) => {
     const fix = (pt: Point) => (isEditablePoint(doc, types, pt) ? pt : nearestEditablePoint(doc, types, pt.path))
-    const anchor = fix(range.anchor)
-    const focus = fix(range.focus)
+    let anchor = fix(range.anchor)
+    let focus = fix(range.focus)
     if (!anchor || !focus) return
+    // Half-invalid: a caret where the bad point went.
+    if (anchor !== range.anchor && focus === range.focus) focus = anchor
+    else if (focus !== range.focus && anchor === range.anchor) anchor = focus
     const moved: SelectionRange = { anchor, focus }
     if (range.node && isOpaqueAt(doc, types, range.node)) moved.node = range.node
     if (i <= sel.main) main = out.length
     out.push(moved)
   })
-  return out.length === 0 ? null : createSelection(out, main)
+  return out.length === 0 ? null : mergeAcrossLeaves(doc, createSelection(out, main))
+}
+
+/**
+ * `sel` (normalized) with each pair of neighbouring ranges that touch across a text-node boundary
+ * merged: when one range ends at the end of a text and the next starts at offset 0 of the text right
+ * after it (the same position, written in two leaves), the next range's start is rewritten to the
+ * first's end, so `createSelection` merges them like any touching ranges. `sel` itself when none do.
+ */
+function mergeAcrossLeaves(doc: ReadableRoot, sel: Selection): Selection {
+  if (sel.ranges.length < 2) return sel
+  const endOf = (r: SelectionRange) => (comparePoint(r.anchor, r.focus) <= 0 ? 'focus' : 'anchor')
+  const startOf = (r: SelectionRange) => (endOf(r) === 'focus' ? 'anchor' : 'focus')
+  let ranges: SelectionRange[] | null = null
+  for (let i = 1; i < sel.ranges.length; i++) {
+    const prev = (ranges ?? sel.ranges)[i - 1]!
+    const next = (ranges ?? sel.ranges)[i]!
+    const end = prev[endOf(prev)]
+    if (!sameAcrossLeaves(doc, end, next[startOf(next)])) continue
+    ranges ??= [...sel.ranges]
+    // A caret moves whole (both points), so it stays collapsed.
+    const caret = comparePoint(next.anchor, next.focus) === 0
+    ranges[i] = caret ? { ...next, anchor: end, focus: end } : { ...next, [startOf(next)]: end }
+  }
+  return ranges ? createSelection(ranges, sel.main) : sel
+}
+
+/** Whether `a` is the end of a text and `b` offset 0 of the text right after it (one position, two leaves). */
+function sameAcrossLeaves(doc: ReadableRoot, a: Point, b: Point): boolean {
+  if (b.offset !== 0 || a.path.length !== b.path.length || a.path.length === 0) return false
+  const k = a.path.length - 1
+  if (b.path[k] !== a.path[k]! + 1 || a.path.some((v, j) => j < k && v !== b.path[j])) return false
+  try {
+    const left = getNode(doc, a.path)
+    const right = getNode(doc, b.path)
+    return isText(left) && isText(right) && a.offset === left.text.length
+  } catch {
+    return false
+  }
 }
 
 /** A caret at the start of the first editable text of `doc`, or null when it has none. */

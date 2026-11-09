@@ -60,6 +60,11 @@ export interface InputRule<Ctx = PluginContext<any, any, any, any>> {
   handler: (ctx: Ctx, match: RegExpMatchArray, range: Range, tr: Transaction) => boolean
 }
 
+/**
+ * A command: edits `tr` (dispatched for it by the caller) and returns whether it applied. Edit `tr`
+ * only: a command that dispatches on its own (`editor.dispatch`) makes `tr` stale, so the caller's
+ * dispatch of `tr` is dropped as outdated, and `can()` would dispatch for real.
+ */
 export type Command = (props: { tr: Transaction; state: EditorState; editor: Editor }) => boolean
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -195,6 +200,11 @@ export interface PluginSpec<
   handleDOMEvents?: Partial<Record<DOMEventName, (event: Event, ctx: PluginContext<O, S, C, T>) => boolean>>
   filterTransaction?: (tr: Transaction, state: EditorState) => boolean
   appendTransaction?: (trs: Transaction[], oldState: EditorState, newState: EditorState) => Transaction | null
+  /**
+   * Fixes one entry of a changed doc (edits go on `tr`). Also runs on the content the constructor
+   * loads, before any command is bound: `ctx.commands` is empty and `ctx.storage` undefined there, so
+   * edit through `tr` only.
+   */
   normalize?: (entry: [Node, Path], tr: Transaction, ctx: PluginContext<O, S, C, T>) => void
   parseHTML?: ParseRule[]
   renderHTML?: (node: ElementNode, ctx: { options: O }) => DOMOutputSpec
@@ -231,13 +241,18 @@ export interface PluginSpec<
    * the new state on every view update. They are never part of the doc, `getJSON()` or `getHTML()`.
    */
   decorations?: (state: EditorState, ctx: PluginContext<O, S, C, T>) => Decoration[]
+  /**
+   * Repairs data that failed validation while loading or sanitizing content. The result is
+   * validated again; null, still-invalid data or a throw drops the node (with a warning).
+   */
   onInvalidData?: (raw: unknown) => Data | null
   /** `apply` gets the final (normalized) tr; `ctx.getState()` still returns `prev` there. */
   state?: { init: () => S; apply: (tr: Transaction, prev: S, ctx: PluginContext<O, S, C, T>) => S }
   /**
    * Creates the plugin's storage (`editor.storage[name]`, `ctx.storage` in the other hooks), once
    * per editor, by priority, after every plugin's commands are bound (so `ctx.commands` is usable).
-   * Its own `ctx.storage` is still `undefined` here (typed so, which also keeps `T` inferable).
+   * Its own `ctx.storage` is still `undefined` here (typed so, which also keeps `T` inferable), and
+   * `editor.storage` is not built yet: read other plugins' storage from `onCreate` instead.
    * `T` is inferred from the return type. When this factory takes `ctx`, declare it before any hook
    * whose `ctx` parameter is used: TypeScript types those hooks in order, and one typed first would
    * fix `T` to `undefined` (a compile error on the factory). A factory without parameters may go anywhere.
@@ -250,13 +265,17 @@ export interface PluginSpec<
    * hooks. A throwing hook does not stop the others: errors are collected and the first is rethrown
    * once all ran.
    */
-  /** Called once at the end of the editor constructor, after every plugin's storage exists (no DOM). */
+  /**
+   * Called once at the end of the editor constructor, after every plugin's storage exists (no DOM).
+   * When one throws, the constructor destroys the editor (every `destroy` hook runs) before rethrowing.
+   * Must be side-effect-free under StrictMode's double invoke (React builds a throwaway editor).
+   */
   onCreate?: (ctx: PluginContext<O, S, C, T>) => void
   /**
    * Called each time a view is attached to a DOM root, at the end of the view constructor. A returned
    * function is called when that view is destroyed (`unmount`, `mount(other)`, `destroy`); cleanups
    * run in reverse order. When an `onMount` throws, the view is torn down (cleanups included) and
-   * `mount` rethrows.
+   * `mount` rethrows. `editor.view` is still null here: use the `view` argument.
    */
   onMount?: (ctx: PluginContext<O, S, C, T>, view: EditorView) => void | (() => void)
   /**
@@ -266,9 +285,15 @@ export interface PluginSpec<
   onUpdate?: (ctx: PluginContext<O, S, C, T>, e: { tr: Transaction }) => void
   /** Like `onUpdate`, for a committed tr that changed the selection (after `selectionUpdate`). */
   onSelectionUpdate?: (ctx: PluginContext<O, S, C, T>, e: { tr: Transaction }) => void
-  /** Focus entered the view root from outside it. */
+  /**
+   * Focus entered the view root from outside it. Mounting on a root that already has focus fires
+   * none (in `onMount`, check whether `view.root` contains `document.activeElement`).
+   */
   onFocus?: (ctx: PluginContext<O, S, C, T>, e: FocusEvent) => void
-  /** Focus left the view root. A focus move between elements inside the root is not a blur. */
+  /**
+   * Focus left the view root. A focus move between elements inside the root is not a blur, and
+   * unmounting a focused view fires none.
+   */
   onBlur?: (ctx: PluginContext<O, S, C, T>, e: FocusEvent) => void
 }
 

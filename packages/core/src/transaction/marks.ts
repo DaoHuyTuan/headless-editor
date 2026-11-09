@@ -1,5 +1,5 @@
 import { editableTextEntries, type NodeTypes } from '../model/editable'
-import { deepEqualJson, getNode, isText, textEntries } from '../model/node'
+import { cloneJson, deepEqualJson, getNode, isText, sameMarkSet, textEntries } from '../model/node'
 import { comparePoint, nextPath, parentPath } from '../model/path'
 import { single } from '../model/selection'
 import type { Data, DeepReadonly, Doc, Json, Mark, Path, Point, Range, SelectionRange, TextNode } from '../model/types'
@@ -26,12 +26,15 @@ function isCollapsedRange(r: Range): boolean {
   return comparePoint(r.start, r.end) === 0
 }
 
-/** True when `mark` has `type` and every given data entry deep-equals the mark's. */
+/**
+ * True when `mark` has `type` and every given data entry deep-equals the mark's (`undefined`
+ * entries are ignored, like a missing key).
+ */
 function matches(mark: Mark, type: string, data?: Partial<Data>): boolean {
   if (mark.type !== type) return false
   if (!data) return true
   return Object.entries(data).every(
-    ([k, v]) => v !== undefined && k in mark.data && deepEqualJson(mark.data[k]!, v as Json),
+    ([k, v]) => v === undefined || (k in mark.data && deepEqualJson(mark.data[k]!, v as Json)),
   )
 }
 
@@ -144,9 +147,12 @@ function allHaveMark(
     const r = ordered(range)
     const covered = coveredTexts(state.doc, r, registry)
     const inert = covered.length === 0 && !isCollapsedRange(r)
+    // A selected node has no caret marks of its own: only the stored marks count (its caret sits in
+    // a neighbouring text, whose marks are not the node's).
+    const caretMarks = () => (range.node ? [] : marksAtPoint(state.doc, r.start))
     const active =
       covered.length === 0
-        ? (state.storedMarks ?? marksAtPoint(state.doc, r.start)).some(has)
+        ? (state.storedMarks ?? caretMarks()).some(has)
         : covered.every((c) => c.node.marks.some(has))
     return { inert, active }
   })
@@ -194,7 +200,7 @@ function validated(tr: Transaction, type: string, data: unknown): Mark | null {
     tr.rejected = result.message
     return null
   }
-  return { type, data: result.data }
+  return { type, data: cloneJson(result.data) }
 }
 
 /**
@@ -213,11 +219,14 @@ function selectionTargets(tr: Transaction): readonly SelectionRange[] | null {
 
 /**
  * Runs a mark edit (spec §5.2, §5.4) and returns whether it had a target:
- * - `range`: `span` there only (nothing when collapsed). The selection ranges are not set, only
- *   mapped through the ops (inside a `forEachRange` callback too);
- * - no `range`: `span` at every non-collapsed selection range (in document order, each mapped
- *   through the earlier ones' ops), and `carets` once with the collapsed ones (the stored marks are
- *   one set for the whole selection). The selection is not set.
+ * - `range`: `span` there only. A collapsed one does nothing and still returns true (the recorded
+ *   single-range behaviour): the stored marks are one set for the whole selection, so an explicit
+ *   caret does not carry them. The selection ranges are not set, only mapped through the ops (inside
+ *   a `forEachRange` callback too);
+ * - no `range`: `span` at every selection range that covers characters (in document order, each
+ *   mapped through the earlier ones' ops), and `carets` once with the others: collapsed ones and
+ *   ranges covering no characters (only atoms or empty texts), which typing over would give the
+ *   stored marks. The stored marks are one set for the whole selection. The selection is not set.
  */
 function eachTarget(
   tr: Transaction,
@@ -232,11 +241,15 @@ function eachTarget(
   }
   const ranges = selectionTargets(tr)
   if (!ranges) return false
-  const collapsed = ranges.filter((r) => isCollapsedRange(ordered(r)))
+  const inert = (r: SelectionRange) => {
+    const o = ordered(r)
+    return isCollapsedRange(o) || coveredTexts(tr.doc, o, tr.registry).length === 0
+  }
+  const collapsed = ranges.filter(inert)
   if (collapsed.length > 0) carets(collapsed)
   const from = tr.ops.length
   for (const r of ranges) {
-    if (isCollapsedRange(ordered(r))) continue
+    if (inert(r)) continue
     const mapped = mapSince(tr, r, from)
     if (mapped) span(ordered(mapped))
   }
@@ -245,16 +258,22 @@ function eachTarget(
 
 /**
  * Updates the stored marks for the carets `ranges`, starting from the current stored marks, else the
- * marks every caret shares (`sharedMarks`; one caret: `marksAt` it).
+ * marks every caret shares (`sharedMarks`; one caret: `marksAt` it). An update that leaves that set
+ * as it is changes nothing (the stored marks keep their reference, null included), so it dispatches
+ * nothing.
  */
 function updateStored(tr: Transaction, ranges: readonly SelectionRange[], update: (marks: Mark[]) => Mark[]): void {
-  tr.setStoredMarks(sortMarks(update(tr.storedMarks ?? sharedMarks(tr.doc, ranges)), tr.registry))
+  const base = tr.storedMarks ?? sharedMarks(tr.doc, ranges)
+  const next = sortMarks(update(base), tr.registry)
+  if (!sameMarkSet(next, base)) tr.setStoredMarks(next)
 }
 
 /**
  * Adds `mark` over the range (default: every selection range), replacing a mark of the same type
  * with different data. Without an explicit range, collapsed selection ranges update the stored
- * marks (once, for all of them).
+ * marks (once, for all of them). The selection is mapped through the text splits, not set: an edge
+ * at a split point maps to offset 0 of the text after it, the same position as the end of the
+ * marked text (the recorded single-range behaviour). `removeMark` alike.
  */
 export function addMark(tr: Transaction, mark: Mark, range?: SelectionRange | Range): boolean {
   const valid = validated(tr, mark.type, mark.data)
@@ -314,6 +333,7 @@ export function toggleMark(tr: Transaction, type: string, data?: Data): boolean 
   if (!valid) return false
   const ranges = selectionTargets(tr)
   if (!ranges) return false
-  const active = allHaveMark(trView(tr), ranges, type, data, tr.registry)
+  // Decided with the data that would be stored (a validator may coerce or fill it); no data: any data.
+  const active = allHaveMark(trView(tr), ranges, type, data === undefined ? undefined : valid.data, tr.registry)
   return active ? removeMark(tr, type) : addMark(tr, valid)
 }
