@@ -464,7 +464,10 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     this._view = new EditorView(this as unknown as Editor, el)
   }
 
-  /** Viewport coordinates of `point` in the mounted view (left, top, bottom), or null when unmounted or not rendered. */
+  /**
+   * Viewport coordinates of `point` in the mounted view (left, top, bottom), or null when unmounted,
+   * not rendered, not placed in the root yet, or not laid out (see `EditorView.coordsAt`).
+   */
   coordsAt(point: Point): { left: number; top: number; bottom: number } | null {
     return this._view?.coordsAt(point) ?? null
   }

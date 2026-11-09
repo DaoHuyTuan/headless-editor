@@ -33,6 +33,9 @@ export type ViewModule = (view: EditorView) => () => void
 
 const RECENT_INPUT_SIZE = 20
 
+/** The attributes the renderer sets on the root (besides `white-space`). */
+const ROOT_ATTRS = ['contenteditable', 'role', 'aria-multiline']
+
 /**
  * Follows the composing text through `tr`; null when it was removed, or split or merged (the leaf
  * would then no longer show the whole text at its path).
@@ -108,8 +111,13 @@ function sameRange(a: SelectionRange, b: SelectionRange): boolean {
 
 /**
  * Glues an editor to a contenteditable root: renders every transaction, keeps the DOM selection and
- * the model selection in sync, and owns the DOM listeners. `destroy` removes all of them (the
- * rendered content stays in place).
+ * the model selection in sync, and owns the DOM listeners. `destroy` removes all of them and makes
+ * the root non-editable again (the rendered content stays in place).
+ *
+ * A view is bound to one root for its lifetime. Remounting (a new view, e.g. `editor.mount` after
+ * `unmount`, or on another element) always renders from scratch, on the same root too: the old
+ * view's node views were destroyed with it, so its DOM is not adopted; the new render replaces the
+ * root's children. `editor.mount` on the root it is already mounted on keeps the current view.
  */
 export class EditorView {
   readonly renderer: Renderer
@@ -137,11 +145,18 @@ export class EditorView {
   private staleDomSelection: DomSelectionSnapshot | null = null
   /** A primary button press in the root, until its `mouseup`: the click then picks one range. */
   private pressed = false
+  /** The root's own values of what the renderer sets on it, restored on `destroy`. */
+  private readonly rootBefore: { attrs: Record<string, string | null>; whiteSpace: string; hadStyle: boolean }
 
   constructor(
     readonly editor: Editor,
     readonly root: HTMLElement,
   ) {
+    this.rootBefore = {
+      attrs: Object.fromEntries(ROOT_ATTRS.map((name) => [name, root.getAttribute(name)])),
+      whiteSpace: root.style.whiteSpace,
+      hadStyle: root.hasAttribute('style'),
+    }
     this.renderer = new Renderer(root, editor)
     this.renderer.render(editor.state.doc, { decorations: editor.getDecorations(editor.state) })
 
@@ -228,38 +243,63 @@ export class EditorView {
   }
 
   /**
-   * Viewport coordinates of the caret position at `point` (left edge, top and bottom of its line), or
-   * null when the point has no rendered leaf. A collapsed range can report an all-zero rect (e.g. in an
-   * empty leaf), so this falls back to the first client rect, then to the leaf element's left edge.
+   * Viewport coordinates of the caret position at `point` (left edge, top and bottom of its line).
+   * Only rects with a height count: the collapsed range's bounding rect, then its first client rect,
+   * then the character at the offset (its left edge; the character before it, right edge, at the
+   * end of the text), then the leaf's first line box, then the leaf's bounding rect.
+   *
+   * Null when the point has no rendered leaf, when its leaf is not placed in the root yet (a node
+   * view that has not mounted its `contentDOM`, e.g. before `<NodeContent />` commits), or when
+   * nothing measured has a height (not laid out, `display: none`): callers hide what they position
+   * rather than place it at a made-up rect.
    */
   coordsAt(point: Point): { left: number; top: number; bottom: number } | null {
     if (this.destroyed) return null
     const leaf = this.renderer.leafAt(point.path)
     if (!leaf) return null
-    let range: Range | null = null
+    // Only a rect with a height locates a line: a zero-height one (a collapsed range in an empty or
+    // not laid-out leaf) is skipped.
+    const line = (r: DOMRect | undefined): r is DOMRect => !!r && r.bottom > r.top
+    const at = (r: DOMRect, left = r.left) => ({ left, top: r.top, bottom: r.bottom })
+    const doc = this.root.ownerDocument
+    let pos: { node: globalThis.Node; offset: number } | null = null
     try {
-      const pos = modelToDom(this.renderer, point)
-      range = this.root.ownerDocument.createRange()
+      pos = modelToDom(this.renderer, point)
+    } catch {
+      pos = null
+    }
+    if (pos) {
+      const range = doc.createRange()
       range.setStart(pos.node, pos.offset)
       range.collapse(true)
-    } catch {
-      range = null
-    }
-    const empty = (r: { left: number; top: number; bottom: number }): boolean =>
-      r.left === 0 && r.top === 0 && r.bottom === 0
-    if (range) {
       const bounding = range.getBoundingClientRect()
-      if (!empty(bounding)) return { left: bounding.left, top: bounding.top, bottom: bounding.bottom }
-      const first = range.getClientRects()[0]
-      if (first && !empty(first)) return { left: first.left, top: first.top, bottom: first.bottom }
+      if (line(bounding)) return at(bounding)
+      const first = Array.from(range.getClientRects()).find(line)
+      if (first) return at(first)
+      // The character at the offset (its left edge), or before it at the end of the text (its right
+      // edge): its line, not the whole (possibly wrapped) leaf.
+      const length = pos.node.nodeType === 3 ? (pos.node as Text).length : 0
+      if (length > 0) {
+        const char = doc.createRange()
+        const after = pos.offset < length
+        char.setStart(pos.node, after ? pos.offset : pos.offset - 1)
+        char.setEnd(pos.node, after ? pos.offset + 1 : pos.offset)
+        const rect = char.getBoundingClientRect()
+        if (line(rect)) return at(rect, after ? rect.left : rect.right)
+      }
     }
+    // The leaf's first line box: its bounding rect would span every line of a wrapped leaf.
+    const box = Array.from(leaf.getClientRects()).find(line)
+    if (box) return at(box)
     const rect = leaf.getBoundingClientRect()
-    return { left: rect.left, top: rect.top, bottom: rect.bottom }
+    return line(rect) ? at(rect) : null
   }
 
   /**
-   * Runs the plugins' `onMount` cleanups in reverse order, then removes every listener and destroys
-   * the renderer. A throwing cleanup does not stop the rest; the first error is rethrown at the end.
+   * Runs the plugins' `onMount` cleanups in reverse order, then removes every listener, destroys
+   * the renderer (and its node views) and gives the root back its own `contenteditable`, `role`,
+   * `aria-multiline` and `white-space`; the rendered content stays. A throwing cleanup does not stop
+   * the rest; the first error is rethrown at the end. Idempotent.
    */
   destroy(): void {
     if (this.destroyed) return
@@ -274,18 +314,27 @@ export class EditorView {
     }
     for (const dispose of this.disposers.splice(0).reverse()) dispose()
     this.renderer.destroy()
+    this.restoreRoot()
     if (errors.length > 0) throw errors[0]
   }
 
-  /** Attaches a view module; its disposer runs on `destroy`. */
-  attach(module: ViewModule): void {
-    this.disposers.push(module(this))
+  /**
+   * Attaches a view module; its disposer runs on `destroy`, or earlier (once) through the returned
+   * function. After `destroy` this is a no-op: the module is not called and the result is a no-op.
+   */
+  attach(module: ViewModule): () => void {
+    if (this.destroyed) return () => {}
+    return this.track(module(this))
   }
 
-  /** Adds a DOM listener that `destroy` removes. */
-  listen(target: EventTarget, type: string, fn: (e: Event) => void, options?: AddEventListenerOptions): void {
+  /**
+   * Adds a DOM listener that `destroy` removes, or earlier (once) the returned function. After
+   * `destroy` this is a no-op: nothing is added and the result is a no-op.
+   */
+  listen(target: EventTarget, type: string, fn: (e: Event) => void, options?: AddEventListenerOptions): () => void {
+    if (this.destroyed) return () => {}
     target.addEventListener(type, fn, options)
-    this.disposers.push(() => target.removeEventListener(type, fn, options))
+    return this.track(() => target.removeEventListener(type, fn, options))
   }
 
   /**
@@ -330,6 +379,31 @@ export class EditorView {
   }
 
   // --- internals ---
+
+  /** Registers `dispose` for `destroy` and returns a function running it early, once. */
+  private track(dispose: () => void): () => void {
+    let done = false
+    const once = (): void => {
+      if (done) return
+      done = true
+      const i = this.disposers.indexOf(once)
+      if (i >= 0) this.disposers.splice(i, 1)
+      dispose()
+    }
+    this.disposers.push(once)
+    return once
+  }
+
+  /** Gives the root back the attributes and `white-space` the renderer set on it, as they were before. */
+  private restoreRoot(): void {
+    const { root, rootBefore } = this
+    for (const [name, value] of Object.entries(rootBefore.attrs)) {
+      if (value === null) root.removeAttribute(name)
+      else root.setAttribute(name, value)
+    }
+    root.style.whiteSpace = rootBefore.whiteSpace
+    if (!rootBefore.hadStyle && root.getAttribute('style') === '') root.removeAttribute('style')
+  }
 
   /** Whether a point of the model selection is in a rendered leaf that is not inside the root. */
   private selectionDetached(): boolean {

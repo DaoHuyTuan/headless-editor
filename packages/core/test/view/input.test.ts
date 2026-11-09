@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { createSelection, single } from '../../src/model/selection'
 import type { ElementNode, Selection } from '../../src/model/types'
 import { definePlugin, modelToDom, type AnyPlugin, type Editor } from '../../src/index'
-import { createTestEditor, doc, txt } from '../../src/testing/index'
+import { createTestEditor, doc, el, txt } from '../../src/testing/index'
 import { testBold, testParagraph } from '../fixtures'
 
 const p = (id: string, ...children: ReturnType<typeof txt>[]): ElementNode => ({ id, type: 'paragraph', data: {}, children })
@@ -353,11 +353,26 @@ describe('input module: deletion-key fallback guards', () => {
     expect(textOf(editor)).toMatchObject({ children: [{ text: 'abc' }] })
   })
 
-  it('a beforeinput on an ignored target still cancels the fallback', async () => {
-    const { editor, root } = setup('abc', caret([0, 0], 3))
-    const ignored = document.createElement('span')
-    ignored.setAttribute('data-editor-ignore', '')
-    root.appendChild(ignored)
+  it('a beforeinput on an ignored target (in a node view) still cancels the fallback', async () => {
+    const image = definePlugin({ name: 'image', node: { kind: 'block', atom: true } })
+    const editor = createTestEditor({
+      plugins: [testParagraph, boldWithKeymap, image],
+      doc: doc(p('p1', txt('abc')), el('image', { src: 'a.png' })),
+      selection: caret([0, 0], 3),
+      nodeViews: {
+        image: (container) => {
+          const ignored = document.createElement('span')
+          ignored.setAttribute('data-editor-ignore', '')
+          container.append(ignored)
+          return { update: () => {}, destroy: () => {} }
+        },
+      },
+    })
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    editor.mount(root)
+    editor.view!.focus()
+    const ignored = root.querySelector('[data-editor-ignore]')!
     keydown(root, { key: 'Backspace', code: 'Backspace' })
     ignored.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, cancelable: true, inputType: 'deleteContentBackward' }))
     await tick()

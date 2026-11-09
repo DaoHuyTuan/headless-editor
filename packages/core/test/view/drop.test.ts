@@ -157,18 +157,29 @@ describe('drop module', () => {
     expect([text.defaultPrevented, file.defaultPrevented, other.defaultPrevented]).toEqual([true, true, false])
   })
 
-  it('leaves drops and drags in ignored regions alone', () => {
-    const editor = setup(sel([0, 0], 0))
+  it('leaves drops and drags in ignored regions (of a node view) alone', () => {
+    const image = definePlugin({ name: 'image', node: { kind: 'block', atom: true } })
+    const editor = createTestEditor({
+      plugins: [testParagraph, testBold, image],
+      doc: doc(p('ab'), p('cdef'), el('image', { src: 'a.png' })),
+      selection: sel([0, 0], 0),
+      nodeViews: {
+        image: (container) => {
+          const ignored = document.createElement('span')
+          ignored.setAttribute('data-editor-ignore', '')
+          container.append(ignored)
+          return { update: () => {}, destroy: () => {} }
+        },
+      },
+    })
     const root = mount(editor)
-    const ignored = document.createElement('span')
-    ignored.setAttribute('data-editor-ignore', '')
-    root.firstElementChild!.appendChild(ignored)
+    const ignored = root.querySelector('[data-editor-ignore]')!
     const drop = dragEvent('drop', transfer({ 'text/plain': 'Z' }))
     const start = dragEvent('dragstart', transfer({}))
     ignored.dispatchEvent(drop)
     ignored.dispatchEvent(start)
     expect([drop.defaultPrevented, start.defaultPrevented]).toEqual([false, false])
-    expect(editor.getJSON().children.map((b) => (b.children![0] as { text: string }).text)).toEqual(['ab', 'cdef'])
+    expect(editor.getJSON().children.slice(0, 2).map((b) => (b.children![0] as { text: string }).text)).toEqual(['ab', 'cdef'])
   })
 
   it('removes its listeners on unmount', () => {

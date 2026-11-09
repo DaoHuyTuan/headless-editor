@@ -161,8 +161,9 @@ export interface NodeViewInstance<D = Data, O = unknown, T = unknown, S = unknow
 /**
  * Renders a node into `container` (created by the renderer: `<div>` for a block, `<span>` for an
  * inline node; `contenteditable="false"` for an atom). Called once per element id; the container is
- * never rebuilt for a data change. Elements inside it marked `data-editor-ignore` are fully left to
- * the view. A non-atom node's view gets `props.contentDOM` and places it in its DOM (synchronously or
+ * never rebuilt for a data change. Elements inside it (outside `contentDOM`) marked
+ * `data-editor-ignore` are fully left to the view (events, mutations, focus and selection); the
+ * attribute has no effect anywhere else in the root. A non-atom node's view gets `props.contentDOM` and places it in its DOM (synchronously or
  * later, e.g. on a React commit). The elements on the path from the container down to `contentDOM`
  * must stay editable (no `contenteditable` attribute): a `contenteditable="false"` ancestor would make
  * `contentDOM` a separate editing host that the caret, selection extension and select-all do not

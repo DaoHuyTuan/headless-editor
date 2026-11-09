@@ -236,6 +236,74 @@ describe('EditorView', () => {
     expect(spy).toHaveBeenCalledTimes(1)
   })
 
+  it('mounting on a different element gives the old root back its own attributes', () => {
+    const { editor, root } = setup('ab')
+    root.setAttribute('role', 'region')
+    root.style.whiteSpace = 'normal'
+    const other = document.createElement('div')
+    document.body.appendChild(other)
+    editor.mount(root)
+    expect(root.getAttribute('contenteditable')).toBe('true')
+    editor.mount(other)
+    expect(root.hasAttribute('contenteditable')).toBe(false)
+    expect(root.getAttribute('role')).toBe('region')
+    expect(root.hasAttribute('aria-multiline')).toBe(false)
+    expect(root.style.whiteSpace).toBe('normal')
+    expect(root.textContent).toBe('ab')
+    expect(other.getAttribute('contenteditable')).toBe('true')
+    editor.unmount()
+    expect(other.hasAttribute('contenteditable')).toBe(false)
+    expect(other.hasAttribute('style')).toBe(false)
+  })
+
+  it('a remount on the same root after unmount renders the document once, editable again', () => {
+    const { editor, root } = setup('ab')
+    editor.mount(root)
+    editor.unmount()
+    root.appendChild(document.createElement('span')).textContent = 'stray'
+    editor.mount(root)
+    expect(root.getAttribute('contenteditable')).toBe('true')
+    expect(root.querySelectorAll('p')).toHaveLength(1)
+    expect(root.children).toHaveLength(1)
+    expect(root.textContent).toBe('ab')
+  })
+
+  it('attach and listen after destroy are no-ops that return a no-op disposer', () => {
+    const { editor, root } = setup()
+    editor.mount(root)
+    const view = editor.view!
+    view.destroy()
+    const module = vi.fn(() => () => {})
+    const disposeModule = view.attach(module)
+    expect(module).not.toHaveBeenCalled()
+    const fn = vi.fn()
+    const tracked = trackListeners(root)
+    const disposeListener = view.listen(root, 'keydown', fn)
+    expect(tracked.adds()).toBe(0)
+    root.dispatchEvent(new KeyboardEvent('keydown'))
+    expect(fn).not.toHaveBeenCalled()
+    expect(() => {
+      disposeModule()
+      disposeListener()
+    }).not.toThrow()
+  })
+
+  it('the disposers of attach and listen remove early, once', () => {
+    const { editor, root } = setup()
+    editor.mount(root)
+    const view = editor.view!
+    const cleanup = vi.fn()
+    const dispose = view.attach(() => cleanup)
+    const fn = vi.fn()
+    const unlisten = view.listen(root, 'keydown', fn)
+    dispose()
+    unlisten()
+    root.dispatchEvent(new KeyboardEvent('keydown'))
+    expect(fn).not.toHaveBeenCalled()
+    view.destroy()
+    expect(cleanup).toHaveBeenCalledTimes(1)
+  })
+
   it('destroy on the view is idempotent; editor.destroy unmounts', () => {
     const { editor, root } = setup()
     const tracked = trackListeners(root, document)
