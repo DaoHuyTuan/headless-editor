@@ -189,6 +189,34 @@ describe('lifecycle hooks: onMount', () => {
   })
 })
 
+describe('mount on a destroyed editor', () => {
+  it('throws, runs no onMount and leaves the root untouched', () => {
+    const calls: string[] = []
+    const p = definePlugin({ name: 'p', onMount: () => void calls.push('mount') })
+    const editor = setup([p])
+    editor.destroy()
+    const root = makeRoot()
+    root.innerHTML = '<p>own</p>'
+    expect(() => editor.mount(root)).toThrow('Cannot mount a destroyed editor')
+    expect(editor.view).toBeNull()
+    expect(calls).toEqual([])
+    expect(root.innerHTML).toBe('<p>own</p>')
+    expect(root.hasAttribute('contenteditable')).toBe(false)
+  })
+
+  it('after destroy while mounted: the old root is given back and a remount throws', () => {
+    const editor = setup([])
+    const root = makeRoot()
+    editor.mount(root)
+    const rendered = root.innerHTML
+    editor.destroy()
+    expect(root.hasAttribute('contenteditable')).toBe(false)
+    expect(() => editor.mount(root)).toThrow('Cannot mount a destroyed editor')
+    expect(root.innerHTML).toBe(rendered)
+    expect(root.hasAttribute('contenteditable')).toBe(false)
+  })
+})
+
 describe('lifecycle hooks: onFocus / onBlur', () => {
   function focusSetup() {
     const log: string[] = []

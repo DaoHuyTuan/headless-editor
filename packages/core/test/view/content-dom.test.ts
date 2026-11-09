@@ -232,6 +232,33 @@ describe('non-atom node views: editing', () => {
     expect(editor.state.selection).toEqual(sel([1, 0], 2))
     expect(contentOf(root).textContent).toBe('aêb')
   })
+
+  it('invalidateNodeView during a composition inside the box: rebuilt after the commit, the text kept', () => {
+    const { editor, root, view, rec } = mount(doc(p('a'), b('ab')), { selection: sel([1, 0], 1) })
+    const fire = (type: string) => contentOf(root).dispatchEvent(new Event(type, { bubbles: true }))
+    const before = container(root)
+    fire('compositionstart')
+    const leaf = view.renderer.leafAt([1, 0])!
+    ;(leaf.firstChild as Text).data = 'aêb'
+    view.renderer.invalidateNodeView(editor.state.doc.children[1]!.id)
+    view.update(editor.state)
+    // The rebuild would move the composing leaf into a new container: deferred while composing.
+    expect(container(root)).toBe(before)
+    expect(rec.created).toHaveLength(1)
+    expect(view.renderer.leafAt([1, 0])).toBe(leaf)
+    expect(leaf.isConnected).toBe(true)
+    expect(view.composing).toBe(true)
+    fire('compositionend')
+    expect(texts(editor)).toEqual(['a', 'aêb'])
+    expect(editor.state.selection).toEqual(sel([1, 0], 2))
+    // The commit's render did the deferred rebuild: a new container and instance, the same content.
+    expect(rec.created).toHaveLength(2)
+    expect(rec.destroyed).toBe(1)
+    expect(container(root)).not.toBe(before)
+    expect(contentOf(root).textContent).toBe('aêb')
+    expect(root.textContent).toContain('aêb')
+    expect(readDomSelection(view.renderer, document.getSelection()!)).toEqual(sel([1, 0], 2))
+  })
 })
 
 describe('non-atom node views: mutations', () => {
