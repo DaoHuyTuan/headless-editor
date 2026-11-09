@@ -61,14 +61,14 @@ Status after M2 verification: every item below was closed in M2 except the histo
 
 ## HTML
 - iframe, object, svg, select, textarea and button are not skipped on parse.
-- Text inside inline elements is not collapsed.
-- Mark styles on node-rule elements are ignored.
-- Inconsistent edge cases:
+- ✅ Text inside inline elements is not collapsed.
+- ✅ Mark styles on node-rule elements are ignored.
+- ✅ Inconsistent edge cases:
   - `<div></div>` and `<div> </div>` are treated differently.
   - `<pre>` content is trimmed.
   - A void tag drops its content hole.
-- There is no recursion depth limit.
-- The renderer fills only the first content hole, while the serializer fills every hole.
+- ✅ There is no recursion depth limit.
+- ✅ The renderer fills only the first content hole, while the serializer fills every hole.
 
 ## View
 - Renderer:
@@ -102,9 +102,9 @@ Status after M2 verification: every item below was closed in M2 except the histo
   - Safari's `insertFromComposition` is untested (M4).
 - Clipboard:
   - A trailing newline adds an empty block.
-  - A throw in `transformPasted` after `preventDefault` loses the paste.
+  - ✅ A throw in `transformPasted` after `preventDefault` loses the paste.
   - Plain-text paste doesn't take the surrounding marks.
-  - A paste with no model selection is swallowed.
+  - ✅ A paste with no model selection is swallowed.
   - Malformed payloads spam warnings.
 
 ## React adapter

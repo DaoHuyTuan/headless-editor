@@ -269,6 +269,7 @@ How a node is serialized to HTML for `getHTML()` and the clipboard. It is also t
 type DOMOutputSpec = string | 0 | [tag, attrs?, ...children]
 // ['pre', attrs, ['code', { class: 'language-js' }, 0]]   — 0 marks where the children go
 ```
+Only the first `0` gets the children, in the view and in `getHTML()` alike; later ones stay empty. A `0` inside a void tag (`img`, `hr`, `br`, …) throws, since such a tag cannot have content.
 Merge `options.HTMLAttributes` first, with `mergeAttrs(options.HTMLAttributes, { ...dataDriven })`. Data-driven attributes come last, so they win.
 
 ### `renderText(node, { options }) => string`
@@ -286,6 +287,8 @@ Rewrites pasted or dropped content before it is inserted. `info.at` says where t
 - for a paste at several ranges, each range in turn, because the hook runs **once per range** and the fragment it returns is inserted at that range only.
 
 When `info.at` is `null`, the fragment goes at the main range. Decide by `info.at ?? mainRange(state.selection)`.
+
+A hook that throws is skipped (the fragment goes on unchanged by it) and the error is logged with `console.error`: the browser's paste is already prevented by then, so it is not lost. With no selection at all, a paste goes to the end of the document.
 
 Example: code block flattens rich content to plain text for the ranges inside a code block, and leaves it rich at the others.
 

@@ -21,6 +21,12 @@ const SKIP_TAGS = new Set([
   'iframe', 'object', 'embed', 'svg', 'select', 'textarea', 'button',
 ])
 
+/**
+ * Nesting depth past which an element's content is read as flat text (with the marks from above):
+ * pasted HTML can nest arbitrarily deep, and parsing recurses per level.
+ */
+const MAX_DEPTH = 256
+
 const BOUNDARY = { kind: 'boundary' } as const
 const BREAK = { kind: 'break' } as const
 /** A parsed node, or a marker: `boundary` ends the current inline run, `break` (`<br>`) also forces a block. */
@@ -74,23 +80,61 @@ class Parser {
   private readonly nodeRules: Rule[]
   private readonly markRules: Rule[]
 
+  /** Texts read inside `<pre>`: their whitespace is kept as is (no collapsing, no trimming). */
+  readonly preTexts = new WeakSet<TextNode>()
+
   constructor(private readonly registry: Registry) {
     this.nodeRules = sortedRules(registry, (p) => !!p.spec.node)
     this.markRules = sortedRules(registry, (p) => !!p.spec.mark)
   }
 
-  /** Parses the children of `parent` into items. */
-  children(parent: globalThis.Node, marks: Mark[], pre: boolean): Item[] {
+  /** Parses the children of `parent` into items (`depth`: how deep `parent` is). */
+  children(parent: globalThis.Node, marks: Mark[], pre: boolean, depth = 0): Item[] {
     const out: Item[] = []
-    for (const child of Array.from(parent.childNodes)) this.node(child, marks, pre, out)
+    if (depth >= MAX_DEPTH) {
+      this.flatText(parent, marks, pre, out)
+      return out
+    }
+    for (const child of Array.from(parent.childNodes)) this.node(child, marks, pre, out, depth + 1)
     return out
   }
 
-  private node(dom: globalThis.Node, marks: Mark[], pre: boolean, out: Item[]): void {
+  private text(raw: string, marks: Mark[], pre: boolean, out: Item[]): void {
+    const text = pre ? raw : raw.replace(/[ \t\n\r\f]+/g, ' ')
+    if (!text) return
+    const node: TextNode = { text, marks }
+    if (pre) this.preTexts.add(node)
+    out.push(node)
+  }
+
+  /** The texts below `parent`, in order, without recursion (past `MAX_DEPTH`); skipped tags stay skipped. */
+  private flatText(parent: globalThis.Node, marks: Mark[], pre: boolean, out: Item[]): void {
+    const stack: globalThis.Node[] = Array.from(parent.childNodes).reverse()
+    while (stack.length > 0) {
+      const n = stack.pop()!
+      if (n.nodeType === 3) this.text(n.nodeValue ?? '', marks, pre, out)
+      else if (n.nodeType === 1 && !SKIP_TAGS.has((n as Element).tagName.toLowerCase()))
+        for (let i = n.childNodes.length - 1; i >= 0; i--) stack.push(n.childNodes[i]!)
+    }
+  }
+
+  /** `marks` plus the mark of every mark plugin whose rule matches `el` (tag or style). */
+  private marksOf(el: HTMLElement, marks: Mark[]): Mark[] {
+    let out = marks
+    const matched = new Set<string>()
+    for (const { rule, plugin } of this.markRules) {
+      if (matched.has(plugin.name)) continue
+      const data = matchRule(rule, el)
+      if (!data) continue
+      matched.add(plugin.name)
+      out = withMark(out, { type: plugin.name, data }, this.registry)
+    }
+    return out
+  }
+
+  private node(dom: globalThis.Node, marks: Mark[], pre: boolean, out: Item[], depth: number): void {
     if (dom.nodeType === 3) {
-      const raw = dom.nodeValue ?? ''
-      const text = pre ? raw : raw.replace(/[ \t\n\r\f]+/g, ' ')
-      if (text) out.push({ text, marks })
+      this.text(dom.nodeValue ?? '', marks, pre, out)
       return
     }
     if (dom.nodeType !== 1) return
@@ -106,42 +150,35 @@ class Parser {
     for (const { rule, plugin } of this.nodeRules) {
       const data = matchRule(rule, el)
       if (data) {
-        out.push(...this.element(plugin, data, el, marks, innerPre))
+        // Mark styles on the element itself (`<p style="font-weight: bold">`) apply to its content.
+        out.push(...this.element(plugin, data, el, this.marksOf(el, marks), innerPre, depth))
         return
       }
     }
 
-    let innerMarks = marks
-    const matched = new Set<string>()
-    for (const { rule, plugin } of this.markRules) {
-      if (matched.has(plugin.name)) continue
-      const data = matchRule(rule, el)
-      if (!data) continue
-      matched.add(plugin.name)
-      innerMarks = withMark(innerMarks, { type: plugin.name, data }, this.registry)
-    }
-
-    const items = this.children(el, innerMarks, innerPre)
+    const items = this.children(el, this.marksOf(el, marks), innerPre, depth)
     if (!BLOCK_TAGS.has(tag)) {
       out.push(...items) // unknown inline tag: unwrapped
       return
     }
     // Unknown block tag: its inline runs become default blocks; nested blocks are kept as they are.
+    // Whitespace-only content (outside `<pre>`) counts as no content: an empty block.
     out.push(BOUNDARY)
-    if (items.length === 0) out.push(BREAK)
+    if (items.every((i) => isNode(i) && isText(i) && !this.preTexts.has(i) && i.text.trim() === '')) out.push(BREAK)
     else out.push(...items)
     out.push(BOUNDARY)
   }
 
-  private element(plugin: AnyPlugin, data: Data, el: HTMLElement, marks: Mark[], pre: boolean): Item[] {
+  private element(plugin: AnyPlugin, data: Data, el: HTMLElement, marks: Mark[], pre: boolean, depth: number): Item[] {
     const spec = plugin.spec.node!
     const node: ElementNode = { id: createId(), type: plugin.name, data }
     if (spec.kind === 'inline') {
-      if (!spec.atom) node.children = inlineOnly(this.children(el, marks, pre))
+      // Whitespace collapses across its texts too; its edges stay (they separate it from the text around).
+      if (!spec.atom) node.children = collapseRun(inlineOnly(this.children(el, marks, pre, depth)), this.preTexts, false)
       return [node]
     }
     if (spec.atom) return [BOUNDARY, node, BOUNDARY]
-    const items = this.children(el, marks, pre)
+    const items = this.children(el, marks, pre, depth)
     const hasBlocks = items.some((i) => isNode(i) && this.isBlock(i))
     if (spec.content === undefined && hasBlocks) {
       node.children = this.blockify(items)
@@ -166,7 +203,7 @@ class Parser {
     let run: Node[] = []
     let first = true
     const flush = (force: boolean) => {
-      const children = trimRun(run)
+      const children = collapseRun(run, this.preTexts, true)
       run = []
       if (!force && children.length === 0) return
       blocks.push({
@@ -201,10 +238,11 @@ function inlineOnly(items: Item[]): Node[] {
 }
 
 /**
- * Collapses whitespace across adjacent texts, merges texts with the same marks, trims the run's
- * leading and trailing whitespace and drops empty texts.
+ * Collapses whitespace across adjacent texts, merges texts with the same marks and drops empty
+ * texts; with `trim`, also trims the run's leading and trailing whitespace. Texts in `pre` (read
+ * inside `<pre>`) keep their whitespace, edges included.
  */
-function trimRun(run: Node[]): Node[] {
+function collapseRun(run: Node[], pre: WeakSet<TextNode>, trim: boolean): Node[] {
   const out: Node[] = []
   for (const node of run) {
     if (!isText(node)) {
@@ -214,13 +252,20 @@ function trimRun(run: Node[]): Node[] {
     const prev = out[out.length - 1]
     const prevText = prev && isText(prev) ? prev : null
     let text = node.text
-    if ((!prev || prevText?.text.endsWith(' ')) && text.startsWith(' ')) text = text.replace(/^ +/, '')
+    const startsRun = trim && !prev
+    if (!pre.has(node) && (startsRun || prevText?.text.endsWith(' ')) && text.startsWith(' ')) text = text.replace(/^ +/, '')
     if (!text) continue
-    if (prevText && sameMarks(prevText.marks, node.marks)) prevText.text += text
-    else out.push({ text, marks: node.marks } satisfies TextNode)
+    if (prevText && sameMarks(prevText.marks, node.marks)) {
+      prevText.text += text
+      if (pre.has(node)) pre.add(prevText)
+    } else {
+      const copy: TextNode = { text, marks: node.marks }
+      if (pre.has(node)) pre.add(copy)
+      out.push(copy)
+    }
   }
   const last = out[out.length - 1]
-  if (last && isText(last)) {
+  if (trim && last && isText(last) && !pre.has(last)) {
     last.text = last.text.replace(/ +$/, '')
     if (!last.text) out.pop()
   }
@@ -229,12 +274,15 @@ function trimRun(run: Node[]): Node[] {
 
 /**
  * Parses an HTML string into a block fragment using the plugins' `parseHTML` rules (needs a global
- * `DOMParser`). Element rules are tried by rule priority (default 50), then plugin priority; if
- * none matches, every mark plugin whose rule matches adds its mark. Unknown inline tags are
- * unwrapped; unknown block tags become default blocks, or are unwrapped when they contain blocks.
- * Inline content outside blocks (e.g. bare text) is wrapped into default blocks. Whitespace runs
- * collapse to one space (except inside `<pre>`), whitespace-only text between blocks is dropped
- * and block content is trimmed. M1 has no hard-break node, so `<br>` splits the block.
+ * `DOMParser`). Element rules are tried by rule priority (default 50), then plugin priority; every
+ * mark plugin whose rule matches the element (tag or style) adds its mark to the content, whether an
+ * element rule matched or not (`<p style="font-weight: bold">`). Unknown inline tags are
+ * unwrapped; unknown block tags become default blocks (an empty one for whitespace-only content),
+ * or are unwrapped when they contain blocks. Inline content outside blocks (e.g. bare text) is
+ * wrapped into default blocks. Whitespace runs collapse to one space, across adjacent texts too
+ * (inline elements included); whitespace-only text between blocks is dropped and block content is
+ * trimmed. Inside `<pre>` whitespace is kept as is, edges included. Past `MAX_DEPTH` levels of
+ * nesting, content is read as flat text. M1 has no hard-break node, so `<br>` splits the block.
  * Load the result with `coerceDoc` + `normalize`, or paste it with `insertFragment`.
  */
 export function parseHTML(html: string, registry: Registry): Fragment {

@@ -85,15 +85,15 @@ Items that cannot be acted on here (other machines, decisions, rulings already r
 |---|---|---|---|---|---|
 | 4.1 | ✅ A pasted trailing newline adds an empty block. | m1 | bug | P1 | fixed |
 | 4.2 | ✅ Plain-text paste doesn't take the surrounding marks. | m1 | bug | P1 | fixed |
-| 4.3 | A throw in `transformPasted` after `preventDefault` loses the paste. | m1 | bug | P2 | open |
-| 4.4 | A paste with no model selection is swallowed. | m1 | bug | P2 | open |
+| 4.3 | ✅ A throw in `transformPasted` after `preventDefault` loses the paste. The throwing transform is skipped and logged (`console.error`); the others run. | m1 | bug | P2 | fixed |
+| 4.4 | ✅ A paste with no model selection is swallowed. It goes to the end of the doc (a new default block when there is no editable text). | m1 | bug | P2 | fixed |
 | 4.5 | Malformed payloads spam warnings. | m1 | bug | P3 | open |
 | 4.6 | ✅ Parse doesn't skip iframe, object, svg, select, textarea, button. | m1 | bug | P1 | fixed |
-| 4.7 | Text inside inline elements is not whitespace-collapsed. | m1 | bug | P2 | open |
-| 4.8 | Mark styles on node-rule elements are ignored. | m1 | bug | P2 | open |
-| 4.9 | Edge cases: `<div></div>` vs `<div> </div>`; `<pre>` content is trimmed; a void tag drops its content hole. | m1 | bug | P2 | open |
-| 4.10 | No recursion depth limit in parse. | m1 | bug | P2 | open |
-| 4.11 | The renderer fills only the first content hole, the serializer every hole. | m1 | bug | P2 | open |
+| 4.7 | ✅ Text inside inline elements is not whitespace-collapsed. Collapsed across their texts now (edges kept). | m1 | bug | P2 | fixed |
+| 4.8 | ✅ Mark styles on node-rule elements are ignored. Mark rules now also run on elements an element rule matched. | m1 | bug | P2 | fixed |
+| 4.9 | ✅ Edge cases: `<div></div>` vs `<div> </div>`; `<pre>` content is trimmed; a void tag drops its content hole. Both give an empty block; `<pre>` keeps its whitespace; a hole in a void tag throws in the serializer and the renderer alike. | m1 | bug | P2 | fixed |
+| 4.10 | ✅ No recursion depth limit in parse. Past 256 levels, content is read as flat text (iteratively). | m1 | bug | P2 | fixed |
+| 4.11 | ✅ The renderer fills only the first content hole, the serializer every hole. The serializer fills only the first too (documented in plugin-api). | m1 | bug | P2 | fixed |
 | 4.12 | Attributes: `mergeStyle` only normalizes when base has a style; `parseStyle` ignores comments and unbalanced quotes. | m3 | bug | P3 | open |
 | 4.13 | Clipboard tests: html-only multi-block variants keep `text/plain`; no html-only marks variant. | m4 | test | P3 | open |
 

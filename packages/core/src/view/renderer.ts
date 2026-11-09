@@ -1,5 +1,5 @@
 import type { Editor } from '../editor'
-import { checkAttrName, checkTag, isAttrs, markAttrs } from '../html/serialize'
+import { checkAttrName, checkTag, checkVoidHole, isAttrs, markAttrs } from '../html/serialize'
 import { deepEqualJson, isText, sameMarkSet } from '../model/node'
 import type { DeepReadonly, Doc, ElementNode, Node, Path, TextNode } from '../model/types'
 import { isOpaque } from '../model/editable'
@@ -544,6 +544,7 @@ export class Renderer {
     } else if (maybeAttrs !== undefined) {
       children = [maybeAttrs, ...rest]
     }
+    checkVoidHole(rawTag, children)
     let hole: HolePosition | null = null
     let pending: HolePosition | null = null
     for (const child of children) {

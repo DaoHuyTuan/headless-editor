@@ -365,12 +365,21 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
    * Runs each plugin's `transformPasted` on `fragment`, by priority, with `at`: where the fragment
    * will be inserted (a drop's drop point, or one range of a multi-range paste, which calls this once
    * per range); omitted or null, at the selection (read `at ?? mainRange(state.selection)`).
+   *
+   * A transform that throws is skipped (the fragment goes on as it was before it) and its error is
+   * reported with `console.error`: by then the browser's paste is already prevented, so a throw must
+   * not lose the paste. The other transforms still run.
    */
   transformPasted(fragment: Fragment, at: SelectionRange | null = null): Fragment {
     const info = { at }
     for (const plugin of this.registry.plugins) {
       const transform = plugin.spec.transformPasted
-      if (transform) fragment = transform(fragment, this.getContext(plugin), info)
+      if (!transform) continue
+      try {
+        fragment = transform(fragment, this.getContext(plugin), info)
+      } catch (error) {
+        console.error(`@hte/core: transformPasted of plugin "${plugin.name}" threw; it was skipped`, error)
+      }
     }
     return fragment
   }

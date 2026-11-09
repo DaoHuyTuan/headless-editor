@@ -1,6 +1,7 @@
 import { sanitizeFragment } from './content/sanitize'
 import type { Editor } from './editor'
-import { isNodeSelection } from './model/editable'
+import { isNodeSelection, nearestEditablePoint } from './model/editable'
+import { createId } from './model/id'
 import { mainRange, single } from './model/selection'
 import { comparePoint, toRange } from './model/path'
 import type { Data, Path, Selection, SelectionRange } from './model/types'
@@ -125,8 +126,24 @@ function insertTransfer(intent: InputIntent, editor: Editor): boolean {
   // drop with no point: to the main range). A paste at the selection goes to every range.
   if (sel && (sel.ranges.length > 1 || isNodeSelection(sel)) && (at || intent.inputType === 'insertFromDrop'))
     collapseTo(tr, at ?? mainRange(sel))
+  if (!sel && !at) caretAtDocEnd(tr)
   if (insertFragment(tr, fragment, at ?? undefined) && tr.ops.length > 0) editor.dispatch(tr)
   return true
+}
+
+/**
+ * Puts a caret at the end of the doc's last editable text, for a paste with no model selection
+ * (nothing to paste into otherwise, and the browser's paste is already prevented); with no editable
+ * text at all, into a new empty default block appended at the end.
+ */
+function caretAtDocEnd(tr: Transaction): void {
+  const count = tr.doc.children.length
+  let point = nearestEditablePoint(tr.doc, tr.registry, [count])
+  if (!point) {
+    tr.insertNode([count], { id: createId(), type: tr.registry.defaultBlock, data: {}, children: [{ text: '', marks: [] }] })
+    point = { path: [count, 0], offset: 0 }
+  }
+  tr.setSelection(single({ anchor: point, focus: point }))
 }
 
 /** Default `beforeinput` handling: inputType → edit on the tr. Returning false leaves the intent unhandled. */

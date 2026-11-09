@@ -40,9 +40,33 @@ export function isAttrs(value: unknown): value is Record<string, string | number
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-/** Renders a DOMOutputSpec; the content hole `0` is replaced by `content`. */
-function renderSpec(spec: DOMOutputSpec, content: string): string {
-  if (spec === 0) return content
+/** Whether `spec` holds a content hole `0` at any depth. */
+function hasHole(spec: DOMOutputSpec | Record<string, unknown> | undefined): boolean {
+  if (spec === 0) return true
+  if (!Array.isArray(spec)) return false
+  return spec.slice(1).some((c) => hasHole(c as DOMOutputSpec))
+}
+
+/** Throws when the void tag `tag` holds a content hole: it cannot have content (renderer and serializer alike). */
+export function checkVoidHole(tag: string, children: DOMOutputSpec[]): void {
+  if (VOID_TAGS.has(tag.toLowerCase()) && children.some(hasHole))
+    throw new Error(`Content hole cannot be inside the void tag "${tag}"`)
+}
+
+function isVoidTag(tag: string): boolean {
+  return VOID_TAGS.has(tag.toLowerCase())
+}
+
+/**
+ * Renders a DOMOutputSpec; the first content hole `0` is replaced by `content`, later ones render
+ * nothing (as in the view's renderer, which fills only the first).
+ */
+function renderSpec(spec: DOMOutputSpec, content: string, state = { filled: false }): string {
+  if (spec === 0) {
+    if (state.filled) return ''
+    state.filled = true
+    return content
+  }
   if (typeof spec === 'string') return escapeText(spec)
   const [rawTag, maybeAttrs, ...rest] = spec
   const tag = checkTag(rawTag)
@@ -50,8 +74,9 @@ function renderSpec(spec: DOMOutputSpec, content: string): string {
   let children: DOMOutputSpec[] = rest
   if (isAttrs(maybeAttrs)) attrs = attrsToString(maybeAttrs)
   else if (maybeAttrs !== undefined) children = [maybeAttrs, ...rest]
-  if (VOID_TAGS.has(tag.toLowerCase())) return `<${tag}${attrs}>`
-  return `<${tag}${attrs}>${children.map((c) => renderSpec(c, content)).join('')}</${tag}>`
+  checkVoidHole(tag, children)
+  if (isVoidTag(tag)) return `<${tag}${attrs}>`
+  return `<${tag}${attrs}>${children.map((c) => renderSpec(c, content, state)).join('')}</${tag}>`
 }
 
 export function kebab(prop: string): string {
