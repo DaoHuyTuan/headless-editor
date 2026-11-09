@@ -24,6 +24,12 @@ describe('resolveParts', () => {
     expect(r.Img).toBe(Img)
   })
 
+  it('falls back to the default for a part given as undefined', () => {
+    const r = resolveParts(defaults, { Img: undefined, Handle: false })
+    expect(r.Img).toBe(Img)
+    expect(r.Handle).toBeNull()
+  })
+
   it('returns a replacement as-is, which receives the className', () => {
     const Custom: ComponentType<PartProps> = ({ className }) => <b className={className} data-part="custom" />
     const Part = resolveParts(defaults, { Img: Custom }).Img!
