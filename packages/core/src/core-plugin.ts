@@ -202,7 +202,8 @@ export const corePlugin = definePlugin({
     },
   }),
   // Handled input types are consumed even when there is nothing to change (e.g. Backspace at the
-  // doc start), so the browser never edits the DOM on its own; the tr is dispatched only if it has ops.
+  // doc start), so the browser never edits the DOM on its own; the tr is dispatched only if it changes
+  // something (ops, or the stored marks alone, as for bound commands).
   onBeforeInput: (intent, ctx) => {
     if (Object.hasOwn(PASTE_INPUT, intent.inputType)) return insertTransfer(intent, ctx.editor)
     const action = Object.hasOwn(INPUT_ACTIONS, intent.inputType) ? INPUT_ACTIONS[intent.inputType] : undefined
@@ -212,7 +213,7 @@ export const corePlugin = definePlugin({
     const tr = ctx.editor.createTransaction()
     tr.meta.origin = 'input'
     tr.meta.inputType = intent.inputType
-    if (action(tr, intent) && tr.ops.length > 0) {
+    if (action(tr, intent) && (tr.ops.length > 0 || tr.storedMarks !== ctx.editor.state.storedMarks)) {
       const docBefore = ctx.editor.state.doc
       ctx.editor.dispatch(tr)
       // Typed text (not composition, paste or replacement text) runs the input rules; a rule that

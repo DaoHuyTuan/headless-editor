@@ -41,17 +41,17 @@ Status after M2 verification: every item below was closed in M2 except the histo
 - A throwing event listener skips the remaining events. Wrap each listener and rethrow after all have run.
 - `INPUT_ACTIONS` is a plain object, so inherited keys count as handled.
 - Backspace segments the whole block, which is O(n).
-- `insertText('')` clears stored marks, and the intent path doesn't dispatch a change to stored marks alone.
+- ✅ `insertText('')` clears stored marks, and the intent path doesn't dispatch a change to stored marks alone.
 - Marks:
-  - `toggleMark` on a range covering no characters does nothing.
-  - `toggleMark` checks activity with the raw data, not the validated data.
-  - Caret toggles always create a new array, which causes no-op dispatches.
-  - An explicit collapsed range returns true but does nothing.
+  - ✅ `toggleMark` on a range covering no characters does nothing.
+  - ✅ `toggleMark` checks activity with the raw data, not the validated data.
+  - ✅ Caret toggles always create a new array, which causes no-op dispatches.
+  - ✅ An explicit collapsed range returns true but does nothing (kept for single-range parity; documented).
 - Fragments:
   - Pasting `[h, p]` into an empty paragraph loses the heading type.
-  - The inline-ancestor split doesn't check `createId` against used ids.
-  - An empty-string id is kept.
-  - Nested containers are flattened.
+  - ✅ The inline-ancestor split doesn't check `createId` against used ids.
+  - ✅ An empty-string id is kept.
+  - ✅ Nested containers are flattened.
 - History:
   - ✅ `runHistory` returns true even when the dispatch is vetoed.
   - ✅ It uses a `-Infinity` time sentinel.

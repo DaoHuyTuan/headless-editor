@@ -1,0 +1,201 @@
+import { describe, expect, it } from 'vitest'
+import { z } from 'zod'
+import { definePlugin } from '../../src/plugin/define'
+import { addMark, removeMark } from '../../src/transaction/marks'
+import { insertFragment } from '../../src/transaction/fragment'
+import { setIdGenerator } from '../../src/model/id'
+import type { ElementNode, Mark, Node } from '../../src/model/types'
+import { createTestEditor, doc, el, sel, stripIds, txt } from '../../src/testing/index'
+import { testBold, testParagraph } from '../fixtures'
+
+const bold: Mark = { type: 'bold', data: {} }
+const p = (...children: (Node | string)[]): ElementNode =>
+  el('paragraph', ...children.map((c) => (typeof c === 'string' ? txt(c) : c)))
+
+function setup(content = doc(p('ab')), selection = sel([0, 0], 1)) {
+  return createTestEditor({ plugins: [testParagraph, testBold], doc: content, selection })
+}
+
+describe('insertText with empty text (3.3)', () => {
+  it("insertText('') at a caret keeps the stored marks", () => {
+    const ed = setup()
+    const tr = ed.createTransaction()
+    tr.setStoredMarks([bold])
+    tr.insertText('')
+    expect(tr.storedMarks).toEqual([bold])
+    expect(tr.ops.filter((op) => op.type !== 'set_selection')).toHaveLength(0)
+  })
+
+  it("insertText('') over a range deletes it", () => {
+    const ed = setup(doc(p('abc')), sel([0, 0], 0, [0, 0], 2))
+    expect(ed.commands.insertText('')).toBe(true)
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p('c'))))
+  })
+
+  it('an empty insertText intent at a caret changes nothing and keeps the stored marks', () => {
+    const ed = setup()
+    const tr = ed.createTransaction()
+    tr.setStoredMarks([bold])
+    ed.dispatch(tr)
+    const before = ed.state
+    expect(ed.handleIntent({ inputType: 'insertText', data: '', range: null })).toBe(true)
+    expect(ed.state).toBe(before)
+    expect(ed.state.storedMarks).toEqual([bold])
+  })
+
+  it('an intent with a different target collapses there and drops the stored marks', () => {
+    const ed = setup()
+    const tr = ed.createTransaction()
+    tr.setStoredMarks([bold])
+    ed.dispatch(tr)
+    ed.handleIntent({
+      inputType: 'insertReplacementText',
+      data: '',
+      range: { anchor: { path: [0, 0], offset: 0 }, focus: { path: [0, 0], offset: 0 } },
+    })
+    expect(ed.state.selection).toEqual(sel([0, 0], 0))
+    expect(ed.state.storedMarks).toBeNull()
+  })
+
+  it('a Backspace with nothing to delete keeps the stored marks', () => {
+    const ed = setup(doc(p('ab')), sel([0, 0], 0))
+    const tr = ed.createTransaction()
+    tr.setStoredMarks([bold])
+    ed.dispatch(tr)
+    expect(ed.handleIntent({ inputType: 'deleteContentBackward', data: null, range: null })).toBe(true)
+    expect(ed.state.storedMarks).toEqual([bold])
+  })
+})
+
+describe('toggleMark edge cases (3.4)', () => {
+  const atom = definePlugin({ name: 'chip', node: { kind: 'inline', atom: true } })
+  /** A mark whose validator coerces: `{ size: '12' }` becomes `{ size: 12 }`. */
+  const size = definePlugin({
+    name: 'size',
+    mark: { render: () => ({ tag: 'span' }) },
+    data: z.object({ size: z.coerce.number() }),
+  })
+
+  it('a range covering no characters toggles the stored marks, both ways', () => {
+    // [0,0]:0 to [0,2]:0 spans only the chip (and empty texts around it).
+    const content = doc(p('', el('chip', {}), ''))
+    const ed = createTestEditor({ plugins: [testParagraph, testBold, atom], doc: content, selection: sel([0, 0], 0, [0, 2], 0) })
+    expect(ed.commands.toggleMark('bold')).toBe(true)
+    expect(ed.state.storedMarks).toEqual([bold])
+    expect(ed.isActive('bold')).toBe(true)
+    expect(ed.commands.toggleMark('bold')).toBe(true)
+    expect(ed.state.storedMarks).toEqual([])
+    expect(ed.isActive('bold')).toBe(false)
+  })
+
+  it('typing over such a range after the toggle types bold', () => {
+    const content = doc(p('', el('chip', {}), ''))
+    const ed = createTestEditor({ plugins: [testParagraph, testBold, atom], doc: content, selection: sel([0, 0], 0, [0, 2], 0) })
+    ed.commands.toggleMark('bold')
+    ed.handleIntent({ inputType: 'insertText', data: 'x', range: null })
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p({ text: 'x', marks: [bold] }))))
+  })
+
+  it('decides the direction with the validated data', () => {
+    const content = doc(p({ text: 'ab', marks: [{ type: 'size', data: { size: 12 } }] }))
+    const ed = createTestEditor({ plugins: [testParagraph, size], doc: content, selection: sel([0, 0], 0, [0, 0], 2) })
+    // `{ size: '12' }` validates to `{ size: 12 }`, which the text already has: the toggle removes it.
+    expect(ed.commands.toggleMark('size', { size: '12' })).toBe(true)
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p('ab'))))
+  })
+
+  it('a caret toggle that leaves the stored marks as they are changes nothing', () => {
+    const ed = setup(doc(p({ text: 'ab', marks: [bold] })), sel([0, 0], 1))
+    const before = ed.state
+    // Bold is already active at the caret: setMark keeps the same set, so nothing is dispatched.
+    expect(ed.commands.setMark('bold')).toBe(true)
+    expect(ed.state).toBe(before)
+    const tr = ed.createTransaction()
+    tr.setStoredMarks([bold])
+    const stored = tr.storedMarks
+    tr.addMark(bold)
+    expect(tr.storedMarks).toBe(stored)
+  })
+
+  it('addMark / removeMark with an explicit collapsed range change nothing, not even the stored marks', () => {
+    const ed = setup(doc(p('ab')), sel([0, 0], 1))
+    const tr = ed.createTransaction()
+    const at = { anchor: { path: [0, 0], offset: 1 }, focus: { path: [0, 0], offset: 1 } }
+    // True, as recorded in the single-range mark parity scenarios.
+    expect(addMark(tr, bold, at)).toBe(true)
+    expect(removeMark(tr, 'bold', at)).toBe(true)
+    expect(tr.ops).toHaveLength(0)
+    expect(tr.storedMarks).toBeNull()
+  })
+})
+
+describe('fragments (3.5)', () => {
+  const quote = definePlugin({ name: 'quote', node: { kind: 'block' } })
+  const inl = definePlugin({ name: 'link', node: { kind: 'inline' } })
+  const pq = (t: string) => p(t)
+  const json = (ed: ReturnType<typeof createTestEditor>) => stripIds(ed.getJSON())
+
+  it('a lone container block goes in whole, splitting the text block', () => {
+    const ed = createTestEditor({ plugins: [testParagraph, quote], doc: doc(p('xy')), selection: sel([0, 0], 1) })
+    ed.commands.insertContent([el('quote', pq('a'), pq('b'))])
+    expect(json(ed)).toEqual(stripIds(doc(p('x'), el('quote', pq('a'), pq('b')), p('y'))))
+    expect(ed.state.selection).toEqual(sel([1, 1, 0], 1))
+  })
+
+  it('a container pasted inside a container nests there', () => {
+    const ed = createTestEditor({ plugins: [testParagraph, quote], doc: doc(el('quote', p('xy'))), selection: sel([0, 0, 0], 1) })
+    ed.commands.insertContent([el('quote', pq('a'), pq('b'))])
+    expect(json(ed)).toEqual(stripIds(doc(el('quote', p('x'), el('quote', pq('a'), pq('b')), p('y')))))
+  })
+
+  it('a container at an edge of several blocks goes in whole too', () => {
+    const ed = createTestEditor({ plugins: [testParagraph, quote], doc: doc(p('xy')), selection: sel([0, 0], 1) })
+    ed.commands.insertContent([el('quote', pq('a'), pq('b')), p('2')])
+    expect(json(ed)).toEqual(stripIds(doc(p('x'), el('quote', pq('a'), pq('b')), p('2y'))))
+    const ed2 = createTestEditor({ plugins: [testParagraph, quote], doc: doc(p('xy')), selection: sel([0, 0], 1) })
+    ed2.commands.insertContent([p('1'), el('quote', pq('a'), pq('b'))])
+    expect(json(ed2)).toEqual(stripIds(doc(p('x1'), el('quote', pq('a'), pq('b')), p('y'))))
+  })
+
+  it('an empty-string id gets a fresh one', () => {
+    const ed = createTestEditor({ plugins: [testParagraph], doc: doc(p('xy')), selection: sel([0, 0], 2) })
+    const tr = ed.createTransaction()
+    // Straight to the transaction (no sanitize step): `''` is no id. The middle block goes in whole.
+    const blank = (t: string): ElementNode => ({ id: '', type: 'paragraph', data: {}, children: [txt(t)] })
+    insertFragment(tr, [p('a'), blank('b'), p('c')])
+    ed.dispatch(tr)
+    const ids = ed.state.doc.children.map((b) => (b as ElementNode).id)
+    expect(ids).not.toContain('')
+    expect(new Set(ids).size).toBe(ids.length)
+  })
+
+  it('splitting an inline ancestor for a block paste never reuses an id in the doc', () => {
+    // A generator that would hand out an id already used in the doc.
+    const ed = createTestEditor({
+      plugins: [testParagraph, inl],
+      doc: doc(p('', el('link', txt('xy')), '')),
+      selection: sel([0, 1, 0], 1),
+    })
+    const taken = (ed.state.doc.children[0] as ElementNode).id
+    const fragment = [p('1'), p('2')]
+    // Every other id is one the doc already has (a loop that checks skips it; one that doesn't, keeps it).
+    let calls = 0
+    setIdGenerator(() => (++calls % 2 === 1 ? taken : `g${calls}`))
+    try {
+      const tr = ed.createTransaction()
+      insertFragment(tr, fragment)
+      ed.dispatch(tr)
+    } finally {
+      setIdGenerator(null)
+    }
+    const all: string[] = []
+    const walk = (n: Node) => {
+      if ('id' in n) {
+        all.push(n.id)
+        n.children?.forEach(walk)
+      }
+    }
+    ed.getJSON().children.forEach(walk)
+    expect(new Set(all).size).toBe(all.length)
+  })
+})

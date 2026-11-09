@@ -458,6 +458,8 @@ export function insertText(tr: Transaction, text: string, at?: SelectionRange | 
 
 function insertTextStep(tr: Transaction, text: string, range: Range): SelectionRange {
   const stored = tr.storedMarks
+  // Nothing to insert at a caret: a no-op, the stored marks are kept for the next typed text.
+  if (text === '' && pointEquals(range.start, range.end)) return caret(range.start)
   // Typing over a range keeps the marks of its first covered character (read before deleting).
   const replaced = stored ? null : marksOfRange(tr.doc, range, tr.registry)
   const point = deleteRangeStep(tr, range) ?? range.start
@@ -704,10 +706,17 @@ function splitBlockStep(tr: Transaction, range: Range): SelectionRange {
 
 /**
  * Splits the text at `point`, then every ancestor up to and including the block at `blockPath`;
- * the new right-hand block gets `props` (inline ancestors get fresh ids). Returns the start of the
- * new block (its first text, at offset 0).
+ * the new right-hand block gets `props` (inline ancestors get ids from `newId`, by default
+ * `createId`; pass one that checks the ids in use when the generator may repeat them). Returns the
+ * start of the new block (its first text, at offset 0).
  */
-export function splitBlockAt(tr: Transaction, point: Point, blockPath: Path, props: Partial<ElementNode>): Point {
+export function splitBlockAt(
+  tr: Transaction,
+  point: Point,
+  blockPath: Path,
+  props: Partial<ElementNode>,
+  newId: () => string = createId,
+): Point {
   let path = point.path
   let position = point.offset
   tr.apply({ type: 'split_node', path, position, properties: { marks: textAt(tr, path).marks } })
@@ -715,7 +724,7 @@ export function splitBlockAt(tr: Transaction, point: Point, blockPath: Path, pro
     position = path[path.length - 1]! + 1
     path = parentPath(path)
     const inline = getNode(tr.doc, path) as ElementNode
-    tr.apply({ type: 'split_node', path, position, properties: { id: createId(), type: inline.type, data: inline.data } })
+    tr.apply({ type: 'split_node', path, position, properties: { id: newId(), type: inline.type, data: inline.data } })
   }
   tr.apply({ type: 'split_node', path: blockPath, position: path[path.length - 1]! + 1, properties: props })
   const newBlock = nextPath(blockPath)
