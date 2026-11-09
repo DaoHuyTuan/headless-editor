@@ -2,7 +2,7 @@
 import { StrictMode, type ComponentType, type ReactNode } from 'react'
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { nodeSelection, type Editor, type NodeViewPropsOf } from '@hte/core'
+import { isNodeSelection, nodeSelection, type Editor, type NodeViewPropsOf } from '@hte/core'
 import { doc, el, sel, txt } from '@hte/core/testing'
 import { paragraph } from '@hte/paragraph'
 import { EditorContent, useEditor } from '@hte/react'
@@ -47,11 +47,15 @@ beforeEach(() => {
   warnExpected = false
 })
 afterEach(() => {
-  // StrictMode: no React error or warning in any test.
-  expect(errors).not.toHaveBeenCalled()
-  if (!warnExpected) expect(warns).not.toHaveBeenCalled()
+  // Clean up and restore first, so a failing assertion below never leaves a mounted tree or a spy
+  // behind for the next tests (cascading failures). The calls are read before the restore.
   cleanup()
+  const errorCalls = [...errors.mock.calls]
+  const warnCalls = [...warns.mock.calls]
   vi.restoreAllMocks()
+  // StrictMode: no React error or warning in any test (unmounting included).
+  expect(errorCalls).toEqual([])
+  if (!warnExpected) expect(warnCalls).toEqual([])
 })
 
 const dataOf = (e: TestEditor) => (e.state.doc.children[1] as unknown as { data: ImageData }).data
@@ -267,6 +271,37 @@ describe('ImageView', () => {
     ptr('pointerup', 90)
     expect(img.getAttribute('width')).toBe('100')
     expect(t.editor().state).toBe(before)
+  })
+
+  it('a mousedown on the picture node-selects the image; on the resize handle or the alt input it does not', () => {
+    const t = setup({ width: 100 })
+    const before = t.editor().state.selection
+    for (const target of [t.handle(), t.input()]) {
+      const down = new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 })
+      act(() => {
+        target.dispatchEvent(down)
+      })
+      expect(down.defaultPrevented).toBe(false)
+      expect(t.editor().state.selection).toEqual(before)
+      expect(t.figure().hasAttribute('data-selected')).toBe(false)
+    }
+    // Control: the same press on the <img> does node-select it.
+    act(() => {
+      t.figure().querySelector('img')!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }))
+    })
+    expect(isNodeSelection(t.editor().state.selection!)).toBe(true)
+    expect(t.figure().getAttribute('data-selected')).toBe('')
+  })
+
+  it('the view keeps an unsafe src out of the <img> even when the data holds one (safeSrc guard)', () => {
+    // The schema never lets such a src into the doc; a view handed one anyway (here by overriding the
+    // node) must still not render it.
+    const t = setup(undefined, (p) => (
+      <ImageView {...p} node={{ ...p.node, data: { ...p.node.data, src: ' javascript:alert(1)' } }} />
+    ))
+    const img = t.figure().querySelector('img')!
+    expect(img.hasAttribute('src')).toBe(false)
+    expect(t.root.innerHTML).not.toContain('javascript:')
   })
 
   it('the resize handle has an accessible role and label', () => {

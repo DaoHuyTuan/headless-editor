@@ -7,7 +7,8 @@ import {
   nodeSelection,
   serializeForClipboard,
   serializeHTML,
-  toRange,   type Doc,
+  toRange,
+  type Doc,
   type ElementNode,
   type InputIntent,
 } from '@hte/core'
