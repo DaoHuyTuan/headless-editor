@@ -322,3 +322,67 @@ describe('forEachRange and a delete-then-reinsert (3.15, documented)', () => {
     expect(tr.selection!.ranges).toEqual([c(1), c(4)])
   })
 })
+
+describe('coverage gaps (3.16)', () => {
+  const italic = definePlugin({ name: 'italic', mark: { render: () => ({ tag: 'em' }) } })
+  const quote = definePlugin({ name: 'quote', node: { kind: 'block' } })
+  const it_: Mark = { type: 'italic', data: {} }
+
+  it('Backspace at the start of a second text ([0, 1]:0) deletes the last character of the text before it', () => {
+    const ed = setup(doc(p('ab', txt('cd', 'bold'))), sel([0, 1], 0))
+    expect(ed.commands.deleteBackward()).toBe(true)
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p('a', txt('cd', 'bold')))))
+    expect(ed.state.selection).toEqual(sel([0, 0], 1))
+  })
+
+  it('Backspace at [0, 1]:0 after a one-character text removes that text and keeps the marks after it', () => {
+    const ed = setup(doc(p('a', txt('cd', 'bold'))), sel([0, 1], 0))
+    expect(ed.commands.deleteBackward()).toBe(true)
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p(txt('cd', 'bold')))))
+    expect(ed.state.selection).toEqual(sel([0, 0], 0))
+  })
+
+  it('a delete across blocks with several marks keeps each side’s marks and merges the blocks', () => {
+    const ed = createTestEditor({
+      plugins: [testParagraph, testBold, italic],
+      doc: doc(p(txt('ab', bold, it_), 'c'), p(txt('de', it_), txt('fg', bold))),
+      selection: sel([0, 0], 1, [1, 1], 1),
+    })
+    expect(ed.commands.deleteBackward()).toBe(true)
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p(txt('a', bold, it_), txt('g', bold)))))
+    expect(ed.state.selection).toEqual(sel([0, 0], 1))
+    expect(ed.commands.undo()).toBe(true)
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p(txt('ab', bold, it_), 'c'), p(txt('de', it_), txt('fg', bold)))))
+  })
+
+  it('a block paste at the end of a block puts the first block’s text there and the caret after the last', () => {
+    const ed = setup(doc(p('ab'), p('z')), sel([0, 0], 2))
+    expect(ed.commands.insertContent([p('X'), p('Y')])).toBe(true)
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p('abX'), p('Y'), p('z'))))
+    expect(ed.state.selection).toEqual(sel([1, 0], 1))
+  })
+
+  describe('deleteRange across blocks that are not siblings, with an opaque edge', () => {
+    const load = (content: ReturnType<typeof doc>) =>
+      createTestEditor({ plugins: [testParagraph, testBold, quote], doc: content })
+
+    it('an opaque end block nested in a container is removed whole; the texts before it are trimmed', () => {
+      const ed = load(doc(p('ab'), el('quote', p('cd'), el('weird', txt('zz'))), p('ef')))
+      const tr = ed.createTransaction()
+      // From inside "ab" to inside the unknown block (a raw range: no caret can be inside it).
+      tr.deleteRange({ anchor: { path: [0, 0], offset: 1 }, focus: { path: [1, 1, 0], offset: 1 } })
+      ed.dispatch(tr)
+      expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p('a'), el('quote', p('')), p('ef'))))
+      expect(ed.state.selection).toEqual(sel([0, 0], 1))
+    })
+
+    it('an opaque start block nested in a container is removed whole; the caret goes to the nearest editable point', () => {
+      const ed = load(doc(p('ab'), el('quote', el('weird', txt('zz')), p('cd')), p('ef')))
+      const tr = ed.createTransaction()
+      tr.deleteRange({ anchor: { path: [1, 0, 0], offset: 1 }, focus: { path: [2, 0], offset: 1 } })
+      ed.dispatch(tr)
+      expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p('ab'), el('quote', p('')), p('f'))))
+      expect(ed.state.selection).toEqual(sel([1, 0, 0], 0))
+    })
+  })
+})

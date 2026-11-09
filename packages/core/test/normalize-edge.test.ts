@@ -127,6 +127,41 @@ describe('selection when its node goes away (3.9, 3.13)', () => {
   })
 })
 
+describe('rule 11: selection mapping across several newlines (3.16)', () => {
+  // "a\nbc\nd\nef": a 0, \n 1, b 2, c 3, \n 4, d 5, \n 6, e 7, f 8; lines a | bc | d | ef.
+  const pt = (path: number[], offset: number) => ({ path, offset })
+  const lines = doc(el('paragraph', txt('a\nbc\nd\nef')))
+  const split = doc(p('a'), p('bc'), p('d'), p('ef'))
+
+  it('maps every range of a multi-range selection to its own line, keeping direction and main', () => {
+    const ed = createTestEditor({
+      plugins: [testParagraph],
+      doc: lines,
+      selection: {
+        ranges: [
+          { anchor: pt([0, 0], 3), focus: pt([0, 0], 3) },
+          { anchor: pt([0, 0], 8), focus: pt([0, 0], 5) },
+        ],
+        main: 1,
+      },
+    })
+    expect(shape(ed.getJSON())).toEqual(shape(split))
+    expect(ed.state.selection).toEqual({
+      ranges: [
+        { anchor: pt([1, 0], 1), focus: pt([1, 0], 1) },
+        { anchor: pt([3, 0], 1), focus: pt([2, 0], 0) },
+      ],
+      main: 1,
+    })
+  })
+
+  it('a range spanning several newlines: before a newline stays on its line, after one starts the next', () => {
+    const ed = createTestEditor({ plugins: [testParagraph], doc: lines, selection: sel([0, 0], 1, [0, 0], 7) })
+    expect(shape(ed.getJSON())).toEqual(shape(split))
+    expect(ed.state.selection).toEqual(sel([0, 0], 1, [3, 0], 0))
+  })
+})
+
 describe('a default block with a data schema (3.12)', () => {
   const para = (data: z.ZodType) =>
     definePlugin({ name: 'paragraph', node: { kind: 'block', default: true, content: 'inline' }, data })

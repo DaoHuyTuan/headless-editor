@@ -54,6 +54,18 @@ describe('nodeSelection / isNodeSelection / findPathById', () => {
     expect(() => nodeSelection(ed.state.doc, ed.registry, [5])).toThrow()
   })
 
+  it('a non-atom block with a node view is not node-selectable (3.16)', () => {
+    const callout = definePlugin({ name: 'callout', node: { kind: 'block', content: 'inline' } })
+    const ed = createTestEditor({
+      plugins: [testParagraph, callout],
+      doc: doc(p('a'), el('callout', txt('note')), p('b')),
+      nodeViews: { callout: () => ({ dom: document.createElement('div'), update: () => {}, destroy: () => {} }) as never },
+    })
+    expect(() => nodeSelection(ed.state.doc, ed.registry, [1])).toThrow(/No opaque element at \[1\]/)
+    const tr = ed.createTransaction()
+    expect(() => tr.setSelection(nodeSel([1], [0, 0], 1))).toThrow(/not an opaque element/)
+  })
+
   it('tr.setSelection with a node that is not an opaque element throws in dev mode', () => {
     const ed = setup(doc(p('a'), atom()))
     const tr = ed.createTransaction()
