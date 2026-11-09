@@ -164,6 +164,19 @@ describe('node views: renderer', () => {
     expect(rec.created).toHaveLength(1)
   })
 
+  it("an extended or configured plugin's view gets that plugin's options, storage and state", () => {
+    const extended = image
+      .configure({ label: 'configured' })
+      .extend({ storage: () => ({ kind: 'extended' }), state: { init: () => 'extended state', apply: (_tr, s) => s } })
+    const { editor, rec } = mount(doc(p('a'), img()), { plugins: [testParagraph, extended] })
+    const { props } = rec.created[0]!
+    expect(props.options).toEqual({ label: 'configured' })
+    expect(props.storage).toEqual({ kind: 'extended' })
+    expect(props.state).toBe('extended state')
+    editor.setPluginOptions('image', { label: 'second' })
+    expect(rec.updates.at(-1)!.options).toEqual({ label: 'second' })
+  })
+
   it('a node selection sets data-hte-selected and selected: true; leaving it clears both', () => {
     const { editor, root, rec } = mount(doc(p('a'), img(), p('b')))
     const tr = editor.createTransaction()

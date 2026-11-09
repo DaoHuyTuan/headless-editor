@@ -37,7 +37,7 @@ export const highlight = definePlugin({
    - [Selections and multiple ranges](#selections-and-multiple-ranges): what every command must know.
 6. [Transactions](#transactions): `filterTransaction`, `appendTransaction`, `normalize`.
 7. [HTML and clipboard](#html-and-clipboard): `parseHTML`, `renderHTML`, `renderText`, `transformPasted`.
-8. [View integration](#view-integration): `decorations`, `stopEvent`, `ignoreMutation`.
+8. [View integration](#view-integration): `decorations`, `stopEvent`, `ignoreMutation`, and the editor methods behind the view (`handleDOMEvent`, `transformPasted`).
 9. [Plugin state and storage](#plugin-state-and-storage): `state`, `storage`.
 10. [Lifecycle](#lifecycle): `onCreate`, `onMount`, `onUpdate`, `onSelectionUpdate`, `onFocus`, `onBlur`, `destroy`.
 11. [The `ctx` object](#the-ctx-object)
@@ -304,11 +304,26 @@ Visual-only styling that is never stored. It is called on every view update, so 
 ```
 Example uses: syntax highlighting, a search-match highlight, the active mention trigger.
 
+A widget's `key` is its identity. While a widget with the same key is decorated, the view keeps the element the first `render` returned: `render` is not called again, even if it would now build something else, and the element moves with `at`. To show new content, use a new key (or update the kept element yourself). Two widgets with the same key in one render: the second gets its own, unkeyed element.
+
+The view marks what it renders for decorations: every widget element gets `data-hte-widget` and every inline decoration span gets `data-hte-deco`. The names are exported as `WIDGET_ATTR` and `DECO_ATTR` from `@hte/core`, to style or find them (in CSS, tests, or a `stopEvent` hook). Never set them yourself.
+
 ### `stopEvent(event, node, ctx) => boolean`
-For an event inside one of your node views, outside its `contentDOM`. Return `true` to make the editor ignore the event entirely, without handling it or calling `preventDefault`. For controls you usually don't need this hook: mark the element `data-editor-ignore` instead.
+For an event inside one of your node views, outside its `contentDOM`. Return `true` to make the editor ignore the event entirely, without handling it or calling `preventDefault`.
+
+For focusable controls (inputs, textareas, buttons) don't use this hook: mark the element `data-editor-ignore` (`IGNORE_ATTR`). That attribute also leaves the element's mutations, focus and selection to it, which `stopEvent` does not.
 
 ### `ignoreMutation(record, node, ctx) => boolean`
-For a DOM mutation inside one of your node views, outside its `contentDOM`. Without the hook, such mutations are ignored. Return `false` to have the mutation reverted, which rebuilds the node view.
+For a DOM mutation inside one of your node views, outside its `contentDOM`. Without the hook, such mutations are ignored. Return `false` to have the mutation reverted, which rebuilds the node view (a new container and a new instance).
+
+Return `false` only for changes your view did not make itself. A rebuilt view that renders asynchronously (a React portal commits after the rebuild) mutates its new container; if the hook returns `false` for those mutations too, each one rebuilds the view again, which renders again, in an endless loop.
+
+### Editor methods behind the view
+The DOM view drives two plugin hooks through public editor methods. A custom view, or a test, calls them the same way:
+- `editor.handleDOMEvent(type, event) => boolean` runs the plugins' [`handleDOMEvents`](#handledomevents-keydown-beforeinput-input)`[type]` by priority, and returns `true` when one claimed the event. The view calls it for `keydown`, `beforeinput` and `input` on the root (not for events inside `data-editor-ignore`), and then prevents a claimed `keydown` or `beforeinput`; the method itself never calls `preventDefault`.
+- `editor.transformPasted(fragment, at?) => Fragment` runs every plugin's [`transformPasted`](#transformpastedfragment-ctx-info--fragment) by priority with `info.at = at ?? null`, skipping (and logging) one that throws. The clipboard and drop modules call it through `parseFromClipboard` once per target range (the drop point for a drop). Call it on any fragment you insert as pasted content.
+
+A headless editor (never mounted) gets no DOM events, so `handleDOMEvents` runs only through `handleDOMEvent`. `transformPasted` runs through `transformPasted`, which the core paste intent (`insertFromPaste` through `editor.handleIntent`) also calls; `insertFragment` does not transform its fragment.
 
 ---
 

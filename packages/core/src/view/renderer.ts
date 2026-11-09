@@ -768,9 +768,8 @@ export class Renderer {
     let out = inner
     for (let i = marks.length - 1; i >= 0; i--) {
       const mark = marks[i]!
-      const dom = registry.mark(mark.type)!.render(mark.data, {
-        options: this.editor.getPluginOptions(mark.type),
-      })
+      const registered = registry.mark(mark.type)!
+      const dom = registered.render(mark.data, { options: this.editor.getPluginOptions(registered.plugin.name) })
       const el = this.doc.createElement(checkTag(dom.tag))
       for (const [name, value] of Object.entries(markAttrs(dom))) {
         checkAttrName(name)

@@ -229,6 +229,10 @@ export interface PluginSpec<
    * For an event inside a node view of this plugin's type (outside its `contentDOM`, whose events
    * are editor content): true makes the editor ignore it (no
    * handling, no `preventDefault`). Events inside `data-editor-ignore` are ignored without asking.
+   *
+   * For a focusable control (an input, a textarea, a button), mark the element `data-editor-ignore`
+   * instead of using this hook: that also leaves its mutations, focus and selection to it, which
+   * `stopEvent` does not (the editor would still take the selection back from it).
    */
   stopEvent?: (event: Event, node: ElementNode, ctx: PluginContext<O, S, C, T>) => boolean
   /**
@@ -236,6 +240,11 @@ export interface PluginSpec<
    * mutations are reverted from the model like any content; moving `contentDOM` itself is ignored): false has it reverted (the node
    * view is rebuilt). Without this hook such mutations are ignored; inside `data-editor-ignore` they
    * always are.
+   *
+   * Return false only for changes the view did not make itself. A rebuilt view that renders
+   * asynchronously (e.g. a React portal commit) mutates its new container after the rebuild; if the
+   * hook returns false for those mutations too, each one rebuilds the view again, which renders
+   * again: an endless loop. Recognize the view's own rendering (return true for it).
    */
   ignoreMutation?: (record: MutationRecord, node: ElementNode, ctx: PluginContext<O, S, C, T>) => boolean
   /**

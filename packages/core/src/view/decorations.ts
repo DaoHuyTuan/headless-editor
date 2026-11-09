@@ -18,6 +18,11 @@ export interface InlineDecoration {
  * A non-editable element shown at `at` (a point in a text), keyed by `key`: while a widget with the
  * same key is decorated, its element is reused (`render` runs once). Never part of the model.
  *
+ * The key is the widget's identity: a later decoration with the same key keeps the element the first
+ * `render` returned, even when its `render` would now build something else (and wherever `at` moved).
+ * To show new content, give it a new key, or update the kept element yourself. Two widgets with the
+ * same key in one render: the second gets its own, unkeyed element.
+ *
  * Placement: the widget is rendered inside the text's leaf, inside its mark wrappers, between the
  * text segments at `at.offset` (so it inherits the text's mark styling). It gets
  * `contenteditable="false"` and `data-hte-widget`; its text never counts as model text, a DOM
@@ -32,9 +37,15 @@ export interface WidgetDecoration {
 
 export type Decoration = InlineDecoration | WidgetDecoration
 
-/** Marks a rendered widget element: its content is not model text and its mutations are ignored. */
+/**
+ * The attribute (`data-hte-widget`) the renderer sets on every widget element: its content is not
+ * model text and its mutations are ignored. Use it to style or find widgets; never set it yourself.
+ */
 export const WIDGET_ATTR = 'data-hte-widget'
-/** Marks the span of an inline decoration segment. */
+/**
+ * The attribute (`data-hte-deco`) the renderer sets on the span of each inline decoration segment
+ * (beside the decoration's own `attrs`). Use it to style or find them; never set it yourself.
+ */
 export const DECO_ATTR = 'data-hte-deco'
 
 /** The decorations that fall in one text, with offsets local to it. */

@@ -704,7 +704,10 @@ function deleteDirectionStep(
   const point = range.anchor
   const blockPath = blockPathOf(tr, point.path)
   // Characters and words stay within the run: an inline atom next to the caret is removed whole
-  // (its neighbour texts keep the caret: the range is mapped through the removal).
+  // (its neighbour texts keep the caret: the range is mapped through the removal). A word deletion
+  // removes it too, alone: an atom is one unit with no word inside to stop at (it is not selected
+  // first like a block atom, which only Backspace/Delete at a block edge reaches), and the words
+  // beyond it are left for the next press, as browsers treat an inline image.
   if (unit !== 'line') {
     const run = runAt(tr, blockPath, point)
     const runOffset = toBlockOffset(run, point)

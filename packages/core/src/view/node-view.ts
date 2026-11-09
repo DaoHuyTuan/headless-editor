@@ -64,9 +64,11 @@ export class NodeViewHost {
   }
 
   /**
-   * Gives the view of `node` its current props when its data, its selected state or (with `force`,
-   * after an options change) its options changed. Other node changes only refresh the node
-   * reference kept for the next update.
+   * Gives the view of `node` new props (`node`, `selected`, fresh options) when its data, its selected
+   * state or (with `force`, after an options change) its options changed. Any other change (a new node
+   * object with equal data, e.g. new children or a moved node) calls nothing and keeps the props as
+   * they were: `props.node` stays the node last given, so it can be older than the doc's (equal
+   * data). Read the current node through `getPos()` and the editor state when that matters.
    */
   update(node: ElementNode, selected: boolean, force: boolean): void {
     const view = this.views.get(node.id)
@@ -99,18 +101,20 @@ export class NodeViewHost {
   private props(node: ElementNode, selected: boolean, contentDOM: HTMLElement | undefined): NodeViewProps {
     const { editor } = this
     const id = node.id
-    const type = node.type
+    // The node's plugin, by its name (a node type is registered under its plugin's name today; the
+    // lookup goes through the registry so options, storage and state always follow the plugin).
+    const name = editor.registry.node(node.type)?.plugin.name ?? node.type
     const getPos = (): Path | null => findPathById(editor.state.doc, id)
     return {
       ...(contentDOM ? { contentDOM } : {}),
       node,
       selected,
       editor,
-      options: editor.getPluginOptions(type),
-      storage: (editor.storage as Record<string, unknown>)[type],
+      options: editor.getPluginOptions(name),
+      storage: (editor.storage as Record<string, unknown>)[name],
       // Read on access: always the plugin's current state, even between updates.
       get state() {
-        return editor.getPluginState(type)
+        return editor.getPluginState(name)
       },
       getPos,
       updateData: (partial) => {
