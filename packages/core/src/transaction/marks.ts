@@ -147,9 +147,12 @@ function allHaveMark(
     const r = ordered(range)
     const covered = coveredTexts(state.doc, r, registry)
     const inert = covered.length === 0 && !isCollapsedRange(r)
+    // A selected node has no caret marks of its own: only the stored marks count (its caret sits in
+    // a neighbouring text, whose marks are not the node's).
+    const caretMarks = () => (range.node ? [] : marksAtPoint(state.doc, r.start))
     const active =
       covered.length === 0
-        ? (state.storedMarks ?? marksAtPoint(state.doc, r.start)).some(has)
+        ? (state.storedMarks ?? caretMarks()).some(has)
         : covered.every((c) => c.node.marks.some(has))
     return { inert, active }
   })

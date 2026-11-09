@@ -382,9 +382,20 @@ function emptyDefaultBlock(tr: Transaction, text = '', marks: Mark[] = []): Elem
 
 /**
  * The start of the first editable text after the node at `path` (texts inside it excluded); when
- * none follows, an empty default block is inserted right after the node and its start returned.
+ * none follows, or a block-level node is directly followed by an opaque block (the caret would skip
+ * past it), an empty default block is inserted right after the node and its start returned.
  */
 function caretAfterNode(tr: Transaction, path: Path): Point {
+  const node = getNode(tr.doc, path)
+  const blockLevel = isElement(node) && tr.registry.node(node.type)?.kind !== 'inline'
+  const parent = parentPath(path)
+  const siblings = parent.length === 0 ? tr.doc.children : ((getNode(tr.doc, parent) as ElementNode).children ?? [])
+  const next = siblings[path[path.length - 1]! + 1]
+  if (blockLevel && next && isElement(next) && isOpaque(next, tr.registry)) {
+    const at = nextPath(path)
+    tr.insertNode(at, emptyDefaultBlock(tr))
+    return { path: [...at, 0], offset: 0 }
+  }
   for (const [, p] of editableTextEntries(tr.doc, tr.registry)) {
     if (comparePath(p, path) > 0) return { path: p, offset: 0 }
   }

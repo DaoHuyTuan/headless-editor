@@ -26,7 +26,7 @@ Status after M2 verification: every item below was closed in M2 except the histo
 - ✅ Normalize rule 4 can leave a block with no text leaf when its other children are inline atoms or unknown elements (M3).
 - ✅ Plugin `normalize` hooks also visit entries inside unknown elements and atoms.
 - The result of `onInvalidData` is not validated again.
-- `rehomeSelection` drops the selection when no sibling has text.
+- ✅ `rehomeSelection` drops the selection when no sibling has text.
 - Load reserves ids of nodes that are later dropped (harmless renames).
 - The readonly typing has gaps:
   - `getNode`, `nodeEntries` and `textEntries` return mutable types.

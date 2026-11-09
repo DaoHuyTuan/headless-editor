@@ -1,5 +1,5 @@
 import { nodeText, type OptionsLookup } from './content/text'
-import { isOpaque } from './model/editable'
+import { isOpaque, nearestEditablePoint } from './model/editable'
 import { createId } from './model/id'
 import { getNode, isElement, isText, sameMarkSet } from './model/node'
 import { nextPath } from './model/path'
@@ -241,16 +241,23 @@ function splitAtNewlines(tr: Transaction, block: ElementNode, path: Path, at: Po
 /**
  * Removes the empty text `children[i]` of the element at `path` (it has other children). Merging it
  * into a previous text keeps a caret inside it valid (it maps to the end of that text); otherwise
- * the selection points in it move to a neighbouring text first (`rehomeSelection`).
+ * the selection points in it move to a neighbouring text first (`rehomeSelection`). With no sibling
+ * text to move to, a selection lost with the text becomes a caret at the nearest editable point of
+ * the doc (`nearestEditablePoint`), as several ranges are re-homed by the transaction.
  */
 function dropEmptyText(tr: Transaction, children: Node[], path: Path, i: number): void {
   const prev = children[i - 1]
   const c = children[i] as TextNode
   if (prev && isText(prev)) {
     tr.apply({ type: 'merge_node', path: [...path, i], position: prev.text.length, properties: { marks: c.marks } })
-  } else {
-    rehomeSelection(tr, children, path, i)
-    tr.removeNode([...path, i])
+    return
+  }
+  rehomeSelection(tr, children, path, i)
+  const had = tr.selection
+  tr.removeNode([...path, i])
+  if (had && !tr.selection) {
+    const at = nearestEditablePoint(tr.doc, tr.registry, [...path, i])
+    if (at) tr.apply({ type: 'set_selection', selection: createSelection([{ anchor: at, focus: at }], 0), prevSelection: null })
   }
 }
 

@@ -56,9 +56,9 @@ Kept open from "Start of M3" (no M3 plugin needed them, and each is a separate c
   - split halves share a `data` reference;
   - `nearestEditablePoint` is O(doc).
 - Node selection:
-  - an op that removes the anchor text while the node survives leaves the selection null;
-  - `isMarkActive` shows caret marks while a node is selected;
-  - `caretAfterNode` can skip past a following atom.
+  - ✅ an op that removes the anchor text while the node survives leaves the selection null;
+  - ✅ `isMarkActive` shows caret marks while a node is selected;
+  - ✅ `caretAfterNode` can skip past a following atom.
 - Pasting several blocks with an atom at an edge can leave an empty paragraph next to it.
 - A drop within 500 ms of typing joins the typing undo step, and a drop moves the caret even when nothing was inserted.
 - ✅ History replay runs on every data-only change made outside history; add a guard when the stacks hold no `set_node_data`.

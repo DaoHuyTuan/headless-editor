@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { definePlugin } from '../src/plugin/define'
+import { nodeSelection } from '../src/model/editable'
+import { testBold as testBoldPlugin } from './fixtures'
 import type { Doc, ElementNode, Node } from '../src/model/types'
 import type { AnyPlugin } from '../src/plugin/types'
 import { createTestEditor, doc, el, sel, stripIds, txt } from '../src/testing/index'
@@ -69,5 +71,57 @@ describe('range delete edges (3.11)', () => {
     tr.deleteRange({ anchor: { path: [0, 1, 0], offset: 0 }, focus: { path: [1, 0], offset: 1 } })
     ed.dispatch(tr)
     expect(shape(ed.getJSON())).toEqual(shape(doc(p('abf'))))
+  })
+})
+
+describe('selection when its node goes away (3.9, 3.13)', () => {
+  const quote = definePlugin({ name: 'quote', node: { kind: 'block' } })
+  const chip = definePlugin({ name: 'chip', node: { kind: 'inline', atom: true } })
+  const bold = { type: 'bold', data: {} }
+
+  it('a caret in an empty text that rule 4 drops, with no text beside it, moves to the nearest editable text', () => {
+    // The quote holds an empty text and an atom block: no sibling has a text to re-home to.
+    const ed = createTestEditor({ plugins: [testParagraph, img, quote], doc: doc(p('ab'), el('quote', el('img', {}))) })
+    const tr = ed.createTransaction()
+    tr.apply({ type: 'insert_node', path: [1, 0], node: txt('') })
+    tr.setSelection(sel([1, 0], 0))
+    ed.dispatch(tr)
+    expect(ed.state.selection).toEqual(sel([0, 0], 2))
+  })
+
+  it('a node selection survives an op that removes its anchor text while the node stays', () => {
+    const ed = createTestEditor({
+      plugins: [testParagraph, img],
+      doc: doc(p('ab'), el('img', {}), p('cd')),
+    })
+    const tr = ed.createTransaction()
+    tr.setSelection(nodeSelection(tr.doc, ed.registry, [1]))
+    // The anchor (end of "ab") goes with its paragraph; the image stays.
+    tr.removeNode([0])
+    expect(tr.selection?.ranges[0]?.node).toEqual([0])
+    expect(tr.selection?.ranges[0]?.anchor).toEqual({ path: [1, 0], offset: 0 })
+  })
+
+  it('isMarkActive is false while a node is selected, unless the stored marks have the mark', () => {
+    const content = doc(p({ text: 'ab', marks: [bold] }, el('chip', {}), { text: 'cd', marks: [bold] }))
+    const ed = createTestEditor({ plugins: [testParagraph, testBoldPlugin, chip], doc: content })
+    const tr = ed.createTransaction()
+    tr.setSelection(nodeSelection(tr.doc, ed.registry, [0, 1]))
+    ed.dispatch(tr)
+    expect(ed.isActive('bold')).toBe(false)
+    const t2 = ed.createTransaction()
+    t2.setStoredMarks([bold])
+    ed.dispatch(t2)
+    expect(ed.isActive('bold')).toBe(true)
+  })
+
+  it('a block node inserted right before another atom block gets an empty block after it for the caret', () => {
+    const ed = createTestEditor({ plugins: [testParagraph, img], doc: doc(el('img', { n: 1 }), p(''), el('img', { n: 2 }), p('x')) })
+    const tr = ed.createTransaction()
+    tr.setSelection(sel([1, 0], 0))
+    tr.insertBlockNode(el('img', { n: 3 }))
+    ed.dispatch(tr)
+    expect(shape(ed.getJSON())).toEqual(shape(doc(el('img', { n: 1 }), el('img', { n: 3 }), p(''), el('img', { n: 2 }), p('x'))))
+    expect(ed.state.selection).toEqual(sel([2, 0], 0))
   })
 })
