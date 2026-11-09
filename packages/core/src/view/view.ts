@@ -9,6 +9,7 @@ import type { Transaction } from '../transaction/transaction'
 import { attachClipboard } from './clipboard'
 import { attachComposition } from './composition'
 import { attachDrop } from './drop'
+import { hasEditorFocus } from './focus'
 import { modelToDom, readDomSelection, writeDomSelection } from './dom-selection'
 import { isInIgnoredElement } from './ignore'
 import { attachInput } from './input'
@@ -235,7 +236,7 @@ export class EditorView {
         ? { skipLeaf: target.leaf, skipPath: target.path, selectedNode, decorations }
         : { selectedNode, decorations },
     )
-    if (!this.composing && this.hasFocus()) this.writeSelection(state.selection)
+    if (!this.composing && hasEditorFocus(this)) this.writeSelection(state.selection)
   }
 
   focus(): void {
@@ -376,7 +377,7 @@ export class EditorView {
    * called when a node view placed its `contentDOM` after the render (e.g. a React portal commit).
    */
   refreshSelection(): void {
-    if (this.destroyed || this.composing || !this.hasFocus()) return
+    if (this.destroyed || this.composing || !hasEditorFocus(this)) return
     this.writeSelection(this.editor.state.selection)
   }
 
@@ -456,17 +457,6 @@ export class EditorView {
 
   private domSelection(): globalThis.Selection | null {
     return this.root.ownerDocument.getSelection()
-  }
-
-  /**
-   * Whether the focus, or failing that a DOM selection inside the root, counts as editor focus.
-   * @internal Public only so the input layer can use it; not a stable API.
-   */
-  hasFocus(): boolean {
-    const active = this.root.ownerDocument.activeElement
-    if (active && this.root.contains(active)) return true
-    const anchor = this.domSelection()?.anchorNode
-    return !!anchor && this.root.contains(anchor)
   }
 
   /** Whether the focus is inside a `data-editor-ignore` element of the root (e.g. a node view's input). */

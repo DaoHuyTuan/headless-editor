@@ -1,10 +1,12 @@
 import { eventToKeyName } from '../keymap'
+import { getParent } from '../model/node'
 import { pointEquals } from '../model/path'
-import { mainRange } from '../model/selection'
-import type { SelectionRange } from '../model/types'
+import { mainRange, selectionEquals } from '../model/selection'
+import type { Selection, SelectionRange } from '../model/types'
 import type { InputIntent } from '../plugin/types'
 import type { EditorState } from '../state'
 import { domToModel } from './dom-selection'
+import { hasEditorFocus } from './focus'
 import { isIgnoredEvent } from './ignore'
 import type { EditorView, ViewModule } from './view'
 
@@ -51,14 +53,34 @@ const COMPOSITION_END_WINDOW = 50
  * node selection covering it. Browsers fire `beforeinput` in the same task as its keydown, so a task
  * queued from the keydown runs after it: if none came, the keydown's input type runs as an intent then.
  * It runs only when nothing else answered the key: no `beforeinput` (even on an ignored target), `cut`,
- * `paste` or `compositionstart` since, the editor state is the one seen at keydown, the keydown was not
- * prevented by a later listener, and the editor still has focus.
+ * `paste` or `compositionstart` since, the selection and the blocks holding its points are the ones
+ * seen at keydown (an edit or a caret move there answered the key, or changed its target), the keydown
+ * was not prevented by a later listener, and the editor still has focus. A dispatch that changes
+ * neither (a plugin timer, an upload changing another block) leaves it armed: the deletion still acts
+ * at the caret the key was pressed at. A change shifting the selection's paths (a block inserted
+ * before it) cancels it too: conservative, the key is then dropped rather than applied elsewhere.
  */
 interface PendingDelete {
   inputType: string
   event: KeyboardEvent
-  state: EditorState
+  selection: Selection | null
+  /** `selectionBlocks` at keydown. */
+  blocks: readonly unknown[]
   timer: ReturnType<typeof setTimeout>
+}
+
+/** The parents of every selection point (compared by identity: the doc is immutable). */
+function selectionBlocks(state: EditorState): unknown[] {
+  const sel = state.selection
+  if (!sel) return []
+  return sel.ranges.flatMap((r) => [getParent(state.doc, r.anchor.path), getParent(state.doc, r.focus.path)])
+}
+
+/** Whether the selection, or a block holding one of its points, changed since `entry` was armed. */
+function targetChanged(state: EditorState, entry: PendingDelete): boolean {
+  if (!selectionEquals(state.selection, entry.selection)) return true
+  const blocks = selectionBlocks(state)
+  return blocks.some((b, i) => b !== entry.blocks[i])
 }
 
 interface InputModuleState {
@@ -76,7 +98,7 @@ function runPendingDelete(view: EditorView, m: InputModuleState, entry: PendingD
   if (m.pending !== entry) return
   m.pending = null
   const { editor } = view
-  if (editor.state !== entry.state || entry.event.defaultPrevented || view.composing || !view.hasFocus()) return
+  if (targetChanged(editor.state, entry) || entry.event.defaultPrevented || view.composing || !hasEditorFocus(view)) return
   view.syncSelection()
   const sel = editor.state.selection
   // The main range: the intent addresses the selection (core then acts at every range).
@@ -90,10 +112,12 @@ function armPendingDelete(view: EditorView, e: KeyboardEvent, m: InputModuleStat
   // keyCode 229: the IME owns the key; a keydown just after compositionend ends the composition (Safari).
   if (e.keyCode === 229 || Date.now() - m.compositionEndedAt < COMPOSITION_END_WINDOW) return
   clearPending(m)
+  const { state } = view.editor
   const entry: PendingDelete = {
     inputType,
     event: e,
-    state: view.editor.state,
+    selection: state.selection,
+    blocks: selectionBlocks(state),
     timer: setTimeout(() => runPendingDelete(view, m, entry), 0),
   }
   m.pending = entry

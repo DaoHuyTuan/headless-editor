@@ -116,6 +116,46 @@ describe('input module', () => {
     expect(keydown(root, { key: 'q', code: 'KeyQ' }).defaultPrevented).toBe(false)
   })
 
+  it('arrow keys, with or without modifiers, are left to the browser unless a keymap binds them', async () => {
+    const calls: string[] = []
+    const arrows = definePlugin({
+      name: 'arrows',
+      keymap: () => ({
+        'Mod-ArrowUp': () => (calls.push('Mod-ArrowUp'), true),
+        'Shift-Alt-ArrowLeft': () => (calls.push('Shift-Alt-ArrowLeft'), true),
+        'ArrowDown': () => (calls.push('ArrowDown'), false),
+      }),
+    })
+    const { editor, root } = setup('abc', caret([0, 0], 1), [testParagraph, arrows])
+    const before = editor.state
+    const free: KeyboardEventInit[] = [
+      { key: 'ArrowLeft' },
+      { key: 'ArrowRight', shiftKey: true },
+      { key: 'ArrowLeft', altKey: true },
+      { key: 'ArrowRight', ctrlKey: true },
+      { key: 'ArrowUp', metaKey: true },
+      { key: 'ArrowLeft', ctrlKey: true, shiftKey: true },
+      // Bound, but its command returns false: the browser still moves the caret.
+      { key: 'ArrowDown' },
+    ]
+    for (const init of free) expect(keydown(root, { code: init.key, ...init }).defaultPrevented, JSON.stringify(init)).toBe(false)
+    expect(keydown(root, { key: 'ArrowUp', code: 'ArrowUp', ctrlKey: true }).defaultPrevented).toBe(true)
+    expect(keydown(root, { key: 'ArrowLeft', code: 'ArrowLeft', shiftKey: true, altKey: true }).defaultPrevented).toBe(true)
+    expect(calls).toEqual(['ArrowDown', 'Mod-ArrowUp', 'Shift-Alt-ArrowLeft'])
+    await new Promise((r) => setTimeout(r, 0))
+    // No edit, no selection change from the keys themselves (the browser moves the DOM caret).
+    expect(editor.state).toBe(before)
+  })
+
+  it('a caret move by an arrow key is read from the DOM selection before the next input', () => {
+    const { editor, root } = setup('abc', caret([0, 0], 3))
+    keydown(root, { key: 'ArrowLeft', code: 'ArrowLeft' })
+    // The browser's default action, before its async selectionchange reaches the editor.
+    setDomCaret(editor, [0, 0], 2)
+    beforeInput(root, { inputType: 'insertText', data: 'X' })
+    expect(editor.getJSON().children[0]).toMatchObject({ children: [{ text: 'abXc' }] })
+  })
+
   it('plugin handleDOMEvents run first by priority; true stops the default handling', () => {
     const calls: string[] = []
     const low = definePlugin({
@@ -310,6 +350,60 @@ describe('input module: deletion-key fallback guards', () => {
     editor.commands.insertText('x')
     await tick()
     expect(textOf(editor)).toMatchObject({ children: [{ text: 'abcx' }] })
+  })
+
+  it('no fallback when the selection was moved after the keydown (even with no doc change)', async () => {
+    const { editor, root } = setup('abc', caret([0, 0], 3))
+    keydown(root, { key: 'Backspace', code: 'Backspace' })
+    editor.dispatch(editor.createTransaction().setSelection(caret([0, 0], 1)))
+    await tick()
+    expect(textOf(editor)).toMatchObject({ children: [{ text: 'abc' }] })
+  })
+
+  it('an unrelated dispatch that leaves the selection alone does not cancel the fallback (plugin timer)', async () => {
+    const { editor, root } = setup('abc', caret([0, 0], 3))
+    keydown(root, { key: 'Backspace', code: 'Backspace' })
+    // A state-only tr (no op), as a plugin timer dispatches.
+    editor.dispatch(editor.createTransaction().setMeta('origin', 'timer'))
+    await tick()
+    expect(textOf(editor)).toMatchObject({ children: [{ text: 'ab' }] })
+  })
+
+  function setupTwo() {
+    const editor = createTestEditor({
+      plugins: [testParagraph],
+      doc: doc(p('p1', txt('abc')), p('p2', txt('xyz'))),
+      selection: caret([1, 0], 3),
+    })
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    editor.mount(root)
+    editor.view!.focus()
+    return { editor, root }
+  }
+
+  it('a doc change in another block does not cancel the fallback (an upload)', async () => {
+    const { editor, root } = setupTwo()
+    keydown(root, { key: 'Backspace', code: 'Backspace' })
+    const tr = editor.createTransaction()
+    tr.apply({ type: 'insert_text', path: [0, 0], offset: 0, text: 'Q' })
+    editor.dispatch(tr)
+    await tick()
+    expect(editor.getJSON().children).toMatchObject([{ children: [{ text: 'Qabc' }] }, { children: [{ text: 'xy' }] }])
+  })
+
+  it('no fallback after an edit in the caret block that leaves the selection as it was (another handler acted)', async () => {
+    const { editor, root } = setupTwo()
+    keydown(root, { key: 'Backspace', code: 'Backspace' })
+    const tr = editor.createTransaction()
+    tr.apply({ type: 'remove_text', path: [1, 0], offset: 0, text: 'x' })
+    tr.setSelection(caret([1, 0], 2))
+    editor.dispatch(tr)
+    // Back at the keydown's selection: only the block tells that its text changed.
+    editor.dispatch(editor.createTransaction().apply({ type: 'insert_text', path: [1, 0], offset: 0, text: 'x' }))
+    expect(editor.state.selection).toEqual(caret([1, 0], 3))
+    await tick()
+    expect(editor.getJSON().children).toMatchObject([{ children: [{ text: 'abc' }] }, { children: [{ text: 'xyz' }] }])
   })
 
   it('no fallback for a paste after the keydown (even one that changes nothing)', async () => {
