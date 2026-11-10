@@ -1,6 +1,12 @@
-# headless-text-editor
+# penline
 
 A headless rich-text editor with its own editing engine. It is not built on ProseMirror.
+
+```sh
+npm install @penline/core @penline/react @penline/paragraph @penline/bold
+```
+
+> Pre-release (0.x): the API can still change between minor versions until 1.0.
 
 - **Headless.** The editor ships behaviour, not styles. You own the markup and the CSS.
 - **Framework-free core.** `@penline/core` has no UI framework dependency. `@penline/react` is the React adapter, and the core is designed so a Vue adapter can be added later.
