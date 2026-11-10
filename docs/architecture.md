@@ -10,14 +10,14 @@ Status: written 2026-11-03, after M4. The design spec is `docs/superpowers/specs
  Plugins (definePlugin)            paragraph · bold · font-size · image · mention · code-block
         │ register
         ▼
- @hte/core: model layer            doc tree · ops · transaction pipeline · history (+ rebase)
+ @penline/core: model layer            doc tree · ops · transaction pipeline · history (+ rebase)
                                    · plugin registry · commands · content I/O (HTML, clipboard)
         │ (no formal boundary yet: Editor.mount creates EditorView directly)
         ▼
  DOM document view (in core/view) renderer · dom-selection · input/composition · mutation
                                    · decorations · node views
         ▲
- @hte/react                        useEditor · EditorContent (portals for node views) · hooks
+ @penline/react                        useEditor · EditorContent (portals for node views) · hooks
 ```
 
 Properties worth keeping:
@@ -88,7 +88,7 @@ Steps 1–4 are worth doing even if the code view never happens.
 3. **Move neutral types down to the model.** `Decoration` moves to the model layer. DOM-only hooks (`stopEvent`, `ignoreMutation`, node views, `handleDOMEvents`) are grouped as DOM-view extensions, so a code view can add its own group.
 4. **Make normalize and decorations incremental.** This is open in the follow-ups: code-block decorations walk the whole doc, and normalize rule 11 used to be super-linear.
 5. **Spike a code view.** Build a minimal viewport-rendered, single-caret, line-schema view to test the `View` interface. Only then fix the API.
-6. **Split packages** once the spike holds: `@hte/core` (model only), `@hte/view-dom`, `@hte/view-code`.
+6. **Split packages** once the spike holds: `@penline/core` (model only), `@penline/view-dom`, `@penline/view-code`.
 7. **Multi-selection** as its own milestone, with an API migration (see §4a).
 
 ### 4a. Decision: multi-selection lives in the model
@@ -151,7 +151,7 @@ There is no settings layer yet. The document view's settings are unknown, while 
 4. **Precedence:** plugin options, then editor settings, then shared defaults.
 5. **Where it will live:** the model layer, next to the plugin registry. Plugins read it through `ctx.settings`; `editor.setSettings(partial)` emits an event, as `setPluginOptions` does. It must not depend on the DOM, so the code view can use it.
 
-Likely candidates once the mechanism exists: i18n strings (for example the code block's `languageLabel` option, default `"Language"`), `editable`/`readOnly`, the allowed URL schemes now inside image's `safeSrc`, history `groupDelay`, and the `data-hte-*` prefix.
+Likely candidates once the mechanism exists: i18n strings (for example the code block's `languageLabel` option, default `"Language"`), `editable`/`readOnly`, the allowed URL schemes now inside image's `safeSrc`, history `groupDelay`, and the `data-penline-*` prefix.
 
 ## 7. Open questions
 

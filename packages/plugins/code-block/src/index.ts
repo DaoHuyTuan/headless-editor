@@ -1,8 +1,8 @@
 /**
- * Code block (`@hte/code-block`); React view in `@hte/code-block/react`. The plugin (and node type)
+ * Code block (`@penline/code-block`); React view in `@penline/code-block/react`. The plugin (and node type)
  * name is `codeBlock`; the view marker is kebab-case.
  *
- * Stable `data-*` attributes (view): `data-hte-code-block` on the root `<div>`, `data-selected` when
+ * Stable `data-*` attributes (view): `data-penline-code-block` on the root `<div>`, `data-selected` when
  * node-selected. HTML output: `<pre><code class="language-x">` (`options.HTMLAttributes` is merged into
  * the `<pre>`). Highlighting adds inline decorations whose classes come from the highlighter
  * (highlight.js `hljs-*`); `<code>` itself gets no `hljs` class.
@@ -44,7 +44,7 @@ import {
   type Registry,
   type SelectionRange,
   type Transaction,
-} from '@hte/core'
+} from '@penline/core'
 import { defaultHighlighter, type HighlightToken, type Highlighter } from './highlight'
 
 export { defaultHighlighter, type HighlightToken, type Highlighter } from './highlight'
@@ -566,7 +566,7 @@ function blockTokens(block: ElementNode, highlighter: Highlighter): SubtreeToken
     raw = Array.isArray(result) ? result : []
   } catch (error) {
     // A throwing highlighter only loses the highlighting, never the render.
-    console.error('@hte/code-block:', error)
+    console.error('@penline/code-block:', error)
   }
   const out: SubtreeToken[] = []
   for (const t of raw) {
@@ -599,7 +599,7 @@ function subtreeTokens(node: Node, name: string, highlighter: Highlighter): read
  *   ending with `\n\n` it removes them and exits to a new paragraph), Shift-Enter inserts `\n`,
  *   Mod-Enter exits the block to a new paragraph after it, Backspace at the start of an empty block
  *   turns it into a paragraph. `insertParagraph` / `insertLineBreak` intents behave like Enter (a
- *   mention popup open at the main caret claims `insertParagraph` first: `@hte/mention` has the
+ *   mention popup open at the main caret claims `insertParagraph` first: `@penline/mention` has the
  *   higher priority).
  * - Several ranges: every key works per range. Code-block behaviour applies only to ranges inside a
  *   code block; Enter and Shift-Enter give the other ranges the editor's default split, Tab and

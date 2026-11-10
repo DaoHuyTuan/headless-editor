@@ -3,7 +3,7 @@
  * marker names the section of the guide a sample belongs to. Nothing here runs; the samples only
  * have to compile (`pnpm exec vitest --typecheck run` and `pnpm typecheck`).
  *
- * This file lives in the image package because it needs `react`, `@hte/react`, `@hte/paragraph` and
+ * This file lives in the image package because it needs `react`, `@penline/react`, `@penline/paragraph` and
  * `zod` to resolve, and the built-in plugins are imported by relative path.
  */
 import { createContext, useContext, useMemo, type ChangeEvent, type ComponentType, type ReactNode } from 'react'
@@ -21,7 +21,7 @@ import {
   type CommandsOfPlugin,
   type HTMLAttributes,
   type NodeViewPropsOf,
-} from '@hte/core'
+} from '@penline/core'
 import {
   EditorContent,
   NodeContent,
@@ -30,8 +30,8 @@ import {
   useEditor,
   usePluginState,
   type ViewCustomization,
-} from '@hte/react'
-import { paragraph } from '@hte/paragraph'
+} from '@penline/react'
+import { paragraph } from '@penline/paragraph'
 import { image, safeSrc } from '../src/index'
 import {
   Image,
@@ -96,7 +96,7 @@ function LevelFourImageView(props: ImageProps) {
   // Hooks-only views must put the src behind safeSrc themselves.
   const src = safeSrc(props.node.data.src) ?? undefined
   return (
-    <figure data-hte-image="" {...dataAttrs({ selected, uploading })}>
+    <figure data-penline-image="" {...dataAttrs({ selected, uploading })}>
       <img src={src} alt={props.node.data.alt} width={width} draggable={false} />
       <input {...inputProps} />
       <span {...handleProps} hidden={!selected && !resizing} />
@@ -218,7 +218,7 @@ export const Callout = {
   Root({ value, className, children }: CalloutPartProps & { value: CalloutApi }) {
     return (
       <CalloutContext.Provider value={value}>
-        <aside data-hte-callout="" data-tone={value.tone} {...dataAttrs({ selected: value.selected })} className={className}>
+        <aside data-penline-callout="" data-tone={value.tone} {...dataAttrs({ selected: value.selected })} className={className}>
           {children}
         </aside>
       </CalloutContext.Provider>
@@ -313,7 +313,7 @@ function InlineOptionsEditor({ token }: { token: string }) {
 // doc: Mention — a custom label from the live user
 function ShoutingMention(props: NodeViewPropsOf<typeof mention>) {
   const { label } = useMention(props)
-  return <span data-hte-mention="">@{label.toUpperCase()}</span>
+  return <span data-penline-mention="">@{label.toUpperCase()}</span>
 }
 
 // doc: Code block — highlight.js themes

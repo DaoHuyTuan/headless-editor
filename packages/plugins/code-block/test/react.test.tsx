@@ -2,10 +2,10 @@
 import { StrictMode, type ComponentType } from 'react'
 import { act, cleanup, fireEvent, render, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { Doc, Editor, ElementNode, NodeViewPropsOf, Selection, TextNode } from '@hte/core'
-import { doc, el, sel, txt } from '@hte/core/testing'
-import { paragraph } from '@hte/paragraph'
-import { EditorContent, useEditor } from '@hte/react'
+import type { Doc, Editor, ElementNode, NodeViewPropsOf, Selection, TextNode } from '@penline/core'
+import { doc, el, sel, txt } from '@penline/core/testing'
+import { paragraph } from '@penline/paragraph'
+import { EditorContent, useEditor } from '@penline/react'
 import { codeBlock } from '../src/index'
 import { CodeBlockView, useCodeBlock, type CodeBlockApi, type CodeBlockViewProps } from '../src/react'
 
@@ -52,8 +52,8 @@ function setup({
     editor: () => editor,
     root,
     type,
-    block: () => root.querySelector('[data-hte-code-block]') as HTMLElement | null,
-    select: () => root.querySelector('[data-hte-code-block] select') as HTMLSelectElement | null,
+    block: () => root.querySelector('[data-penline-code-block]') as HTMLElement | null,
+    select: () => root.querySelector('[data-penline-code-block] select') as HTMLSelectElement | null,
     node: () => editor.state.doc.children[0] as ElementNode,
     text: () => ((editor.state.doc.children[0] as ElementNode).children![0] as TextNode).text,
   }
@@ -69,7 +69,7 @@ describe('CodeBlockView', () => {
     expect(toolbar.contains(t.select())).toBe(true)
     expect(t.select()!.hasAttribute('data-editor-ignore')).toBe(true)
     expect(t.select()!.value).toBe('javascript')
-    const content = block.querySelector('pre code [data-hte-content]') as HTMLElement
+    const content = block.querySelector('pre code [data-penline-content]') as HTMLElement
     expect(content).not.toBeNull()
     expect(content.textContent).toBe('const x = 1')
     // No non-editable ancestor between the content and the editor root.
@@ -162,7 +162,7 @@ describe('CodeBlockView', () => {
     expect(t.select()).toBeNull()
     expect(t.block()!.querySelector('[contenteditable="false"]')).toBeNull()
     expect(t.block()!.classList.contains('cb-root')).toBe(true)
-    expect(t.block()!.querySelector('pre.cb-content code [data-hte-content]')).not.toBeNull()
+    expect(t.block()!.querySelector('pre.cb-content code [data-penline-content]')).not.toBeNull()
     t.type('!')
     expect(t.text()).toBe('co!nst x = 1')
     expect(errors).not.toHaveBeenCalled()

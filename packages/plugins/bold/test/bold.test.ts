@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest'
-import { createTestEditor, doc, el, sel, stripIds, txt } from '@hte/core/testing'
-import { createSelection } from '@hte/core'
-import { paragraph } from '@hte/paragraph'
+import { createTestEditor, doc, el, sel, stripIds, txt } from '@penline/core/testing'
+import { createSelection } from '@penline/core'
+import { paragraph } from '@penline/paragraph'
 import { bold } from '../src/index'
 
 const p = (...children: ReturnType<typeof txt>[]) => el('paragraph', ...children)

@@ -53,7 +53,7 @@ describe('coordsAt', () => {
       left: 0, top: 0, bottom: 0, right: 0, width: 0, height: 0, x: 0, y: 0, toJSON: () => ({}),
     } as DOMRect)
     vi.spyOn(Range.prototype, 'getClientRects').mockReturnValue([] as unknown as DOMRectList)
-    const leaf = root.querySelector('[data-hte-leaf]') as HTMLElement
+    const leaf = root.querySelector('[data-penline-leaf]') as HTMLElement
     vi.spyOn(leaf, 'getBoundingClientRect').mockReturnValue({
       left: 7, top: 8, bottom: 24, right: 50, width: 43, height: 16, x: 7, y: 8, toJSON: () => ({}),
     } as DOMRect)
@@ -96,7 +96,7 @@ describe('coordsAt', () => {
     const { editor, root } = setup()
     vi.spyOn(Range.prototype, 'getBoundingClientRect').mockReturnValue(rect(0, 0, 0))
     vi.spyOn(Range.prototype, 'getClientRects').mockReturnValue([] as unknown as DOMRectList)
-    const leaf = root.querySelector('[data-hte-leaf]') as HTMLElement
+    const leaf = root.querySelector('[data-penline-leaf]') as HTMLElement
     // Two line boxes: the bounding rect spans both.
     vi.spyOn(leaf, 'getBoundingClientRect').mockReturnValue(rect(7, 8, 40))
     vi.spyOn(leaf, 'getClientRects').mockReturnValue([rect(7, 8, 24), rect(0, 24, 40)] as unknown as DOMRectList)
@@ -110,7 +110,7 @@ describe('coordsAt', () => {
 
   it('returns null for a leaf not placed in the root yet (contentDOM not mounted)', () => {
     const { editor, root } = setup()
-    const leaf = root.querySelector('[data-hte-leaf]') as HTMLElement
+    const leaf = root.querySelector('[data-penline-leaf]') as HTMLElement
     const parked = document.createElement('div')
     parked.appendChild(leaf)
     vi.spyOn(Range.prototype, 'getBoundingClientRect').mockReturnValue(rect(10, 20, 36))

@@ -1,11 +1,11 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it } from 'vitest'
-import { createSelection, mainRange } from '@hte/core'
-import { definePlugin, serializeForClipboard, type Doc, type ElementNode, type Node, type Selection, type TextNode } from '@hte/core'
-import { createTestEditor, doc, el, sel, stripIds, txt } from '@hte/core/testing'
-import { bold } from '@hte/bold'
-import { mention } from '@hte/mention'
-import { paragraph } from '@hte/paragraph'
+import { createSelection, mainRange } from '@penline/core'
+import { definePlugin, serializeForClipboard, type Doc, type ElementNode, type Node, type Selection, type TextNode } from '@penline/core'
+import { createTestEditor, doc, el, sel, stripIds, txt } from '@penline/core/testing'
+import { bold } from '@penline/bold'
+import { mention } from '@penline/mention'
+import { paragraph } from '@penline/paragraph'
 import { codeBlock, defaultHighlighter } from '../src/index'
 
 const p = (...children: Node[]) => el('paragraph', ...children)
@@ -450,7 +450,7 @@ describe('code block paste', () => {
       selection: caret([0, 0], 0),
     })
     const json = JSON.stringify([el('list', p(txt('a')), p(txt('b'))), p(txt('c'))])
-    paste(ed as unknown as Ed, { 'application/x-hte-fragment': json })
+    paste(ed as unknown as Ed, { 'application/x-penline-fragment': json })
     expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(code('a\nb\nc'))))
   })
 
@@ -464,7 +464,7 @@ describe('code block paste', () => {
     const ed = setup(doc(code('x\ny'), p(txt(''))), caret([1, 0], 0))
     const flavors = serializeForClipboard(ed, { start: { path: [0, 0], offset: 0 }, end: { path: [0, 0], offset: 3 } })
     expect(flavors.text).toBe('x\ny')
-    paste(ed, { 'application/x-hte-fragment': flavors.json, 'text/html': flavors.html, 'text/plain': flavors.text })
+    paste(ed, { 'application/x-penline-fragment': flavors.json, 'text/html': flavors.html, 'text/plain': flavors.text })
     expect(blocks(ed)).toEqual([
       { type: 'codeBlock', text: 'x\ny' },
       { type: 'paragraph', text: 'x' },

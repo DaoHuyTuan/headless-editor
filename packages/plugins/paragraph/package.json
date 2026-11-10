@@ -1,5 +1,5 @@
 {
-  "name": "@hte/paragraph",
+  "name": "@penline/paragraph",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -7,6 +7,6 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@hte/core": "workspace:*"
+    "@penline/core": "workspace:*"
   }
 }

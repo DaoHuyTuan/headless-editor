@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import type { ElementNode } from '@hte/core'
+import type { ElementNode } from '@penline/core'
 import { collectErrors, getDoc, getSelection, getText, openScenario } from './helpers'
 
 let errors: string[]
@@ -20,7 +20,7 @@ const img = (page: Page) => custom(page).locator('img')
 
 test('the customImage scenario renders the hooks-only view; other scenarios the default one', async ({ page }) => {
   await expect(custom(page)).toHaveCount(1)
-  await expect(custom(page)).toHaveAttribute('data-hte-image', '')
+  await expect(custom(page)).toHaveAttribute('data-penline-image', '')
   await expect(page.getByTestId('custom-alt-caption')).toHaveText('(no alt)')
   // The controls the hooks spread carry data-editor-ignore.
   await expect(custom(page).getByLabel('Alt text')).toHaveAttribute('data-editor-ignore', '')
@@ -29,7 +29,7 @@ test('the customImage scenario renders the hooks-only view; other scenarios the 
   await expect(img(page)).toHaveAttribute('src', /^data:image\/png;base64,/)
   await page.getByTestId('story-image').click()
   await expect(custom(page)).toHaveCount(0)
-  await expect(page.locator('[data-testid=editor] [data-hte-image]')).toHaveCount(1)
+  await expect(page.locator('[data-testid=editor] [data-penline-image]')).toHaveCount(1)
 })
 
 test('editing the alt in the custom view commits it on Tab; the text is unchanged; undo restores it', async ({ page }) => {

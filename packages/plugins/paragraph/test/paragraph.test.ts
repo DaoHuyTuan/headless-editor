@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest'
-import { createTestEditor, doc, el, sel, stripIds, txt } from '@hte/core/testing'
+import { createTestEditor, doc, el, sel, stripIds, txt } from '@penline/core/testing'
 import { paragraph } from '../src/index'
 
 describe('paragraph plugin', () => {

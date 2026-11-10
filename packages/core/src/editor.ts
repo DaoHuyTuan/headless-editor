@@ -383,7 +383,7 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
       try {
         out.push(...hook(state, this.getContext(plugin)))
       } catch (error) {
-        console.error(`[hte] The decorations hook of "${plugin.name}" threw; its decorations are skipped:`, error)
+        console.error(`[penline] The decorations hook of "${plugin.name}" threw; its decorations are skipped:`, error)
       }
     }
     return out
@@ -406,7 +406,7 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
       try {
         fragment = transform(fragment, this.getContext(plugin), info)
       } catch (error) {
-        console.error(`@hte/core: transformPasted of plugin "${plugin.name}" threw; it was skipped`, error)
+        console.error(`@penline/core: transformPasted of plugin "${plugin.name}" threw; it was skipped`, error)
       }
     }
     return fragment
@@ -632,7 +632,7 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
       const message = 'Transaction was created from an outdated state'
       if (this.dev) throw new Error(message)
       // Dropped: a stale tr would overwrite the changes made since it was created.
-      console.warn(`@hte/core: ${message}; it was dropped`)
+      console.warn(`@penline/core: ${message}; it was dropped`)
       return null
     }
     if (!this.passesFilters(tr)) return null

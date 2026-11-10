@@ -90,7 +90,7 @@ test('clicking the node view outside the input node-selects it', async ({ page }
   await page.getByTestId('nv-label').click()
   const { selection } = await nvState(page)
   expect(selection?.ranges[0]?.node).toEqual([1])
-  await expect(page.locator('[data-testid=nv-editor] [data-hte-node-view]')).toHaveAttribute('data-hte-selected', '')
+  await expect(page.locator('[data-testid=nv-editor] [data-penline-node-view]')).toHaveAttribute('data-penline-selected', '')
   await page.keyboard.press('Backspace')
   const { doc } = await nvState(page)
   expect(doc.children.map((b) => b.type)).toEqual(['paragraph', 'paragraph'])

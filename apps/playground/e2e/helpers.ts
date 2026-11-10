@@ -1,5 +1,5 @@
 import { expect, type Page } from '@playwright/test'
-import type { Doc, ElementNode, Node, SelectionRange } from '@hte/core'
+import type { Doc, ElementNode, Node, SelectionRange } from '@penline/core'
 
 /** Opens the playground (at `path`, e.g. `/?uploadFail=1`) and waits for the dev `window.editor` to be mounted. */
 export async function openPlayground(page: Page, path = '/'): Promise<void> {
@@ -109,7 +109,7 @@ export const WEBKIT_KEYBOARD_CLIPBOARD =
 export function syntheticCopy(page: Page, type: 'copy' | 'cut'): Promise<{ prevented: boolean; types: string[] }> {
   return page.evaluate((type) => {
     const dt = new DataTransfer()
-    ;(window as unknown as { __hteClipboard: DataTransfer }).__hteClipboard = dt
+    ;(window as unknown as { __penlineClipboard: DataTransfer }).__penlineClipboard = dt
     const e = new ClipboardEvent(type, { clipboardData: dt, bubbles: true, cancelable: true })
     window.editor.view!.root.dispatchEvent(e)
     return { prevented: e.defaultPrevented, types: [...dt.types] }
@@ -122,7 +122,7 @@ export function syntheticCopy(page: Page, type: 'copy' | 'cut'): Promise<{ preve
  */
 export function syntheticPaste(page: Page, without: string[] = []): Promise<boolean> {
   return page.evaluate((without) => {
-    const src = (window as unknown as { __hteClipboard: DataTransfer }).__hteClipboard
+    const src = (window as unknown as { __penlineClipboard: DataTransfer }).__penlineClipboard
     const dt = new DataTransfer()
     for (const t of src.types) if (!without.includes(t)) dt.setData(t, src.getData(t))
     const e = new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true })

@@ -265,7 +265,7 @@ describe('input module: deletion keys without a beforeinput (WebKit)', () => {
     document.body.appendChild(root)
     editor.mount(root)
     editor.view!.focus()
-    return { editor, root, block: () => root.querySelector('[data-hte-unknown=mystery]') }
+    return { editor, root, block: () => root.querySelector('[data-penline-unknown=mystery]') }
   }
 
   it('Backspace at the start of the block after an unknown block node-selects it; a second one removes it', async () => {
@@ -273,7 +273,7 @@ describe('input module: deletion keys without a beforeinput (WebKit)', () => {
     keydown(root, { key: 'Backspace', code: 'Backspace' })
     await tick()
     expect(editor.state.selection?.ranges[0]?.node).toEqual([0])
-    expect(block()!.hasAttribute('data-hte-selected')).toBe(true)
+    expect(block()!.hasAttribute('data-penline-selected')).toBe(true)
     expect(editor.getJSON().children[0]).toMatchObject({ type: 'mystery', children: [{ text: 'Title' }] })
 
     keydown(root, { key: 'Backspace', code: 'Backspace' })

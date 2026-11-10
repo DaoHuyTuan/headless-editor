@@ -42,12 +42,12 @@ describe('a throwing decorations hook', () => {
     const root = document.createElement('div')
     document.body.appendChild(root)
     expect(() => editor.mount(root)).not.toThrow()
-    expect(root.querySelector('[data-hte-deco]')!.className).toBe('g')
+    expect(root.querySelector('[data-penline-deco]')!.className).toBe('g')
     expect(error).toHaveBeenCalledTimes(1)
     expect(String(error.mock.calls[0]![0])).toContain('boom')
     expect(() => editor.view!.update(editor.state)).not.toThrow()
     expect(error).toHaveBeenCalledTimes(2)
-    expect(root.querySelector('[data-hte-deco]')!.className).toBe('g')
+    expect(root.querySelector('[data-penline-deco]')!.className).toBe('g')
     failing = false
   })
 })
@@ -77,8 +77,8 @@ describe('decoration attribute names', () => {
       }),
     ).not.toThrow()
     expect(root.innerHTML).toBe(
-      '<p data-hte-id="p1"><span data-hte-leaf="">ab</span></p>' +
-        '<p data-hte-id="p2"><span data-hte-leaf=""><span data-hte-deco="" class="ok">c</span></span></p>',
+      '<p data-penline-id="p1"><span data-penline-leaf="">ab</span></p>' +
+        '<p data-penline-id="p2"><span data-penline-leaf=""><span data-penline-deco="" class="ok">c</span></span></p>',
     )
   })
 })
@@ -126,12 +126,12 @@ describe('leafIntact and decoration attributes', () => {
     const decos = [inline(pt([0, 0], 0), pt([0, 0], 1), { class: 'hl', 'data-x': '1' })]
     const d = doc(p('p1', txt('ab')))
     renderer.render(d, { decorations: decos })
-    const span = root.querySelector('[data-hte-deco]')!
+    const span = root.querySelector('[data-penline-deco]')!
     span.setAttribute('class', 'other')
     span.removeAttribute('data-x')
     span.setAttribute('style', 'color: red')
     renderer.render(d, { decorations: decos })
-    const fixed = root.querySelector('[data-hte-deco]')!
+    const fixed = root.querySelector('[data-penline-deco]')!
     expect(fixed.getAttribute('class')).toBe('hl')
     expect(fixed.getAttribute('data-x')).toBe('1')
     expect(fixed.hasAttribute('style')).toBe(false)

@@ -1,4 +1,4 @@
-import type { Doc } from '@hte/core'
+import type { Doc } from '@penline/core'
 
 export type StoryId =
   | 'empty'

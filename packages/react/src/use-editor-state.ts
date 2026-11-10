@@ -1,5 +1,5 @@
 import { useCallback, useRef, useSyncExternalStore } from 'react'
-import type { AnyPlugin, Editor, EditorState } from '@hte/core'
+import type { AnyPlugin, Editor, EditorState } from '@penline/core'
 
 interface Cached<T, E> {
   editor: E

@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useMemo, type ChangeEvent, type ComponentType, type ReactNode } from 'react'
-import type { NodeViewPropsOf } from '@hte/core'
-import { NodeContent, dataAttrs, resolveParts, type ViewCustomization } from '@hte/react'
+import type { NodeViewPropsOf } from '@penline/core'
+import { NodeContent, dataAttrs, resolveParts, type ViewCustomization } from '@penline/react'
 import type { codeBlock } from './index'
 
 type CodeBlockProps = NodeViewPropsOf<typeof codeBlock>
@@ -65,7 +65,7 @@ const CodeBlockContext = createContext<CodeBlockApi | null>(null)
  */
 export function useCodeBlockContext(): CodeBlockApi {
   const value = useContext(CodeBlockContext)
-  if (!value) throw new Error('@hte/code-block: CodeBlock parts must be rendered inside <CodeBlock.Root>')
+  if (!value) throw new Error('@penline/code-block: CodeBlock parts must be rendered inside <CodeBlock.Root>')
   return value
 }
 
@@ -84,7 +84,7 @@ export interface CodeBlockPartProps {
 }
 
 /**
- * The parts of the code block view. `Root` is `<div data-hte-code-block data-selected?>` and provides
+ * The parts of the code block view. `Root` is `<div data-penline-code-block data-selected?>` and provides
  * the `CodeBlockApi` to the other parts; `Toolbar` is a `contenteditable="false"` `<div>` beside the
  * content; `LanguageSelect` is the language `<select>`; `Content` is `<pre><code class="language-x">`
  * holding the editable content (whitespace kept by `<pre>`). Never render `Content` inside `Toolbar`
@@ -95,7 +95,7 @@ export const CodeBlock = {
   Root({ value, selected, className, children }: CodeBlockRootProps) {
     return (
       <CodeBlockContext.Provider value={value}>
-        <div data-hte-code-block="" {...dataAttrs({ selected })} className={className}>
+        <div data-penline-code-block="" {...dataAttrs({ selected })} className={className}>
           {children}
         </div>
       </CodeBlockContext.Provider>
@@ -142,7 +142,7 @@ export type CodeBlockViewProps = CodeBlockProps & ViewCustomization<CodeBlockPar
 
 /**
  * Default React node view of the code block plugin: a toolbar with a language select above the
- * editable code. Stable attributes: `data-hte-code-block` on the root, `data-selected` when
+ * editable code. Stable attributes: `data-penline-code-block` on the root, `data-selected` when
  * node-selected. `parts` / `classNames` keys: `root`, `toolbar`, `languageSelect` (rendered inside the
  * toolbar), `content` (`classNames.content` goes on the `<pre>`).
  */

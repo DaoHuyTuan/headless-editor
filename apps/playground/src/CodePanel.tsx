@@ -1,4 +1,4 @@
-import { useEditorState } from '@hte/react'
+import { useEditorState } from '@penline/react'
 import type { PlaygroundEditor } from './editor'
 
 const snapshot = (_: unknown, editor: PlaygroundEditor) => ({

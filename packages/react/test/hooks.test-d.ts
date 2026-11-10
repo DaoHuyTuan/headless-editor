@@ -1,7 +1,7 @@
 import { describe, expectTypeOf, it } from 'vitest'
-import { definePlugin, Editor, type AnyPlugin } from '@hte/core'
-import { paragraph } from '@hte/paragraph'
-import { bold } from '@hte/bold'
+import { definePlugin, Editor, type AnyPlugin } from '@penline/core'
+import { paragraph } from '@penline/paragraph'
+import { bold } from '@penline/bold'
 import { useEditorState, usePluginState } from '../src/index'
 
 const counter = definePlugin({

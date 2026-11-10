@@ -6,8 +6,8 @@ import { textsOutsideWidgets, widgetAround } from './decorations'
 import type { Renderer } from './renderer'
 import { isZwLeaf, placeholderIndex, stripPlaceholder } from './zero-width'
 
-const LEAF_ATTR = 'data-hte-leaf'
-const ID_ATTR = 'data-hte-id'
+const LEAF_ATTR = 'data-penline-leaf'
+const ID_ATTR = 'data-penline-id'
 const PRECEDING = 2
 
 /**
@@ -299,7 +299,7 @@ function boundaryPoint(r: Renderer, container: globalThis.Node, index: number): 
   return null
 }
 
-/** The closest element root (`data-hte-id`) that is or contains `node`, or the root. */
+/** The closest element root (`data-penline-id`) that is or contains `node`, or the root. */
 function closestElementRoot(root: HTMLElement, node: globalThis.Node): globalThis.Node {
   let cur: globalThis.Node | null = node
   while (cur && cur !== root) {

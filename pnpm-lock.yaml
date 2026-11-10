@@ -184,28 +184,28 @@ importers:
 
   apps/playground:
     dependencies:
-      '@hte/bold':
+      '@penline/bold':
         specifier: workspace:*
         version: link:../../packages/plugins/bold
-      '@hte/code-block':
+      '@penline/code-block':
         specifier: workspace:*
         version: link:../../packages/plugins/code-block
-      '@hte/core':
+      '@penline/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@hte/font-size':
+      '@penline/font-size':
         specifier: workspace:*
         version: link:../../packages/plugins/font-size
-      '@hte/image':
+      '@penline/image':
         specifier: workspace:*
         version: link:../../packages/plugins/image
-      '@hte/mention':
+      '@penline/mention':
         specifier: workspace:*
         version: link:../../packages/plugins/mention
-      '@hte/paragraph':
+      '@penline/paragraph':
         specifier: workspace:*
         version: link:../../packages/plugins/paragraph
-      '@hte/react':
+      '@penline/react':
         specifier: workspace:*
         version: link:../../packages/react
       react:
@@ -245,17 +245,17 @@ importers:
 
   packages/plugins/bold:
     dependencies:
-      '@hte/core':
+      '@penline/core':
         specifier: workspace:*
         version: link:../../core
     devDependencies:
-      '@hte/paragraph':
+      '@penline/paragraph':
         specifier: workspace:*
         version: link:../paragraph
 
   packages/plugins/code-block:
     dependencies:
-      '@hte/core':
+      '@penline/core':
         specifier: workspace:*
         version: link:../../core
       highlight.js:
@@ -265,16 +265,16 @@ importers:
         specifier: ^4.0.0
         version: 4.6.7
     devDependencies:
-      '@hte/bold':
+      '@penline/bold':
         specifier: workspace:*
         version: link:../bold
-      '@hte/mention':
+      '@penline/mention':
         specifier: workspace:*
         version: link:../mention
-      '@hte/paragraph':
+      '@penline/paragraph':
         specifier: workspace:*
         version: link:../paragraph
-      '@hte/react':
+      '@penline/react':
         specifier: workspace:*
         version: link:../../react
       '@testing-library/react':
@@ -295,33 +295,33 @@ importers:
 
   packages/plugins/font-size:
     dependencies:
-      '@hte/core':
+      '@penline/core':
         specifier: workspace:*
         version: link:../../core
       zod:
         specifier: ^4.0.0
         version: 4.6.7
     devDependencies:
-      '@hte/bold':
+      '@penline/bold':
         specifier: workspace:*
         version: link:../bold
-      '@hte/paragraph':
+      '@penline/paragraph':
         specifier: workspace:*
         version: link:../paragraph
 
   packages/plugins/image:
     dependencies:
-      '@hte/core':
+      '@penline/core':
         specifier: workspace:*
         version: link:../../core
       zod:
         specifier: ^4.0.0
         version: 4.6.7
     devDependencies:
-      '@hte/paragraph':
+      '@penline/paragraph':
         specifier: workspace:*
         version: link:../paragraph
-      '@hte/react':
+      '@penline/react':
         specifier: workspace:*
         version: link:../../react
       '@testing-library/react':
@@ -342,17 +342,17 @@ importers:
 
   packages/plugins/mention:
     dependencies:
-      '@hte/core':
+      '@penline/core':
         specifier: workspace:*
         version: link:../../core
       zod:
         specifier: ^4.0.0
         version: 4.6.7
     devDependencies:
-      '@hte/paragraph':
+      '@penline/paragraph':
         specifier: workspace:*
         version: link:../paragraph
-      '@hte/react':
+      '@penline/react':
         specifier: workspace:*
         version: link:../../react
       '@testing-library/react':
@@ -373,20 +373,20 @@ importers:
 
   packages/plugins/paragraph:
     dependencies:
-      '@hte/core':
+      '@penline/core':
         specifier: workspace:*
         version: link:../../core
 
   packages/react:
     dependencies:
-      '@hte/core':
+      '@penline/core':
         specifier: workspace:*
         version: link:../core
     devDependencies:
-      '@hte/bold':
+      '@penline/bold':
         specifier: workspace:*
         version: link:../plugins/bold
-      '@hte/paragraph':
+      '@penline/paragraph':
         specifier: workspace:*
         version: link:../plugins/paragraph
       '@testing-library/react':

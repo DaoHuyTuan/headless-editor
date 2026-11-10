@@ -8,8 +8,8 @@ import {
   type KeyboardEvent,
   type PointerEvent,
 } from 'react'
-import type { NodeViewPropsOf } from '@hte/core'
-import { usePluginState } from '@hte/react'
+import type { NodeViewPropsOf } from '@penline/core'
+import { usePluginState } from '@penline/react'
 import { image } from '../index'
 
 /** The props of an image node view. */
@@ -17,7 +17,7 @@ export type ImageProps = NodeViewPropsOf<typeof image>
 
 const MIN_WIDTH = 32
 /** The container the core renders a node view into. */
-const NODE_VIEW_SELECTOR = '[data-hte-node-view]'
+const NODE_VIEW_SELECTOR = '[data-penline-node-view]'
 
 /** @experimental Level 4 customization API; may change after M3 without a deprecation cycle. */
 export interface ImageStateApi {

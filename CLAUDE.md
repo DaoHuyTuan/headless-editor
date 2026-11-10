@@ -4,8 +4,8 @@ Project memory for agents. Read this first; open the longer docs only when a tas
 
 ## What this is
 A headless rich-text editor with its own engine (not ProseMirror). It is a pnpm monorepo in TypeScript.
-- `packages/core`: `@hte/core`. Framework-free: model, ops, transactions, history, plugins, DOM view.
-- `packages/react`: `@hte/react`. Provides `useEditor`, `EditorContent`, `useEditorState`, `usePluginState`, node views rendered through portals, and the customization helpers (`resolveParts`, `dataAttrs`).
+- `packages/core`: `@penline/core`. Framework-free: model, ops, transactions, history, plugins, DOM view.
+- `packages/react`: `@penline/react`. Provides `useEditor`, `EditorContent`, `useEditorState`, `usePluginState`, node views rendered through portals, and the customization helpers (`resolveParts`, `dataAttrs`).
 - `packages/plugins/{paragraph,bold,font-size,image,mention,code-block}`: each has its logic in `src/index.ts` and, when it has a view, the React part in `src/react*`.
 - `apps/playground`: the Vite demo plus the Playwright e2e tests (`apps/playground/e2e`).
 

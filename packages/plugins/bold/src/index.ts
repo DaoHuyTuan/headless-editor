@@ -1,8 +1,8 @@
 /**
- * Bold mark (`@hte/bold`). Renders `<strong>`; `options.HTMLAttributes` is merged into it.
+ * Bold mark (`@penline/bold`). Renders `<strong>`; `options.HTMLAttributes` is merged into it.
  * No React view, so no `data-*` attributes and no parts.
  */
-import { definePlugin, mergeAttrs, type Command, type HTMLAttributes } from '@hte/core'
+import { definePlugin, mergeAttrs, type Command, type HTMLAttributes } from '@penline/core'
 
 export interface BoldOptions {
   /** Extra attributes merged into the `<strong>`. */

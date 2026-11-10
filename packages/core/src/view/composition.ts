@@ -14,7 +14,7 @@ import { isZwLeaf, stripPlaceholder } from './zero-width'
 const INPUT_TYPE = 'insertCompositionText'
 
 /**
- * The text an IME left in a leaf: its DOM text (a lone `<br data-hte-break>` counts as empty). In a
+ * The text an IME left in a leaf: its DOM text (a lone `<br data-penline-break>` counts as empty). In a
  * zero-width leaf (an empty text beside an inline atom) its one placeholder is not text, while a
  * real U+200B the IME wrote is (see `stripPlaceholder`).
  * Decoration spans are read through (their text is the leaf's); decoration widgets are not text.

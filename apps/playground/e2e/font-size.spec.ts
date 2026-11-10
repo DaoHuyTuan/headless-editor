@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import type { ElementNode } from '@hte/core'
+import type { ElementNode } from '@penline/core'
 import { focusEnd, getDoc, getText, openPlayground } from './helpers'
 
 let errors: string[]

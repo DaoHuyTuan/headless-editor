@@ -1,6 +1,6 @@
 import { describe, expectTypeOf, it } from 'vitest'
-import { Editor } from '@hte/core'
-import { paragraph } from '@hte/paragraph'
+import { Editor } from '@penline/core'
+import { paragraph } from '@penline/paragraph'
 import { bold } from '../src/index'
 
 describe('bold types', () => {

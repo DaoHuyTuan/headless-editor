@@ -47,7 +47,7 @@ afterEach(() => {
 describe('inline decorations', () => {
   it('wraps the decorated range of a leaf in a deco span', () => {
     const { view } = mount([p('p1', txt('abcde'))], [inline(pt([0, 0], 1), pt([0, 0], 4), { class: 'x' })])
-    expect(view.renderer.leafAt([0, 0])!.innerHTML).toBe('a<span data-hte-deco="" class="x">bcd</span>e')
+    expect(view.renderer.leafAt([0, 0])!.innerHTML).toBe('a<span data-penline-deco="" class="x">bcd</span>e')
   })
 
   it('nests inside the mark wrappers', () => {
@@ -56,7 +56,7 @@ describe('inline decorations', () => {
       [inline(pt([0, 0], 0), pt([0, 0], 2), { class: 'x', 'data-k': 'v' })],
     )
     expect(view.renderer.leafAt([0, 0])!.innerHTML).toBe(
-      '<strong>' + '<span data-hte-deco="" class="x" data-k="v">ab</span>cde</strong>',
+      '<strong>' + '<span data-penline-deco="" class="x" data-k="v">ab</span>cde</strong>',
     )
   })
 
@@ -68,9 +68,9 @@ describe('inline decorations', () => {
         inline(pt([0, 1], 0), pt([0, 1], 2), { class: 'y' }),
       ],
     )
-    expect(view.renderer.leafAt([0, 0])!.innerHTML).toBe('ab<span data-hte-deco="" class="x">c</span>')
+    expect(view.renderer.leafAt([0, 0])!.innerHTML).toBe('ab<span data-penline-deco="" class="x">c</span>')
     expect(view.renderer.leafAt([0, 1])!.innerHTML).toBe(
-      '<strong><span data-hte-deco="" class="x y">d</span><span data-hte-deco="" class="y">e</span>f</strong>',
+      '<strong><span data-penline-deco="" class="x y">d</span><span data-penline-deco="" class="y">e</span>f</strong>',
     )
   })
 
@@ -81,7 +81,7 @@ describe('inline decorations', () => {
       const dom = modelToDom(r, pt([0, 0], offset))
       expect(domToModel(r, dom.node, dom.offset)).toEqual(pt([0, 0], offset))
     }
-    const deco = r.leafAt([0, 0])!.querySelector('[data-hte-deco]')!
+    const deco = r.leafAt([0, 0])!.querySelector('[data-penline-deco]')!
     expect(modelToDom(r, pt([0, 0], 3))).toEqual({ node: deco.firstChild, offset: 2 })
     expect(domToModel(r, deco, 1)).toEqual(pt([0, 0], 4))
   })
@@ -95,14 +95,14 @@ describe('inline decorations', () => {
     expect(view.renderer.leafAt([1, 0])).toBe(second)
     expect(second.firstChild).toBe(secondText)
     expect(view.renderer.leafAt([0, 0])).toBe(first)
-    expect(first.innerHTML).toBe('a<span data-hte-deco="" class="x">b</span>c')
+    expect(first.innerHTML).toBe('a<span data-penline-deco="" class="x">b</span>c')
     // Same decorations again: the decorated leaf's DOM is kept as is.
-    const span = first.querySelector('[data-hte-deco]')
+    const span = first.querySelector('[data-penline-deco]')
     redecorate(view, [inline(pt([0, 0], 1), pt([0, 0], 2), { class: 'x' })])
-    expect(first.querySelector('[data-hte-deco]')).toBe(span)
+    expect(first.querySelector('[data-penline-deco]')).toBe(span)
     // An attrs change re-renders it; removing all decorations restores plain text.
     redecorate(view, [inline(pt([0, 0], 1), pt([0, 0], 2), { class: 'z' })])
-    expect(first.innerHTML).toBe('a<span data-hte-deco="" class="z">b</span>c')
+    expect(first.innerHTML).toBe('a<span data-penline-deco="" class="z">b</span>c')
     redecorate(view, [])
     expect(first.innerHTML).toBe('abc')
   })
@@ -115,9 +115,9 @@ describe('inline decorations', () => {
   it('repairs a damaged decorated leaf', async () => {
     const { view } = mount([p('p1', txt('abcde'))], [inline(pt([0, 0], 1), pt([0, 0], 4), { class: 'x' })])
     const leaf = view.renderer.leafAt([0, 0])!
-    leaf.querySelector('[data-hte-deco]')!.remove()
+    leaf.querySelector('[data-penline-deco]')!.remove()
     await flush()
-    expect(leaf.innerHTML).toBe('a<span data-hte-deco="" class="x">bcd</span>e')
+    expect(leaf.innerHTML).toBe('a<span data-penline-deco="" class="x">bcd</span>e')
   })
 })
 
@@ -140,7 +140,7 @@ describe('widget decorations', () => {
     made = 0
     const { editor, view } = mount([p('p1', txt('abcd'))], [widget(pt([0, 0], 2), 'k1')])
     const leaf = view.renderer.leafAt([0, 0])!
-    expect(leaf.innerHTML).toBe('ab<span class="w" data-hte-widget="" contenteditable="false">W</span>cd')
+    expect(leaf.innerHTML).toBe('ab<span class="w" data-penline-widget="" contenteditable="false">W</span>cd')
     const w = leaf.querySelector('.w')!
     expect(domToModel(view.renderer, w.firstChild!, 1)).toEqual(pt([0, 0], 2))
     expect(domToModel(view.renderer, leaf.lastChild!, 1)).toEqual(pt([0, 0], 3))
@@ -182,8 +182,8 @@ describe('widget decorations', () => {
   })
 
   it('the attribute names are exported from the core index and match the rendered DOM', () => {
-    expect(WIDGET_ATTR).toBe('data-hte-widget')
-    expect(DECO_ATTR).toBe('data-hte-deco')
+    expect(WIDGET_ATTR).toBe('data-penline-widget')
+    expect(DECO_ATTR).toBe('data-penline-deco')
     const { view } = mount(
       [p('p1', txt('abcd'))],
       [widget(pt([0, 0], 2), 'k1'), inline(pt([0, 0], 0), pt([0, 0], 1), { class: 'x' })],
@@ -213,7 +213,7 @@ describe('widget decorations', () => {
   it('renders in an empty text before its break', () => {
     const { view } = mount([p('p1', txt(''))], [widget(pt([0, 0], 0), 'k')])
     const leaf = view.renderer.leafAt([0, 0])!
-    expect(leaf.innerHTML).toBe('<span class="w" data-hte-widget="" contenteditable="false">W</span><br data-hte-break="">')
+    expect(leaf.innerHTML).toBe('<span class="w" data-penline-widget="" contenteditable="false">W</span><br data-penline-break="">')
     expect(domToModel(view.renderer, leaf, 2)).toEqual(pt([0, 0], 0))
   })
 
@@ -246,7 +246,7 @@ describe('decorations and composition', () => {
     expect(leaf.innerHTML).toBe('abcê')
     root.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: 'ê' }))
     expect((editor.state.doc.children[0] as ElementNode).children![0]).toMatchObject({ text: 'abcê' })
-    expect(view.renderer.leafAt([0, 0])!.innerHTML).toBe('<span data-hte-deco="" class="x">ab</span>cê')
+    expect(view.renderer.leafAt([0, 0])!.innerHTML).toBe('<span data-penline-deco="" class="x">ab</span>cê')
   })
 
   it('commits text composed inside a decorated leaf with a widget, without the widget text', () => {
@@ -261,7 +261,7 @@ describe('decorations and composition', () => {
     const leaf = view.renderer.leafAt([0, 0])!
     view.renderer.leafAt([0, 0])!.querySelector('i')!.textContent = 'WIDGET'
     root.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }))
-    const seg = leaf.querySelectorAll('[data-hte-deco]')[1]!.firstChild as Text
+    const seg = leaf.querySelectorAll('[data-penline-deco]')[1]!.firstChild as Text
     seg.data = 'bê'
     root.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: 'ê' }))
     expect((editor.state.doc.children[0] as ElementNode).children![0]).toMatchObject({ text: 'abêc' })
@@ -311,7 +311,7 @@ describe('decorations at scale', () => {
     for (let shift = 1; shift <= 3; shift++) redecorate(view, manyDecos(shift))
     const elapsed = (performance.now() - start) / 3
     expect(view.renderer.leafAt([0, 0])!.textContent).toHaveLength(5000)
-    expect(view.renderer.leafAt([0, 0])!.querySelectorAll('[data-hte-deco]').length).toBeGreaterThan(2900)
+    expect(view.renderer.leafAt([0, 0])!.querySelectorAll('[data-penline-deco]').length).toBeGreaterThan(2900)
     // Generous: DOM building in happy-dom dominates and slows down under a loaded test run.
     expect(elapsed).toBeLessThan(1500)
   })
@@ -329,11 +329,11 @@ describe('decorations at scale', () => {
     const decos = [inline(pt([0, 0], 1), pt([0, 0], 3), { class: 'x' })]
     const { editor, view } = mount([p('p1', txt('abcde')), p('p2', txt('fgh'))], decos)
     const leaf = view.renderer.leafAt([0, 0])!
-    const span = leaf.querySelector('[data-hte-deco]')!
+    const span = leaf.querySelector('[data-penline-deco]')!
     const nodes = Array.from(leaf.childNodes)
     editor.dispatch(editor.createTransaction().setSelection(caret([1, 0], 2)))
     expect(view.renderer.leafAt([0, 0])).toBe(leaf)
-    expect(leaf.querySelector('[data-hte-deco]')).toBe(span)
+    expect(leaf.querySelector('[data-penline-deco]')).toBe(span)
     expect(Array.from(leaf.childNodes)).toEqual(nodes)
   })
 })

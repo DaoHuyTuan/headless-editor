@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useId, useReducer, type ComponentType, type MouseEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import type { AnyPlugin, Editor, NodeViewPropsOf } from '@hte/core'
-import { dataAttrs, resolveParts, useEditorState, usePluginState, type ViewCustomization } from '@hte/react'
+import type { AnyPlugin, Editor, NodeViewPropsOf } from '@penline/core'
+import { dataAttrs, resolveParts, useEditorState, usePluginState, type ViewCustomization } from '@penline/react'
 import { mention, type MentionState, type User } from './index'
 
 type AnyEditor = Editor<readonly AnyPlugin[]>
@@ -58,7 +58,7 @@ const MentionContext = createContext<MentionInfo | null>(null)
  */
 export function useMentionContext(): MentionInfo {
   const value = useContext(MentionContext)
-  if (!value) throw new Error('@hte/mention: Mention parts must be rendered inside <Mention.Root>')
+  if (!value) throw new Error('@penline/mention: Mention parts must be rendered inside <Mention.Root>')
   return value
 }
 
@@ -76,7 +76,7 @@ export interface MentionLabelProps {
 }
 
 /**
- * The parts of the mention view. `Root` is `<span data-hte-mention data-selected?>` and provides
+ * The parts of the mention view. `Root` is `<span data-penline-mention data-selected?>` and provides
  * the `MentionInfo` to the other parts; `Label` shows `@label`.
  * @experimental Level 3 customization API; may change after M3 without a deprecation cycle.
  */
@@ -84,7 +84,7 @@ export const Mention = {
   Root({ value, selected, className, children }: MentionRootProps) {
     return (
       <MentionContext.Provider value={value}>
-        <span data-hte-mention="" {...dataAttrs({ selected })} className={className}>
+        <span data-penline-mention="" {...dataAttrs({ selected })} className={className}>
           {children}
         </span>
       </MentionContext.Provider>
@@ -100,7 +100,7 @@ type MentionParts = { label: ComponentType<MentionLabelProps> }
 export type MentionViewProps = NodeViewPropsOf<typeof mention> & ViewCustomization<MentionParts>
 
 /**
- * Default React node view of the mention plugin. Stable attributes: `data-hte-mention` on the root,
+ * Default React node view of the mention plugin. Stable attributes: `data-penline-mention` on the root,
  * `data-selected` when node-selected. `parts` / `classNames` keys: `root`, `label`.
  */
 export function MentionView({ parts, classNames, ...props }: MentionViewProps) {
@@ -208,7 +208,7 @@ const SuggestionContext = createContext<SuggestionApi | null>(null)
  */
 export function useSuggestionContext(): SuggestionApi {
   const value = useContext(SuggestionContext)
-  if (!value) throw new Error('@hte/mention: Suggestion parts must be rendered inside <Suggestion.Popup>')
+  if (!value) throw new Error('@penline/mention: Suggestion parts must be rendered inside <Suggestion.Popup>')
   return value
 }
 
@@ -225,7 +225,7 @@ export interface SuggestionItemProps extends SuggestionPartProps {
 
 /**
  * The parts of the suggestion popup. `Popup` renders (while open and positioned) a
- * `<div data-hte-mention-suggestion data-open>` with `position: fixed` below the trigger (its `mousedown`
+ * `<div data-penline-mention-suggestion data-open>` with `position: fixed` below the trigger (its `mousedown`
  * default is prevented, so pressing anywhere on it keeps the focus in the editor), through a
  * portal to `document.body`, and provides the `SuggestionApi` to `List` (`role="listbox"`) and
  * `Item` (`role="option"`, `aria-selected`, `data-selected`).
@@ -237,7 +237,7 @@ export const Suggestion = {
     return createPortal(
       <SuggestionContext.Provider value={value}>
         <div
-          data-hte-mention-suggestion=""
+          data-penline-mention-suggestion=""
           {...dataAttrs({ open: value.open })}
           className={className}
           style={{ position: 'fixed', left: value.coords.left, top: value.coords.bottom }}
@@ -283,7 +283,7 @@ const joinClass = (...names: (string | undefined)[]) => names.filter(Boolean).jo
 
 /**
  * Default suggestion popup of the mention plugin; render it once next to `EditorContent`. Stable
- * attributes: `data-hte-mention-suggestion` and `data-open` on the popup, `data-selected` on the
+ * attributes: `data-penline-mention-suggestion` and `data-open` on the popup, `data-selected` on the
  * highlighted item. `classNames.root` and `classNames.popup` both apply to the popup. Hiding the
  * popup part (`parts: { popup: false }`) renders nothing.
  */

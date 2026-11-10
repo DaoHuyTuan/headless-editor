@@ -2,9 +2,9 @@
 import { StrictMode, useEffect } from 'react'
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { definePlugin, nodeSelection, type Editor } from '@hte/core'
-import { doc, el, sel, txt } from '@hte/core/testing'
-import { paragraph } from '@hte/paragraph'
+import { definePlugin, nodeSelection, type Editor } from '@penline/core'
+import { doc, el, sel, txt } from '@penline/core/testing'
+import { paragraph } from '@penline/paragraph'
 import { EditorContent, useEditor, type ReactNodeView } from '../src/index'
 
 const atom = definePlugin({

@@ -1,5 +1,5 @@
 {
-  "name": "@hte/font-size",
+  "name": "@penline/font-size",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -7,11 +7,11 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@hte/core": "workspace:*",
+    "@penline/core": "workspace:*",
     "zod": "^4.0.0"
   },
   "devDependencies": {
-    "@hte/bold": "workspace:*",
-    "@hte/paragraph": "workspace:*"
+    "@penline/bold": "workspace:*",
+    "@penline/paragraph": "workspace:*"
   }
 }

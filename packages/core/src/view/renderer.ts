@@ -19,11 +19,11 @@ import {
 } from './decorations'
 import { ZW, ZW_ATTR } from './zero-width'
 
-const ID_ATTR = 'data-hte-id'
-const LEAF_ATTR = 'data-hte-leaf'
-const NODE_VIEW_ATTR = 'data-hte-node-view'
-const CONTENT_ATTR = 'data-hte-content'
-const SELECTED_ATTR = 'data-hte-selected'
+const ID_ATTR = 'data-penline-id'
+const LEAF_ATTR = 'data-penline-leaf'
+const NODE_VIEW_ATTR = 'data-penline-node-view'
+const CONTENT_ATTR = 'data-penline-content'
+const SELECTED_ATTR = 'data-penline-selected'
 
 /**
  * The rendered DOM of one element (or of the root, for the doc). Children occupy the hole's
@@ -75,7 +75,7 @@ export interface RenderOptions {
    * shows (the text appears twice) until the next render without `skipLeaf`. Pass it while composing.
    */
   skipPath?: Path
-  /** The path of the node-selected element: its root gets `data-hte-selected`, its node view `selected: true`. */
+  /** The path of the node-selected element: its root gets `data-penline-selected`, its node view `selected: true`. */
   selectedNode?: Path
   /** Decorations to draw (see `Decoration`); those not pointing into a text of the doc are dropped. */
   decorations?: readonly Decoration[]
@@ -108,20 +108,20 @@ type ResolvedPart = Exclude<LeafPart, { kind: 'widget' }> | { kind: 'widget'; ke
  * Renders a document into a contenteditable root and patches it on later renders.
  *
  * DOM contract: each element's root is the first element produced by its `renderHTML` (a `<div>` /
- * `<span>` wrapper for block / inline types without one) carrying `data-hte-id`; children go into the
- * content hole. Each text is a `<span data-hte-leaf>` holding its marks nested by rank (lowest
- * outermost) around the DOM text, or `<br data-hte-break>` when empty. An empty text next to an element
+ * `<span>` wrapper for block / inline types without one) carrying `data-penline-id`; children go into the
+ * content hole. Each text is a `<span data-penline-leaf>` holding its marks nested by rank (lowest
+ * outermost) around the DOM text, or `<br data-penline-break>` when empty. An empty text next to an element
  * sibling (e.g. beside an inline atom) shows a zero-width space instead, and its leaf carries
- * `data-hte-zw`: that character is not model text. The last text of an element ending with `\n` gets a
- * `<br data-hte-break>` after its text, so the empty line after that newline shows and takes the
+ * `data-penline-zw`: that character is not model text. The last text of an element ending with `\n` gets a
+ * `<br data-penline-break>` after its text, so the empty line after that newline shows and takes the
  * caret (the break is not model text). Decorations split a leaf's text inside its mark
- * wrappers: decorated segments are `<span data-hte-deco …attrs>`, widgets sit between segments
- * (`contenteditable="false"`, `data-hte-widget`, reused by key); a leaf is kept while its text, marks
+ * wrappers: decorated segments are `<span data-penline-deco …attrs>`, widgets sit between segments
+ * (`contenteditable="false"`, `data-penline-widget`, reused by key); a leaf is kept while its text, marks
  * and decoration signature are unchanged and its DOM is intact. Unknown elements render as an empty
- * `<div data-hte-id data-hte-unknown="<type>" contenteditable="false">`; inline atoms' roots get
- * `contenteditable="false"` too. A node view's root is a container (`data-hte-node-view`) whose
+ * `<div data-penline-id data-penline-unknown="<type>" contenteditable="false">`; inline atoms' roots get
+ * `contenteditable="false"` too. A node view's root is a container (`data-penline-node-view`) whose
  * content is the view's: an atom's is `contenteditable="false"`; a non-atom's children go into its
- * `contentDOM` (`data-hte-content contenteditable="true"`, the whole hole), which the view places.
+ * `contentDOM` (`data-penline-content contenteditable="true"`, the whole hole), which the view places.
  *
  * Patching is keyed by element id: an element's DOM is reused while its id stays in the doc, and its
  * own root is re-rendered only when its type or data changes (or its spec DOM was damaged). Text
@@ -313,7 +313,7 @@ export class Renderer {
       if (cur.nodeType === 1 && (cur as Element).getAttribute('contenteditable') === 'false') {
         this.warnedContent.add(contentDOM as Element)
         console.warn(
-          `[hte] The node view of "${entry.node.type}" placed its contentDOM inside a contenteditable="false" ` +
+          `[penline] The node view of "${entry.node.type}" placed its contentDOM inside a contenteditable="false" ` +
             'element: mark only the elements beside contentDOM (headers, controls) as non-editable, never an ancestor.',
         )
         return
@@ -369,7 +369,7 @@ export class Renderer {
     }
   }
 
-  /** The `<span data-hte-leaf>` rendered for the text at `path`. */
+  /** The `<span data-penline-leaf>` rendered for the text at `path`. */
   leafAt(path: Path): HTMLElement | null {
     const dom = this.domAt(path)
     return dom && this.isLeaf(dom) ? dom : null
@@ -600,7 +600,7 @@ export class Renderer {
     if (!registered) {
       const dom = this.doc.createElement('div')
       dom.setAttribute(ID_ATTR, node.id)
-      dom.setAttribute('data-hte-unknown', node.type)
+      dom.setAttribute('data-penline-unknown', node.type)
       dom.setAttribute('contenteditable', 'false')
       return { dom, node, hole: dom, before: null, anchor: null, kids: [], rendersChildren: false }
     }
@@ -794,7 +794,7 @@ export class Renderer {
     return parts.every((part, i) => {
       const node = nodes[i]!
       if (part.kind === 'widget') return node === part.el
-      if (part.kind === 'break') return node.nodeName === 'BR' && (node as Element).hasAttribute('data-hte-break')
+      if (part.kind === 'break') return node.nodeName === 'BR' && (node as Element).hasAttribute('data-penline-break')
       if (!part.attrs) return node.nodeType === 3 && (node as Text).data === part.text
       if (node.nodeType !== 1 || !(node as Element).hasAttribute(DECO_ATTR) || node.childNodes.length !== 1) return false
       const span = node as Element
@@ -807,14 +807,14 @@ export class Renderer {
 
   /**
    * The leaf's content: mark wrappers nested by rank (lowest outermost) around its parts — the text
-   * (decorated segments in `<span data-hte-deco>`), widgets, or the break / `ZW` when empty.
+   * (decorated segments in `<span data-penline-deco>`), widgets, or the break / `ZW` when empty.
    */
   private leafContent(text: TextNode, parts: ResolvedPart[]): globalThis.Node[] {
     const inner = parts.map((part): globalThis.Node => {
       if (part.kind === 'widget') return part.el
       if (part.kind === 'break') {
         const br = this.doc.createElement('br')
-        br.setAttribute('data-hte-break', '')
+        br.setAttribute('data-penline-break', '')
         return br
       }
       const textNode = this.doc.createTextNode(part.text)

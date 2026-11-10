@@ -28,8 +28,8 @@ describe('the initial render (5.6)', () => {
     editor.mount(root)
     // createTestEditor gives the content fresh ids: read the image's from the state.
     const id = (editor.state.doc.children[1] as ElementNode).id
-    const img = root.querySelector(`[data-hte-id="${id}"]`)!
-    expect(img.hasAttribute('data-hte-selected')).toBe(true)
+    const img = root.querySelector(`[data-penline-id="${id}"]`)!
+    expect(img.hasAttribute('data-penline-selected')).toBe(true)
   })
 })
 

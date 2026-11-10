@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import type { ElementNode, TextNode } from '@hte/core'
+import type { ElementNode, TextNode } from '@penline/core'
 import { focusEnd, getDoc, getSelection, getText, openPlayground } from './helpers'
 
 test.beforeEach(async ({ page }) => {

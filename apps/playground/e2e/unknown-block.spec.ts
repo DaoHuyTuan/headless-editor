@@ -51,9 +51,9 @@ test('focus, type, Ctrl+A and Backspace work; the unknown block survives', async
 test('Backspace at the start of the block after the unknown block selects it; a second Backspace removes it', async ({
   page,
 }) => {
-  const unknown = page.locator('[data-testid=editor] [data-hte-unknown=heading]')
+  const unknown = page.locator('[data-testid=editor] [data-penline-unknown=heading]')
   await page.keyboard.press('Backspace')
-  await expect(unknown).toHaveAttribute('data-hte-selected', '')
+  await expect(unknown).toHaveAttribute('data-penline-selected', '')
   expect((await getSelection(page))?.node).toEqual([0])
   expect((await getDoc(page)).children[0]).toEqual(unknownHeading)
   expect(await getText(page)).toBe('Title\nBody text')
@@ -69,9 +69,9 @@ test('Backspace at the start of the block after the unknown block selects it; a 
 })
 
 test('clicking the unknown block selects it; typing then replaces it', async ({ page }) => {
-  const unknown = page.locator('[data-testid=editor] [data-hte-unknown=heading]')
+  const unknown = page.locator('[data-testid=editor] [data-penline-unknown=heading]')
   await unknown.click()
-  await expect(unknown).toHaveAttribute('data-hte-selected', '')
+  await expect(unknown).toHaveAttribute('data-penline-selected', '')
   expect((await getSelection(page))?.node).toEqual([0])
   // The DOM selection covers exactly the block and maps back to the same node selection.
   const domSel = await page.evaluate(() => {

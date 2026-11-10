@@ -1,5 +1,5 @@
 {
-  "name": "@hte/image",
+  "name": "@penline/image",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -8,13 +8,13 @@
     "./react": "./src/react/index.tsx"
   },
   "dependencies": {
-    "@hte/core": "workspace:*",
+    "@penline/core": "workspace:*",
     "zod": "^4.0.0"
   },
   "peerDependencies": {
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "@hte/react": "workspace:*"
+    "@penline/react": "workspace:*"
   },
   "peerDependenciesMeta": {
     "react": {
@@ -23,13 +23,13 @@
     "react-dom": {
       "optional": true
     },
-    "@hte/react": {
+    "@penline/react": {
       "optional": true
     }
   },
   "devDependencies": {
-    "@hte/paragraph": "workspace:*",
-    "@hte/react": "workspace:*",
+    "@penline/paragraph": "workspace:*",
+    "@penline/react": "workspace:*",
     "@testing-library/react": "^16.3.0",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",

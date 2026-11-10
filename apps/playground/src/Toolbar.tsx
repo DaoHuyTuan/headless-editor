@@ -1,5 +1,5 @@
 import { useRef, type ChangeEvent, type MouseEvent } from 'react'
-import { useEditorState } from '@hte/react'
+import { useEditorState } from '@penline/react'
 import type { PlaygroundEditor } from './editor'
 
 /** Toolbar button: bordered, filled when `data-active`, dimmed when disabled. */

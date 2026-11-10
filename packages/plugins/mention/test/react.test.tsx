@@ -2,10 +2,10 @@
 import { StrictMode, type ComponentType } from 'react'
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { nodeSelection, type Editor, type ElementNode, type NodeViewPropsOf } from '@hte/core'
-import { doc, el, sel, txt } from '@hte/core/testing'
-import { paragraph } from '@hte/paragraph'
-import { EditorContent, useEditor } from '@hte/react'
+import { nodeSelection, type Editor, type ElementNode, type NodeViewPropsOf } from '@penline/core'
+import { doc, el, sel, txt } from '@penline/core/testing'
+import { paragraph } from '@penline/paragraph'
+import { EditorContent, useEditor } from '@penline/react'
 import { mention, type MentionState, type User } from '../src/index'
 import {
   MentionSuggestion,
@@ -88,8 +88,8 @@ function setup({
     root,
     type,
     resolve,
-    mentionEl: () => root.querySelector('[data-hte-mention]') as HTMLElement,
-    popup: () => document.body.querySelector('[data-hte-mention-suggestion]') as HTMLElement | null,
+    mentionEl: () => root.querySelector('[data-penline-mention]') as HTMLElement,
+    popup: () => document.body.querySelector('[data-penline-mention-suggestion]') as HTMLElement | null,
     state: () => editor.getPluginState<MentionState>('mention'),
   }
 }
@@ -124,7 +124,7 @@ describe('MentionView', () => {
     let renders = 0
     const Counting: View = (p) => {
       renders++
-      return <span data-hte-mention="">@{useMention(p).label}</span>
+      return <span data-penline-mention="">@{useMention(p).label}</span>
     }
     const t = setup({ view: Counting })
     // Typing changes the doc around the chip, not the chip itself.
@@ -283,7 +283,7 @@ describe('MentionSuggestion', () => {
       { userId: 'u1', label: 'Ann' },
       { userId: 'u2', label: 'Bob' },
     ])
-    expect(t.root.querySelectorAll('[data-hte-mention]')[1]!.textContent).toBe('@Bob')
+    expect(t.root.querySelectorAll('[data-penline-mention]')[1]!.textContent).toBe('@Bob')
     expect(errors).not.toHaveBeenCalled()
   })
 

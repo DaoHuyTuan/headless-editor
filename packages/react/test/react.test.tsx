@@ -2,10 +2,10 @@
 import { StrictMode, useLayoutEffect, useState, type ReactNode } from 'react'
 import { act, cleanup, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { definePlugin, Editor, textEntries, type EditorEventName } from '@hte/core'
-import { doc, el, sel, txt } from '@hte/core/testing'
-import { paragraph } from '@hte/paragraph'
-import { bold } from '@hte/bold'
+import { definePlugin, Editor, textEntries, type EditorEventName } from '@penline/core'
+import { doc, el, sel, txt } from '@penline/core/testing'
+import { paragraph } from '@penline/paragraph'
+import { bold } from '@penline/bold'
 import { EditorContent, useEditor, useEditorState } from '../src/index'
 
 const plugins = [paragraph, bold] as const

@@ -2,10 +2,10 @@
 import { StrictMode, type ComponentType, type ReactNode } from 'react'
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { isNodeSelection, nodeSelection, type Editor, type NodeViewPropsOf } from '@hte/core'
-import { doc, el, sel, txt } from '@hte/core/testing'
-import { paragraph } from '@hte/paragraph'
-import { EditorContent, useEditor } from '@hte/react'
+import { isNodeSelection, nodeSelection, type Editor, type NodeViewPropsOf } from '@penline/core'
+import { doc, el, sel, txt } from '@penline/core/testing'
+import { paragraph } from '@penline/paragraph'
+import { EditorContent, useEditor } from '@penline/react'
 import { image, type ImageData } from '../src/index'
 import {
   Image,
@@ -71,9 +71,9 @@ function setup(data?: Partial<ImageData>, view: View = ImageView) {
   return {
     editor: () => editor,
     root,
-    figure: () => root.querySelector('figure[data-hte-image]') as HTMLElement,
+    figure: () => root.querySelector('figure[data-penline-image]') as HTMLElement,
     input: () => root.querySelector('input') as HTMLInputElement,
-    handle: () => root.querySelector('[data-hte-image] > span[data-editor-ignore]') as HTMLElement,
+    handle: () => root.querySelector('[data-penline-image] > span[data-editor-ignore]') as HTMLElement,
   }
 }
 
@@ -325,7 +325,7 @@ describe('ImageView', () => {
     } finally {
       URL.createObjectURL = created
     }
-    const figures = () => Array.from(t.root.querySelectorAll('figure[data-hte-image]'))
+    const figures = () => Array.from(t.root.querySelectorAll('figure[data-penline-image]'))
     expect(figures().filter((f) => f.hasAttribute('data-uploading'))).toHaveLength(1)
     await act(async () => {
       resolve('https://x.test/b.png')
@@ -340,7 +340,7 @@ type Props = NodeViewPropsOf<typeof image>
 
 /** Gives the node view container a width and the picture a measured width, for resize tests. */
 function measure(root: HTMLElement, imgWidth: number, space = 400) {
-  const container = root.querySelector('[data-hte-node-view]') as HTMLElement
+  const container = root.querySelector('[data-penline-node-view]') as HTMLElement
   Object.defineProperty(container, 'clientWidth', { configurable: true, value: space })
   const img = container.querySelector('img')!
   img.getBoundingClientRect = () => ({ width: imgWidth }) as DOMRect

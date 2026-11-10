@@ -25,7 +25,7 @@ export interface InlineDecoration {
  *
  * Placement: the widget is rendered inside the text's leaf, inside its mark wrappers, between the
  * text segments at `at.offset` (so it inherits the text's mark styling). It gets
- * `contenteditable="false"` and `data-hte-widget`; its text never counts as model text, a DOM
+ * `contenteditable="false"` and `data-penline-widget`; its text never counts as model text, a DOM
  * position inside it maps to the point before it, and DOM mutations inside it are ignored.
  */
 export interface WidgetDecoration {
@@ -38,15 +38,15 @@ export interface WidgetDecoration {
 export type Decoration = InlineDecoration | WidgetDecoration
 
 /**
- * The attribute (`data-hte-widget`) the renderer sets on every widget element: its content is not
+ * The attribute (`data-penline-widget`) the renderer sets on every widget element: its content is not
  * model text and its mutations are ignored. Use it to style or find widgets; never set it yourself.
  */
-export const WIDGET_ATTR = 'data-hte-widget'
+export const WIDGET_ATTR = 'data-penline-widget'
 /**
- * The attribute (`data-hte-deco`) the renderer sets on the span of each inline decoration segment
+ * The attribute (`data-penline-deco`) the renderer sets on the span of each inline decoration segment
  * (beside the decoration's own `attrs`). Use it to style or find them; never set it yourself.
  */
-export const DECO_ATTR = 'data-hte-deco'
+export const DECO_ATTR = 'data-penline-deco'
 
 /** The decorations that fall in one text, with offsets local to it. */
 export interface LeafDecorations {
@@ -114,7 +114,7 @@ export function groupDecorations(doc: DeepReadonly<Doc>, decorations: readonly D
     }
     const bad = invalidAttrName(deco.attrs)
     if (bad !== null) {
-      console.warn(`[hte] Dropped an inline decoration with an invalid attribute name "${bad}"`)
+      console.warn(`[penline] Dropped an inline decoration with an invalid attribute name "${bad}"`)
       continue
     }
     let { from, to } = deco

@@ -1,13 +1,13 @@
 /**
- * Mention inline atom (`@hte/mention`); React views in `@hte/mention/react`. The plugin name is
+ * Mention inline atom (`@penline/mention`); React views in `@penline/mention/react`. The plugin name is
  * `mention`.
  *
- * Stable `data-*` attributes (view): `data-hte-mention` on the root `<span>`, `data-selected` when
+ * Stable `data-*` attributes (view): `data-penline-mention` on the root `<span>`, `data-selected` when
  * node-selected. Suggestion popup (a separate view root, portalled to `document.body`):
- * `data-hte-mention-suggestion` and `data-open` on the popup, `data-selected` on the highlighted
+ * `data-penline-mention-suggestion` and `data-open` on the popup, `data-selected` on the highlighted
  * item. HTML output: `<span data-mention data-id="userId">@label</span>` (`options.HTMLAttributes` is
  * merged first; `data-mention` and `data-id` win). The open trigger range is decorated with the
- * class `hte-mention-query`.
+ * class `penline-mention-query`.
  *
  * Parts: mention view `label`; suggestion `popup`, `list`, `item` (`classNames.root` and
  * `classNames.popup` both class the popup). Parts and hooks are @experimental. See
@@ -37,7 +37,7 @@ import {
   type Range,
   type Registry,
   type Transaction,
-} from '@hte/core'
+} from '@penline/core'
 
 /** A user offered by the suggestion popup. */
 export interface User {
@@ -125,7 +125,7 @@ export interface MentionStorage {
 }
 
 /** Class of the inline decoration over the open trigger range (`@query`). */
-export const MENTION_QUERY_CLASS = 'hte-mention-query'
+export const MENTION_QUERY_CLASS = 'penline-mention-query'
 
 type Ctx = PluginContext<MentionOptions, MentionState>
 
@@ -156,7 +156,7 @@ function runtimeOf(editor: Editor): Runtime {
 }
 
 function report(error: unknown): void {
-  console.error('@hte/mention:', error)
+  console.error('@penline/mention:', error)
 }
 
 function rangeEquals(a: Range | null, b: Range | null): boolean {

@@ -13,7 +13,7 @@ function placedContentDOMs(view: EditorView, record: MutationRecord): globalThis
   const out: globalThis.Node[] = []
   for (const node of Array.from(record.addedNodes)) {
     if (node.nodeType !== 1 || !view.root.contains(node)) continue
-    const candidates = [node, ...Array.from((node as Element).querySelectorAll('[data-hte-content]'))]
+    const candidates = [node, ...Array.from((node as Element).querySelectorAll('[data-penline-content]'))]
     for (const c of candidates) if (view.renderer.isContentDOM(c)) out.push(c)
   }
   return out

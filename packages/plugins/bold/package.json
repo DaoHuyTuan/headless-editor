@@ -1,5 +1,5 @@
 {
-  "name": "@hte/bold",
+  "name": "@penline/bold",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -7,9 +7,9 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@hte/core": "workspace:*"
+    "@penline/core": "workspace:*"
   },
   "devDependencies": {
-    "@hte/paragraph": "workspace:*"
+    "@penline/paragraph": "workspace:*"
   }
 }
