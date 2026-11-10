@@ -23,7 +23,7 @@ const ctx = (plugin: AnyPlugin): PluginContext<any, any> => ({
 function load(r: Registry, raw: unknown): Doc {
   const tr = new Transaction({ doc: coerceDoc(raw, r), selection: null, storedMarks: null, pluginStates: new Map() }, r)
   normalize(tr, ctx)
-  return tr.doc
+  return tr.doc as Doc
 }
 
 let warn: MockInstance<typeof console.warn>

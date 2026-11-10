@@ -9,7 +9,7 @@ import { firstEditableCaret, isEditableRange, rehomeRanges } from './model/edita
 import { cloneJson, deepEqualJson, getNode, isElement } from './model/node'
 import { comparePoint } from './model/path'
 import { mainRange, selectionEquals } from './model/selection'
-import type { Data, Doc, ElementNode, Json, Point, Selection, SelectionRange } from './model/types'
+import type { Data, DeepReadonly, Doc, ElementNode, Json, Point, Selection, SelectionRange } from './model/types'
 import { normalize } from './normalize'
 import { Registry } from './plugin/registry'
 import type {
@@ -464,7 +464,7 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
       const block = this.blockAt(start.path)
       if (!block || block.type !== type) return false
       if (!data) return true
-      return Object.entries(data).every(([k, v]) => v === undefined || (k in block.data && deepEqualJson(block.data[k]!, v)))
+      return Object.entries(data).every(([k, v]) => v === undefined || (k in block.data && deepEqualJson(block.data[k] as Json, v)))
     })
   }
 
@@ -707,7 +707,7 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
   }
 
   /** The nearest block-level element on `path` (unknown element types count as blocks). */
-  private blockAt(path: number[]): ElementNode | null {
+  private blockAt(path: number[]): DeepReadonly<ElementNode> | null {
     for (let depth = path.length - 1; depth >= 1; depth--) {
       const node = getNode(this._state.doc, path.slice(0, depth))
       if (isElement(node) && this.registry.node(node.type)?.kind !== 'inline') return node

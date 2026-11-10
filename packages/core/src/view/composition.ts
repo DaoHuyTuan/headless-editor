@@ -157,7 +157,7 @@ function commit(view: EditorView, leaf: HTMLElement, path: Path): void {
   const inserted = after.slice(prefix, after.length - suffix)
   const tr = editor.createTransaction()
   const marks = compositionMarks.get(view)
-  if (inserted && marks && !sameMarkSet(marks, node.marks)) {
+  if (inserted && marks && !sameMarkSet(marks, node.marks as Mark[])) {
     // The composed text needs other marks than the composing text's (e.g. Mod-b before composing):
     // insert it like typed text, which splits the text and applies the marks.
     const start = { path, offset: prefix }

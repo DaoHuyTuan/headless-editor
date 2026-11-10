@@ -3,7 +3,7 @@ import { editableTextEntries, isNodeSelection, isOpaque, nodeSelection } from '.
 import { getNode, isElement, isText, sameMarkSet } from '../model/node'
 import { comparePath, comparePoint, isAncestorPath, nextPath, parentPath, pathEquals, pointEquals, toRange } from '../model/path'
 import { isNodeRange, rangeEquals, single } from '../model/selection'
-import type { ElementNode, Mark, Node, Path, Point, Range, Selection, SelectionRange, TextNode } from '../model/types'
+import type { DeepReadonly, ElementNode, Mark, Node, Path, Point, Range, Selection, SelectionRange, TextNode } from '../model/types'
 import { marksAtTr, marksOfRange } from './marks'
 import { currentRange, flagSwallowed, forEachRange, inForEachRange, mapSince, setCurrentRange } from './ranges'
 import type { Transaction } from './transaction'
@@ -122,7 +122,8 @@ export function runStep(
 function textAt(tr: Transaction, path: Path): TextNode {
   const n = getNode(tr.doc, path)
   if (!isText(n)) throw new Error(`Expected a text node at [${path}]`)
-  return n
+  // The doc's own node, typed as op payloads are (ops never mutate it).
+  return n as TextNode
 }
 
 /** Path of the nearest block-level element containing `path` (unknown element types count as blocks). */
@@ -164,7 +165,7 @@ export function insertionMarks(tr: Transaction, point: Point): Mark[] {
  * inside inline content (the parent `parentType` is an inline element or a `content: 'inline'` block).
  * It counts as one character of its inline content: no caret goes inside, edits remove it whole.
  */
-export function isInlineOpaque(tr: Transaction, el: ElementNode, parentType: string): boolean {
+export function isInlineOpaque(tr: Transaction, el: DeepReadonly<ElementNode>, parentType: string): boolean {
   const spec = tr.registry.node(el.type)
   if (spec) return spec.kind === 'inline' && spec.atom === true
   const parent = tr.registry.node(parentType)
@@ -174,7 +175,7 @@ export function isInlineOpaque(tr: Transaction, el: ElementNode, parentType: str
 /** The inline opaque elements whose paths lie strictly between `start` and `end` (text paths), in document order. */
 function inlineOpaqueBetween(tr: Transaction, start: Point, end: Point): Path[] {
   const out: Path[] = []
-  const walk = (nodes: Node[], base: Path, parentType: string) => {
+  const walk = (nodes: readonly DeepReadonly<Node>[], base: Path, parentType: string) => {
     for (let i = 0; i < nodes.length; i++) {
       const n = nodes[i]!
       const path = [...base, i]
@@ -251,7 +252,7 @@ function outOfInlineOpaque(tr: Transaction, point: Point, side: 'before' | 'afte
   return point
 }
 
-function getNodeOrNull(tr: Transaction, path: Path): Node | null {
+function getNodeOrNull(tr: Transaction, path: Path): DeepReadonly<Node> | null {
   try {
     return getNode(tr.doc, path)
   } catch {
@@ -647,12 +648,12 @@ export interface Run extends BlockText {
 export function runAt(tr: Transaction, blockPath: Path, point: Point): Run {
   const runs: Run[] = []
   let current: Run = { texts: [], text: '', before: null, after: null }
-  const walk = (nodes: Node[], base: Path, parentType: string) => {
+  const walk = (nodes: readonly DeepReadonly<Node>[], base: Path, parentType: string) => {
     for (let i = 0; i < nodes.length; i++) {
       const n = nodes[i]!
       const path = [...base, i]
       if (isText(n)) {
-        current.texts.push([n, path])
+        current.texts.push([n as TextNode, path])
         current.text += n.text
       } else if (isInlineOpaque(tr, n, parentType)) {
         current.after = path

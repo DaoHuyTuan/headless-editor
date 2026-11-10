@@ -4,7 +4,7 @@ import { normalize } from '../src/normalize'
 import { definePlugin } from '../src/plugin/define'
 import { Registry } from '../src/plugin/registry'
 import type { AnyPlugin, PluginContext } from '../src/plugin/types'
-import type { Doc, ElementNode, Node, Selection } from '../src/model/types'
+import type { DeepReadonly, Doc, ElementNode, Node, Selection } from '../src/model/types'
 import { applyOp } from '../src/ops/apply'
 import { invertOp } from '../src/ops/invert'
 import type { Editor } from '../src/editor'
@@ -28,8 +28,8 @@ const ctx = (plugin: AnyPlugin): PluginContext<any, any> => ({
   commands: {},
 })
 
-function run(d: Doc, plugins: AnyPlugin[] = base, selection: Selection | null = null): Transaction {
-  const tr = new Transaction({ doc: d, selection, storedMarks: null, pluginStates: new Map() }, new Registry(plugins))
+function run(d: DeepReadonly<Doc>, plugins: AnyPlugin[] = base, selection: Selection | null = null): Transaction {
+  const tr = new Transaction({ doc: d as Doc, selection, storedMarks: null, pluginStates: new Map() }, new Registry(plugins))
   normalize(tr, ctx)
   return tr
 }
@@ -155,7 +155,7 @@ describe('normalize: core rules', () => {
     const tr = run(d, [...base, tag, bare], sel([0, 2], 1))
     expect(stripIds(tr.doc)).toEqual(stripIds(doc(el('code', txt('a#xbc')))))
     expect(tr.selection).toEqual(sel([0, 0], 4))
-    expect([...tr.ops].reverse().map(invertOp).reduce(applyOp, tr.doc)).toEqual(d)
+    expect([...tr.ops].reverse().map(invertOp).reduce(applyOp, tr.doc as Doc)).toEqual(d)
   })
 
   it('rule 9: blocks nested in an inline-content block are unwrapped, recursively; ops invert back', () => {
@@ -166,7 +166,7 @@ describe('normalize: core rules', () => {
     expect(stripIds(tr.doc)).toEqual(stripIds(doc(el('paragraph', txt('a'), txt('b', 'bold'), txt('cde')))))
     expect(tr.selection).toEqual(sel([0, 2], 2))
     expect(tr.ops.reduce(applyOp, d)).toEqual(tr.doc)
-    expect([...tr.ops].reverse().map(invertOp).reduce(applyOp, tr.doc)).toEqual(d)
+    expect([...tr.ops].reverse().map(invertOp).reduce(applyOp, tr.doc as Doc)).toEqual(d)
     expect(run(tr.doc).ops).toEqual([])
   })
 
@@ -220,7 +220,7 @@ describe('normalize: core rules', () => {
       expect(stripIds(tr.doc)).toEqual(stripIds(expected()))
       expect(tr.selection).toEqual(expectedSel)
       expect(tr.ops.reduce(applyOp, d)).toEqual(tr.doc)
-      expect([...tr.ops].reverse().map(invertOp).reduce(applyOp, tr.doc)).toEqual(d)
+      expect([...tr.ops].reverse().map(invertOp).reduce(applyOp, tr.doc as Doc)).toEqual(d)
       expect(run(tr.doc, plugins).ops).toEqual([])
     })
 
@@ -240,7 +240,7 @@ describe('normalize: core rules', () => {
     const tr = run(d)
     expect(tr.ops.length).toBeGreaterThan(0)
     expect(tr.ops.reduce(applyOp, d)).toEqual(tr.doc)
-    expect([...tr.ops].reverse().map(invertOp).reduce(applyOp, tr.doc)).toEqual(d)
+    expect([...tr.ops].reverse().map(invertOp).reduce(applyOp, tr.doc as Doc)).toEqual(d)
   })
 
   it('is idempotent on an already normal doc', () => {
@@ -325,7 +325,7 @@ describe('normalize: rule 11 (no newline outside content:"text" blocks)', () => 
     const ids = tr.doc.children.map((b) => b.id)
     expect(ids[0]).toBe('b')
     expect(new Set(ids).size).toBe(3)
-    expect([...tr.ops].reverse().map(invertOp).reduce(applyOp, tr.doc)).toEqual(d)
+    expect([...tr.ops].reverse().map(invertOp).reduce(applyOp, tr.doc as Doc)).toEqual(d)
     expect(run(tr.doc).ops).toEqual([])
   })
 
@@ -396,7 +396,7 @@ describe('normalize: rule 11 splits every newline of a block in one pass', () =>
     )
     expect(tr.doc.children[0]!.id).toBe('b')
     expect(new Set(tr.doc.children.map((b) => b.id)).size).toBe(5)
-    expect([...tr.ops].reverse().map(invertOp).reduce(applyOp, tr.doc)).toEqual(d)
+    expect([...tr.ops].reverse().map(invertOp).reduce(applyOp, tr.doc as Doc)).toEqual(d)
   })
 
   it('splits a 2000-line paragraph in under 200 ms', () => {

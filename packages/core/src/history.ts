@@ -2,7 +2,7 @@ import type { Editor } from './editor'
 import { findPathById } from './model/find'
 import { selectionEquals } from './model/selection'
 import { deepEqualJson, getNode, isElement } from './model/node'
-import type { Data, Doc, ElementNode, Node, Selection } from './model/types'
+import type { Data, DeepReadonly, Doc, ElementNode, Node, Selection } from './model/types'
 import { applyOp } from './ops/apply'
 import { invertOp } from './ops/invert'
 import { rebaseBoth } from './ops/rebase'
@@ -115,14 +115,14 @@ function patchNode(node: Node, byId: Map<string, DataPatch[]>): Node {
  * The element id each stored `set_node_data` op targets. Ops are path-addressed, so this replays
  * the stacks from `doc` (the doc they are consistent with): undo entries backwards, redo forwards.
  */
-function setNodeDataTargets(stacks: HistoryState, doc: Doc): Map<SetNodeDataOp, string> {
+function setNodeDataTargets(stacks: HistoryState, doc: DeepReadonly<Doc>): Map<SetNodeDataOp, string> {
   const targets = new Map<SetNodeDataOp, string>()
   const note = (d: Doc, op: Operation) => {
     if (op.type !== 'set_node_data') return
     const node = getNode(d, op.path)
     if (isElement(node)) targets.set(op, node.id)
   }
-  let d = doc
+  let d = doc as Doc
   for (let e = stacks.undo.length - 1; e >= 0; e--) {
     const ops = stacks.undo[e]!.ops
     for (let i = ops.length - 1; i >= 0; i--) {
@@ -130,7 +130,7 @@ function setNodeDataTargets(stacks: HistoryState, doc: Doc): Map<SetNodeDataOp, 
       d = applyOp(d, invertOp(ops[i]!))
     }
   }
-  d = doc
+  d = doc as Doc
   for (let e = stacks.redo.length - 1; e >= 0; e--) {
     for (const op of stacks.redo[e]!.ops) {
       note(d, op)
@@ -170,7 +170,7 @@ function patchOp(op: Operation, byId: Map<string, DataPatch[]>, targets: Map<Set
  * Applies `rewrites` to every payload in both stacks that carries the element's data: node subtrees,
  * split/merge properties (by id) and `set_node_data` ops (by the id their path resolves to from `doc`).
  */
-function rewriteStacks(prev: HistoryState, doc: Doc, rewrites: Rewrite[]): HistoryState {
+function rewriteStacks(prev: HistoryState, doc: DeepReadonly<Doc>, rewrites: Rewrite[]): HistoryState {
   if (rewrites.length === 0 || (prev.undo.length === 0 && prev.redo.length === 0)) return prev
   const byId = new Map<string, DataPatch[]>()
   for (const { id, patch } of rewrites) byId.set(id, [...(byId.get(id) ?? []), patch])

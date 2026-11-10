@@ -1,6 +1,6 @@
 import { createId } from '../model/id'
 import { single } from '../model/selection'
-import type { Data, Doc, ElementNode, Mark, Node, Path, Selection, TextNode } from '../model/types'
+import type { Data, DeepReadonly, Doc, ElementNode, Mark, Node, Path, Selection, TextNode } from '../model/types'
 
 export function doc(...blocks: ElementNode[]): Doc {
   return { type: 'doc', children: blocks }
@@ -39,7 +39,7 @@ export function sel(path: Path, offset: number, focusPath?: Path, focusOffset?: 
 }
 
 /** Deep copy of `value` with every element `id` removed (for structural comparisons in tests). */
-export function stripIds(value: Doc | Node | Node[]): unknown {
+export function stripIds(value: DeepReadonly<Doc | Node | Node[]>): unknown {
   return strip(value)
 }
 

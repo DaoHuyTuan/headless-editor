@@ -2,7 +2,7 @@ import { createId } from '../model/id'
 import { cloneJson, getNode, isElement, isText } from '../model/node'
 import { isOpaqueAt, nearestEditablePoint, nodeSelection } from '../model/editable'
 import { createSelection, selectionEquals } from '../model/selection'
-import type { Data, Doc, ElementNode, Mark, Node, Path, Point, Range, Selection, SelectionRange, TextNode } from '../model/types'
+import type { Data, DeepReadonly, Doc, ElementNode, Mark, Node, Path, Point, Range, Selection, SelectionRange, TextNode } from '../model/types'
 import { applyOp } from '../ops/apply'
 import { transformPath, transformRange, transformSelection } from '../ops/transform'
 import type { Operation } from '../ops/types'
@@ -59,7 +59,8 @@ export class Transaction {
     this._storedMarks = state.storedMarks
   }
 
-  get doc(): Doc {
+  /** The doc as edited so far, read-only: change it with this transaction's methods or `apply`. */
+  get doc(): DeepReadonly<Doc> {
     return this._doc
   }
   get selection(): Selection | null {
@@ -207,7 +208,7 @@ export class Transaction {
   }
 
   removeNode(path: Path): this {
-    return this.apply({ type: 'remove_node', path, node: getNode(this._doc, path) })
+    return this.apply({ type: 'remove_node', path, node: getNode(this._doc, path) as Node })
   }
 
   /**
@@ -326,6 +327,6 @@ export class Transaction {
       this.rejected = result.message
       return this
     }
-    return this.apply({ type: 'set_node_data', path, data: cloneJson(result.data), prevData: node.data })
+    return this.apply({ type: 'set_node_data', path, data: cloneJson(result.data), prevData: node.data as Data })
   }
 }

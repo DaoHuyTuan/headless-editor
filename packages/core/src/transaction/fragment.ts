@@ -3,7 +3,7 @@ import { createId } from '../model/id'
 import { cloneJson, deepEqualJson, getNode, isElement, isText, nodeEntries } from '../model/node'
 import { comparePoint, parentPath, toRange } from '../model/path'
 import { isNodeRange } from '../model/selection'
-import type { DeepReadonly, Doc, ElementNode, Json, Node, Path, Point, Range, SelectionRange, TextNode } from '../model/types'
+import type { Data, DeepReadonly, Doc, ElementNode, Json, Mark, Node, Path, Point, Range, SelectionRange, TextNode } from '../model/types'
 import {
   blockPathOf,
   deleteRangeStep,
@@ -67,7 +67,7 @@ function sliceNode(node: Node, from: Edge, to: Edge): Node {
  */
 export function getFragment(doc: DeepReadonly<Doc>, range: Range, node?: Path): Fragment {
   // A node selection copies the selected node whole (pass the node range's `node`).
-  if (node) return [sliceNode(getNode(doc, node), null, null)]
+  if (node) return [sliceNode(getNode(doc, node) as Node, null, null)]
   const { start, end } = ordered(range)
   if (comparePoint(start, end) === 0) return []
   let depth = 0
@@ -140,7 +140,7 @@ function insertInline(tr: Transaction, point: Point, nodes: Node[], after = fals
   const atEnd = point.offset > 0 && point.offset === node.text.length
   if (point.offset > 0) {
     if (!atEnd) {
-      tr.apply({ type: 'split_node', path: point.path, position: point.offset, properties: { marks: node.marks } })
+      tr.apply({ type: 'split_node', path: point.path, position: point.offset, properties: { marks: node.marks as Mark[] } })
     }
     index++
   }
@@ -413,7 +413,7 @@ function insertFragmentStep(tr: Transaction, fragment: Fragment, sel: SelectionR
     // (`insertBlocks`); otherwise its content is inline content at the caret.
     const target = getNode(tr.doc, blockPathOf(tr, point.path))
     const own = first as ElementNode
-    if (!(isEmptyBlock(target) && isElement(target) && (target.type !== own.type || !deepEqualJson(target.data, own.data))))
+    if (!(isEmptyBlock(target) && isElement(target) && (target.type !== own.type || !deepEqualJson(target.data as Data, own.data))))
       return { out: caret(insertInline(tr, point, own.children ?? [])) }
   }
   return { out: caret(insertBlocks(tr, point, nodes, used)) }

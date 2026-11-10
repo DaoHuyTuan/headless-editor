@@ -78,7 +78,7 @@ type ReadonlyDoc = DeepReadonly<Doc> | Doc
  */
 function blockPathOf(doc: ReadonlyDoc, registry: Registry, path: Path): Path | null {
   for (let depth = path.length; depth >= 1; depth--) {
-    let node: Node
+    let node: DeepReadonly<Node>
     try {
       node = getNode(doc as Doc, path.slice(0, depth))
     } catch {

@@ -73,7 +73,7 @@ function runPluginHooks(tr: Transaction, getContext: (plugin: AnyPlugin) => Plug
       const path = paths[i]
       if (!path) break
       const start = tr.ops.length
-      plugin.spec.normalize!([getNode(tr.doc, path), path], tr, getContext(plugin))
+      plugin.spec.normalize!([getNode(tr.doc, path) as Node, path], tr, getContext(plugin))
       for (let o = start; o < tr.ops.length; o++) {
         for (let j = i; j < paths.length; j++) {
           const pj = paths[j]

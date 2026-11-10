@@ -157,7 +157,7 @@ function showing(doc: DeepReadonly<Doc>, type: string, srcs: { has(src: string):
 /** `node` and every node inside it. */
 function* selfAndDescendants(node: Node): Generator<Node> {
   yield node
-  if (isElement(node)) for (const [n] of nodeEntries(node)) yield n
+  if (isElement(node)) for (const [n] of nodeEntries(node)) yield n as Node
 }
 
 /** Whether one of `ops` gives an element a pending preview's src (an insert, or a `set_node_data`). */
