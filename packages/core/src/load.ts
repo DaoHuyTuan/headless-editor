@@ -43,7 +43,7 @@ export type DropHandler = (what: string, raw: unknown, reason: string) => void
 
 /** `coerceDoc`'s default: one warning per dropped node or mark. */
 function warnDrop(what: string, raw: unknown, reason: string): void {
-  console.warn(`[hte] Dropped ${what} while loading content (${reason}): ${preview(raw)}`)
+  console.warn(`[penline] Dropped ${what} while loading content (${reason}): ${preview(raw)}`)
 }
 
 /** State shared by one `coerceDoc` run. */

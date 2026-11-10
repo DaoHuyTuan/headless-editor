@@ -11,7 +11,7 @@ import { getFragment, type Fragment } from '../transaction/fragment'
 import { marksAt, marksOfRange } from '../transaction/marks'
 
 /** The MIME type of the lossless JSON flavor (a `JSON.stringify`-ed `Fragment`). */
-export const FRAGMENT_MIME = 'application/x-hte-fragment'
+export const FRAGMENT_MIME = 'application/x-penline-fragment'
 
 /**
  * The three clipboard flavors of `range`: `json` is the fragment itself, `html` the fragment
@@ -69,7 +69,7 @@ function pasteMarks(editor: Editor, at: SelectionRange | null): Mark[] {
 
 /**
  * Turns clipboard data into a fragment ready for `insertFragment`. Tries `json` (the
- * `application/x-hte-fragment` flavor), then `html`, then `text`, moving on when a flavor is
+ * `application/x-penline-fragment` flavor), then `html`, then `text`, moving on when a flavor is
  * missing, malformed or yields nothing. JSON and HTML are untrusted: data is validated and unknown
  * types are dropped. Text lines become default blocks (one trailing newline is dropped); a single
  * line is inline text. Text takes the marks typing at the target would get.

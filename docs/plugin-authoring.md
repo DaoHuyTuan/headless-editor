@@ -12,10 +12,10 @@ Contents: [layers](#layers-of-a-plugin) · [customization levels](#customization
 
 Each plugin with a view is built in four layers; users can stop at any of them.
 
-1. **Logic** (`@hte/<plugin>`): a `definePlugin` spec only (schema, commands, keymap, input handling, HTML in/out, storage, lifecycle). No framework imports.
-2. **Headless hooks** (`@hte/<plugin>/react`): behaviour without markup, for example `useImageResize(props)`. The props they return include `data-editor-ignore` where it is needed, so you cannot forget it.
+1. **Logic** (`@penline/<plugin>`): a `definePlugin` spec only (schema, commands, keymap, input handling, HTML in/out, storage, lifecycle). No framework imports.
+2. **Headless hooks** (`@penline/<plugin>/react`): behaviour without markup, for example `useImageResize(props)`. The props they return include `data-editor-ignore` where it is needed, so you cannot forget it.
 3. **Parts**: small components that each wire one hook to one element and accept `className` (`Image.Root`, `Image.Img`, `Image.AltInput`, `Image.ResizeHandle`). Parts share state through a context that `Root` provides.
-4. **Default view**: the parts assembled, plus the standard customization props `parts` and `classNames` (`ViewCustomization` from `@hte/react`).
+4. **Default view**: the parts assembled, plus the standard customization props `parts` and `classNames` (`ViewCustomization` from `@penline/react`).
 
 Naming: part keys are camelCase (`altInput`, `resizeHandle`, `languageSelect`) and the `classNames` key for the root element is always `root`.
 
@@ -46,15 +46,15 @@ return <EditorContent editor={editor} />
 
 ### Level 1: CSS on `data-*`
 
-Every view root carries `data-hte-<plugin>`, and state is exposed as attributes that are **present when true and absent otherwise**. The names in use are `data-selected`, `data-uploading` and `data-open`; `data-active` is reserved by the spec but no built-in plugin emits it today. The [per-plugin table](#stable-data-attributes-of-the-built-in-plugins) is the authority on what each plugin emits.
+Every view root carries `data-penline-<plugin>`, and state is exposed as attributes that are **present when true and absent otherwise**. The names in use are `data-selected`, `data-uploading` and `data-open`; `data-active` is reserved by the spec but no built-in plugin emits it today. The [per-plugin table](#stable-data-attributes-of-the-built-in-plugins) is the authority on what each plugin emits.
 
 ```css
-[data-hte-image] { margin: 1rem 0; }
-[data-hte-image][data-selected] { outline: 2px solid royalblue; }
-[data-hte-image][data-uploading] img { opacity: 0.5; }
+[data-penline-image] { margin: 1rem 0; }
+[data-penline-image][data-selected] { outline: 2px solid royalblue; }
+[data-penline-image][data-uploading] img { opacity: 0.5; }
 ```
 
-The attribute names are API: renaming one is a breaking change. Secondary view roots (for example the mention popup) carry `data-hte-<plugin>-<view>`, such as `data-hte-mention-suggestion`, so that `[data-hte-mention]` matches only the node views. The full list per plugin is [below](#stable-data-attributes-of-the-built-in-plugins).
+The attribute names are API: renaming one is a breaking change. Secondary view roots (for example the mention popup) carry `data-penline-<plugin>-<view>`, such as `data-penline-mention-suggestion`, so that `[data-penline-mention]` matches only the node views. The full list per plugin is [below](#stable-data-attributes-of-the-built-in-plugins).
 
 ### Level 2: `HTMLAttributes` and `classNames`
 
@@ -126,7 +126,7 @@ function LevelFourImageView(props: ImageProps) {
   // Hooks-only views must put the src behind safeSrc themselves.
   const src = safeSrc(props.node.data.src) ?? undefined
   return (
-    <figure data-hte-image="" {...dataAttrs({ selected, uploading })}>
+    <figure data-penline-image="" {...dataAttrs({ selected, uploading })}>
       <img src={src} alt={props.node.data.alt} width={width} draggable={false} />
       <input {...inputProps} />
       <span {...handleProps} hidden={!selected && !resizing} />
@@ -137,11 +137,11 @@ function LevelFourImageView(props: ImageProps) {
 
 Image specifics for hooks-only views:
 
-- `safeSrc` is exported from `@hte/image`. The default parts call it; the hooks do not, so use it for the `src` or you lose the image's URL policy (`javascript:` and similar schemes).
-- `useImageResize` measures the **first `<img>` inside the node-view container** (`[data-hte-node-view]`) at `pointerdown`. Keep the picture as the first `<img>` of the view.
-- `dataAttrs({ selected, uploading })` (from `@hte/react`) gives `data-selected` / `data-uploading` present-when-true.
+- `safeSrc` is exported from `@penline/image`. The default parts call it; the hooks do not, so use it for the `src` or you lose the image's URL policy (`javascript:` and similar schemes).
+- `useImageResize` measures the **first `<img>` inside the node-view container** (`[data-penline-node-view]`) at `pointerdown`. Keep the picture as the first `<img>` of the view.
+- `dataAttrs({ selected, uploading })` (from `@penline/react`) gives `data-selected` / `data-uploading` present-when-true.
 
-Other hooks: `useMention(props)`, `useSuggestion(editor)` (mention); `useCodeBlock(props)` (code block); all three are `@experimental`. Your own view keeps the same attribute contract (`data-hte-<plugin>` plus the state attributes) so users' level 1 CSS keeps working.
+Other hooks: `useMention(props)`, `useSuggestion(editor)` (mention); `useCodeBlock(props)` (code block); all three are `@experimental`. Your own view keeps the same attribute contract (`data-penline-<plugin>` plus the state attributes) so users' level 1 CSS keeps working.
 
 ### Level 5: `extend(parent => ...)`
 
@@ -288,7 +288,7 @@ export const Callout = {
   Root({ value, className, children }: CalloutPartProps & { value: CalloutApi }) {
     return (
       <CalloutContext.Provider value={value}>
-        <aside data-hte-callout="" data-tone={value.tone} {...dataAttrs({ selected: value.selected })} className={className}>
+        <aside data-penline-callout="" data-tone={value.tone} {...dataAttrs({ selected: value.selected })} className={className}>
           {children}
         </aside>
       </CalloutContext.Provider>
@@ -358,7 +358,7 @@ function CalloutEditor() {
 
 Checklist for a new plugin's view:
 
-- Root element: `data-hte-<plugin>` (kebab-case of the plugin name: `codeBlock` gives `data-hte-code-block`). A secondary view root gets `data-hte-<plugin>-<view>`.
+- Root element: `data-penline-<plugin>` (kebab-case of the plugin name: `codeBlock` gives `data-penline-code-block`). A secondary view root gets `data-penline-<plugin>-<view>`.
 - State attributes present when true, absent otherwise; use `dataAttrs`.
 - 2 to 4 meaningful parts (not one per tag), camelCase keys, each accepting `className`; `classNames.root` for the root.
 - Mark the part, hook and context APIs `@experimental` in JSDoc until validated.
@@ -452,7 +452,7 @@ Options merge: a key dropped from a later value keeps its last applied value.
 ```tsx
 function ShoutingMention(props: NodeViewPropsOf<typeof mention>) {
   const { label } = useMention(props)
-  return <span data-hte-mention="">@{label.toUpperCase()}</span>
+  return <span data-penline-mention="">@{label.toUpperCase()}</span>
 }
 ```
 
@@ -461,7 +461,7 @@ function ShoutingMention(props: NodeViewPropsOf<typeof mention>) {
 - A `renderUser` that reads an **external store is not subscribed**: the view re-renders on mention plugin state and option changes only. If the name comes from a store, re-render through your own subscription (or pass a new memoized `renderUser` when the store changes).
 - The mention's `renderText` is `${trigger}${label}` (`@Ann`): copying a mention gives `@Ann` in `text/plain`, and a mention that ends up in a code block (paste, `setCodeBlock`, Backspace joining a paragraph into one) becomes the text `@Ann` instead of disappearing.
 - Placing the caret right after an existing plain `@foo` in the text **opens the popup** (the trigger is recomputed after every selection change).
-- The suggestion popup is a separate root (`data-hte-mention-suggestion`), rendered with `<MentionSuggestion editor={editor} />` next to `EditorContent`; it is portalled to `document.body`. Closing is done by the mention plugin, not the component: its `onBlur` hook and its `onMount` cleanup (unmount fires no blur) close the popup. `MentionSuggestion` only renders the plugin state.
+- The suggestion popup is a separate root (`data-penline-mention-suggestion`), rendered with `<MentionSuggestion editor={editor} />` next to `EditorContent`; it is portalled to `document.body`. Closing is done by the mention plugin, not the component: its `onBlur` hook and its `onMount` cleanup (unmount fires no blur) close the popup. `MentionSuggestion` only renders the plugin state.
 
 ### Code block
 
@@ -479,7 +479,7 @@ function CodeEditor() {
 }
 ```
 
-- The node type (and `nodeViews` key) is `codeBlock`; the data attribute is `data-hte-code-block`.
+- The node type (and `nodeViews` key) is `codeBlock`; the data attribute is `data-penline-code-block`.
 - `<code>` gets only `language-x`, **no `hljs` class**. highlight.js themes expect it, so add it with `classNames`: `classNames.content` classes the `<pre>`. To class the `<code>` itself, replace the `content` part.
 - **Tab and Shift-Tab are consumed** inside a code block (indent / dedent), so they cannot move focus out of the editor from there. Enter inserts a newline; three Enters at the end exit the block; `Mod-Enter` exits.
 - Marks and inline nodes (bold, mention, ...) are blocked inside a code block via `filterTransaction` / `normalize`; pasted content is flattened to text (a mention keeps its `@label` text through its `renderText`).
@@ -515,11 +515,11 @@ State attributes are present (as `""`) when true and absent otherwise. These nam
 | Plugin (name) | Element | Attributes |
 |---|---|---|
 | `bold`, `fontSize`, `paragraph` | none (no React view) | none |
-| `image` | view root `<figure>` | `data-hte-image`, `data-selected` (node-selected), `data-uploading` (upload pending) |
-| `mention` | view root `<span>` | `data-hte-mention`, `data-selected` |
-| `mention` | suggestion popup root `<div>` | `data-hte-mention-suggestion`, `data-open` |
+| `image` | view root `<figure>` | `data-penline-image`, `data-selected` (node-selected), `data-uploading` (upload pending) |
+| `mention` | view root `<span>` | `data-penline-mention`, `data-selected` |
+| `mention` | suggestion popup root `<div>` | `data-penline-mention-suggestion`, `data-open` |
 | `mention` | suggestion item `<li>` | `data-selected` (highlighted) |
-| `codeBlock` | view root `<div>` | `data-hte-code-block`, `data-selected` |
+| `codeBlock` | view root `<div>` | `data-penline-code-block`, `data-selected` |
 
 HTML output (not the view): `mention` writes `<span data-mention data-id="…">@label</span>`; `codeBlock` writes `<pre><code class="language-x">`; `image` writes `<img src alt width>`.
 

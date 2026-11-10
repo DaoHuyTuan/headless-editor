@@ -1,5 +1,5 @@
 import type { ComponentType } from 'react'
-import type { AnyPlugin, Data, Editor, NodeViewFactory, NodeViewProps } from '@hte/core'
+import type { AnyPlugin, Data, Editor, NodeViewFactory, NodeViewProps } from '@penline/core'
 
 /**
  * A React component rendered as a node view (a non-atom one shows its content with
@@ -76,7 +76,7 @@ export function toNodeViewFactory<D = Data, O = unknown, T = unknown, S = unknow
   store: PortalStore,
 ): NodeViewFactory<D, O, T, S> {
   return (container, props) => {
-    const id = `hte-node-view-${++nextId}`
+    const id = `penline-node-view-${++nextId}`
     store.add({ id, container, Component: Component as ReactNodeView<any, any, any, any>, props })
     return {
       update: (p) => store.update(id, p),

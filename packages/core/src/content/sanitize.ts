@@ -44,7 +44,7 @@ export function dropCollector(): { onDrop: DropHandler; warn: (source: string) =
     },
     warn: (source) => {
       if (count === 0) return
-      console.warn(`[hte] Dropped ${count} malformed node(s) or mark(s) from ${source}; the first: ${first}`)
+      console.warn(`[penline] Dropped ${count} malformed node(s) or mark(s) from ${source}; the first: ${first}`)
       count = 0
     },
   }

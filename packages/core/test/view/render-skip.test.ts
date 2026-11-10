@@ -69,7 +69,7 @@ describe('rendering skips unchanged subtrees (8.4)', () => {
       tr.setSelection(nodeSelection(tr.doc, ed.registry, [block, 1]))
       ed.dispatch(tr)
     }
-    const selectedIds = () => [...root.querySelectorAll('[data-hte-selected]')].map((e) => e.getAttribute('data-hte-id'))
+    const selectedIds = () => [...root.querySelectorAll('[data-penline-selected]')].map((e) => e.getAttribute('data-penline-id'))
     const idOf = (block: number) => ((ed.state.doc.children[block] as ElementNode).children![1] as ElementNode).id
     select(3)
     expect(selectedIds()).toEqual([idOf(3)])

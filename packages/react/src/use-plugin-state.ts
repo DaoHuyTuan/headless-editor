@@ -1,4 +1,4 @@
-import type { AnyPlugin, Editor, EditorPlugins, StateOf } from '@hte/core'
+import type { AnyPlugin, Editor, EditorPlugins, StateOf } from '@penline/core'
 import { useEditorState } from './use-editor-state'
 
 /**

@@ -1,7 +1,7 @@
 /**
- * Image block (`@hte/image`); React view in `@hte/image/react`. The plugin name is `image`.
+ * Image block (`@penline/image`); React view in `@penline/image/react`. The plugin name is `image`.
  *
- * Stable `data-*` attributes (view): `data-hte-image` on the root `<figure>`, `data-selected` when
+ * Stable `data-*` attributes (view): `data-penline-image` on the root `<figure>`, `data-selected` when
  * node-selected, `data-uploading` while its upload is pending. HTML output is a plain `<img>` (no
  * `data-*`); `options.HTMLAttributes` is merged first, so `src`, `alt` and `width` always win.
  *
@@ -37,7 +37,7 @@ import {
   type PluginContext,
   type SelectionRange,
   type Transaction,
-} from '@hte/core'
+} from '@penline/core'
 import { isBlobSrc, safeSrc } from './src-policy'
 
 export { safeSrc } from './src-policy'
@@ -284,7 +284,7 @@ function onUploaded(ctx: Ctx, ids: ReadonlySet<string>, blob: string, url: strin
  * turned into an upload failure.
  */
 function report(error: unknown): void {
-  console.error('@hte/image:', error)
+  console.error('@penline/image:', error)
 }
 
 /** Whether `node` is an element holding only empty texts. */
@@ -354,9 +354,9 @@ function uploadFiles(ctx: Ctx, files: readonly File[], at?: SelectionRange | nul
   const rt = runtimeOf(ctx.editor)
   if (rt.destroyed) return
   const upload = ctx.options.upload
-  if (typeof upload !== 'function') throw new Error('@hte/image: options.upload is required to upload images')
+  if (typeof upload !== 'function') throw new Error('@penline/image: options.upload is required to upload images')
   if (typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function')
-    throw new Error('@hte/image: URL.createObjectURL is not available, so image previews cannot be created')
+    throw new Error('@penline/image: URL.createObjectURL is not available, so image previews cannot be created')
 
   for (const [i, file] of images.entries()) {
     const editor = ctx.editor
@@ -410,7 +410,7 @@ function uploadFiles(ctx: Ctx, files: readonly File[], at?: SelectionRange | nul
               holders,
               blob,
               file,
-              new Error(`@hte/image: upload resolved with an unsafe or invalid URL: ${String(url)}`),
+              new Error(`@penline/image: upload resolved with an unsafe or invalid URL: ${String(url)}`),
               added,
             )
           else onUploaded(ctx, holders, blob, url)

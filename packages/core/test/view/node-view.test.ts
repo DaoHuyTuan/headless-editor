@@ -85,7 +85,7 @@ function mount(
   return { editor, root, view: editor.view!, rec: view.rec }
 }
 
-const container = (root: HTMLElement) => root.querySelector<HTMLElement>('[data-hte-node-view]')!
+const container = (root: HTMLElement) => root.querySelector<HTMLElement>('[data-penline-node-view]')!
 const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0))
 
 afterEach(() => {
@@ -111,8 +111,8 @@ describe('node views: renderer', () => {
     const { container: c, props } = rec.created[0]!
     expect(c).toBe(container(root))
     expect(c.tagName).toBe('DIV')
-    expect(c.getAttribute('data-hte-id')).toBe(editor.state.doc.children[1]!.id)
-    expect(c.getAttribute('data-hte-node-view')).toBe('')
+    expect(c.getAttribute('data-penline-id')).toBe(editor.state.doc.children[1]!.id)
+    expect(c.getAttribute('data-penline-node-view')).toBe('')
     expect(c.getAttribute('contenteditable')).toBe('false')
     expect(props.node).toBe(editor.state.doc.children[1])
     expect(props.node.data).toEqual({ src: 'a.png', alt: '' })
@@ -149,7 +149,7 @@ describe('node views: renderer', () => {
     tr.removeNode([1])
     editor.dispatch(tr)
     expect(rec.destroyed).toBe(1)
-    expect(root.querySelector('[data-hte-node-view]')).toBeNull()
+    expect(root.querySelector('[data-penline-node-view]')).toBeNull()
     editor.commands.undo()
     expect(rec.created).toHaveLength(2)
     expect(container(root)).toBe(rec.created[1]!.container)
@@ -177,17 +177,17 @@ describe('node views: renderer', () => {
     expect(rec.updates.at(-1)!.options).toEqual({ label: 'second' })
   })
 
-  it('a node selection sets data-hte-selected and selected: true; leaving it clears both', () => {
+  it('a node selection sets data-penline-selected and selected: true; leaving it clears both', () => {
     const { editor, root, rec } = mount(doc(p('a'), img(), p('b')))
     const tr = editor.createTransaction()
     tr.setSelection(nodeSelection(editor.state.doc, editor.registry, [1]))
     editor.dispatch(tr)
-    expect(container(root).hasAttribute('data-hte-selected')).toBe(true)
+    expect(container(root).hasAttribute('data-penline-selected')).toBe(true)
     expect(rec.updates.at(-1)!.selected).toBe(true)
     const back = editor.createTransaction()
     back.setSelection(caret([0, 0], 0))
     editor.dispatch(back)
-    expect(container(root).hasAttribute('data-hte-selected')).toBe(false)
+    expect(container(root).hasAttribute('data-penline-selected')).toBe(false)
     expect(rec.updates.at(-1)!.selected).toBe(false)
   })
 
@@ -202,12 +202,12 @@ describe('node views: renderer', () => {
     const tr = editor.createTransaction()
     tr.setSelection(nodeSelection(editor.state.doc, editor.registry, [2]))
     editor.dispatch(tr)
-    expect(root.querySelector('[data-hte-unknown]')!.hasAttribute('data-hte-selected')).toBe(true)
+    expect(root.querySelector('[data-penline-unknown]')!.hasAttribute('data-penline-selected')).toBe(true)
     const tr2 = editor.createTransaction()
     tr2.setSelection(nodeSelection(editor.state.doc, editor.registry, [1]))
     editor.dispatch(tr2)
-    expect(root.querySelector('[data-hte-unknown]')!.hasAttribute('data-hte-selected')).toBe(false)
-    expect(root.querySelectorAll('[data-hte-selected]')).toHaveLength(1)
+    expect(root.querySelector('[data-penline-unknown]')!.hasAttribute('data-penline-selected')).toBe(false)
+    expect(root.querySelectorAll('[data-penline-selected]')).toHaveLength(1)
   })
 
   it('getPos() follows the node after an insert before it', () => {
@@ -374,7 +374,7 @@ describe('node views: click to select', () => {
     expect(e.defaultPrevented).toBe(true)
     expect(editor.state.selection).toEqual(single({ ...mainRange(caret([0, 0], 1)), node: [1] }))
     expect(document.activeElement).toBe(root)
-    expect(container(root).hasAttribute('data-hte-selected')).toBe(true)
+    expect(container(root).hasAttribute('data-penline-selected')).toBe(true)
   })
 
   it('shift-mousedown on the container is left to the browser, so it extends the selection', () => {
@@ -407,7 +407,7 @@ describe('node views: click to select', () => {
     const root = document.createElement('div')
     document.body.appendChild(root)
     editor.mount(root)
-    const inline = root.querySelector('p [data-hte-id]')!
+    const inline = root.querySelector('p [data-penline-id]')!
     const e1 = new MouseEvent('mousedown', {
       bubbles: true,
       cancelable: true,
@@ -421,7 +421,7 @@ describe('node views: click to select', () => {
       cancelable: true,
       button: 0,
     })
-    root.querySelector('[data-hte-unknown]')!.dispatchEvent(e2)
+    root.querySelector('[data-penline-unknown]')!.dispatchEvent(e2)
     expect(e2.defaultPrevented).toBe(true)
     expect(editor.state.selection?.ranges[0]?.node).toEqual([1])
   })

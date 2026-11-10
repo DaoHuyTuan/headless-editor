@@ -1,5 +1,5 @@
 import { useEffect, useInsertionEffect, useRef } from 'react'
-import { Editor, type AnyPlugin, type EditorEvent, type EditorOptions, type NodeViewFactory } from '@hte/core'
+import { Editor, type AnyPlugin, type EditorEvent, type EditorOptions, type NodeViewFactory } from '@penline/core'
 import { createPortalStore, setPortalStore, toNodeViewFactory, type PortalStore, type ReactNodeView } from './node-views'
 
 export type UseEditorOptions<P extends readonly AnyPlugin[]> = Omit<EditorOptions<P>, 'nodeViews'> & {

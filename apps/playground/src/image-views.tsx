@@ -1,7 +1,7 @@
 import { createContext, useContext } from 'react'
-import { safeSrc } from '@hte/image'
-import { ImageView, useAltDraft, useImageResize, useImageState, type ImageProps } from '@hte/image/react'
-import { dataAttrs } from '@hte/react'
+import { safeSrc } from '@penline/image'
+import { ImageView, useAltDraft, useImageResize, useImageState, type ImageProps } from '@penline/image/react'
+import { dataAttrs } from '@penline/react'
 
 export type ImageViewKind = 'default' | 'custom'
 
@@ -20,7 +20,7 @@ function DefaultImageView(props: ImageProps) {
 /**
  * A custom image view built from the image hooks only (level 4): own markup, a caption showing the
  * committed alt, an "uploading" badge. The hooks' props carry `data-editor-ignore`; the src goes
- * through `safeSrc`, which the hooks do not apply. Keeps the `data-hte-image` attribute contract.
+ * through `safeSrc`, which the hooks do not apply. Keeps the `data-penline-image` attribute contract.
  */
 function HooksOnlyImageView(props: ImageProps) {
   const { selected, uploading } = useImageState(props)
@@ -30,7 +30,7 @@ function HooksOnlyImageView(props: ImageProps) {
   return (
     <figure
       className="rounded-md border border-neutral-200 bg-blue-50 p-1.5"
-      data-hte-image=""
+      data-penline-image=""
       data-custom-image="" {...dataAttrs({ selected, uploading, resizing })}>
       <img src={safeSrc(src) ?? undefined} alt={alt} width={width} draggable={false} />
       <figcaption className="text-xs text-neutral-600">

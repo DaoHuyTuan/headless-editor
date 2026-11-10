@@ -1,5 +1,5 @@
 import { createContext, useContext, type ReactNode } from 'react'
-import { dataAttrs } from '@hte/react'
+import { dataAttrs } from '@penline/react'
 import { safeSrc } from '../src-policy'
 import {
   useAltDraft,
@@ -44,7 +44,7 @@ const ImageContext = createContext<ImageApi | null>(null)
  */
 export function useImageContext(): ImageApi {
   const value = useContext(ImageContext)
-  if (!value) throw new Error('@hte/image: Image parts must be rendered inside <Image.Root>')
+  if (!value) throw new Error('@penline/image: Image parts must be rendered inside <Image.Root>')
   return value
 }
 
@@ -61,7 +61,7 @@ export interface ImagePartProps {
 }
 
 /**
- * The parts of the image view. `Root` is `<figure data-hte-image data-selected? data-uploading?>`
+ * The parts of the image view. `Root` is `<figure data-penline-image data-selected? data-uploading?>`
  * and provides the `ImageApi` (live width, alt draft, resize handlers) to the other parts; `Img` is
  * the picture (src behind `safeSrc`); `AltInput` the alt text `<input>`; `ResizeHandle` the drag
  * handle `<span>`. The controls get `data-editor-ignore` from the hooks' props.
@@ -72,7 +72,7 @@ export const Image = {
     return (
       <ImageContext.Provider value={value}>
         <figure
-          data-hte-image=""
+          data-penline-image=""
           {...dataAttrs({ selected: value.selected, uploading: value.uploading })}
           className={className}
         >

@@ -1,15 +1,51 @@
 {
-  "name": "@hte/bold",
-  "version": "0.0.0",
-  "private": true,
+  "name": "@penline/bold",
+  "version": "0.1.0",
+  "description": "Bold mark for penline.",
+  "license": "MIT",
   "type": "module",
+  "sideEffects": false,
+  "keywords": [
+    "editor",
+    "rich-text",
+    "headless",
+    "contenteditable",
+    "wysiwyg",
+    "penline"
+  ],
+  "homepage": "https://github.com/DaoHuyTuan/headless-editor#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DaoHuyTuan/headless-editor.git",
+    "directory": "packages/plugins/bold"
+  },
+  "bugs": {
+    "url": "https://github.com/DaoHuyTuan/headless-editor/issues"
+  },
+  "files": [
+    "dist"
+  ],
   "exports": {
     ".": "./src/index.ts"
   },
-  "dependencies": {
-    "@hte/core": "workspace:*"
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean --tsconfig ../../../tsconfig.build.json",
+    "prepublishOnly": "pnpm run build"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      }
+    }
+  },
+  "peerDependencies": {
+    "@penline/core": "workspace:^"
   },
   "devDependencies": {
-    "@hte/paragraph": "workspace:*"
+    "@penline/paragraph": "workspace:*",
+    "@penline/core": "workspace:*"
   }
 }

@@ -1,8 +1,10 @@
 # Changelog
 
-## Unreleased: v1 cleanup
+## 0.1.0 (first public pre-release)
 
-Behaviour changes an integrator may notice.
+The project is published as **penline**: packages `@penline/core`, `@penline/react`, `@penline/paragraph`, `@penline/bold`, `@penline/font-size`, `@penline/image`, `@penline/mention`, `@penline/code-block`, built to ESM with type declarations, MIT licensed. DOM attributes are `data-penline-*`, the clipboard JSON flavor is `application/x-penline-fragment`. `@penline/core` (and `@penline/react` for the plugins' views) are peer dependencies, so an app has one copy. Levels 3–4 of plugin customization (parts, view hooks) stay `@experimental`. 0.x versions can change their API between minor versions.
+
+Behaviour changes from the v1 cleanup an integrator may notice:
 
 ### Content and JSON
 - Normalize rule 10 gives every inline element a text sibling on each side, possibly empty. This covers inline atoms (mentions) and unknown types found in inline content. Stored JSON that is loaded and read back with `getJSON()` gains `{ text: '' }` nodes around them.

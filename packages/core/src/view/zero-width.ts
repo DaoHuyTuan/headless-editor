@@ -6,7 +6,7 @@
  */
 
 /** Marks a leaf that shows the zero-width placeholder. */
-export const ZW_ATTR = 'data-hte-zw'
+export const ZW_ATTR = 'data-penline-zw'
 
 /** The placeholder character: ZERO WIDTH SPACE (U+200B). */
 export const ZW = '\u200b'

@@ -1,4 +1,4 @@
-import type { User } from '@hte/mention'
+import type { User } from '@penline/mention'
 
 export const USERS: readonly User[] = [
   { id: 'u-alice', label: 'Alice' },

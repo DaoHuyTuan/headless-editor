@@ -11,14 +11,14 @@
     "e2e:webkit": "playwright test --project=webkit"
   },
   "dependencies": {
-    "@hte/bold": "workspace:*",
-    "@hte/code-block": "workspace:*",
-    "@hte/core": "workspace:*",
-    "@hte/font-size": "workspace:*",
-    "@hte/image": "workspace:*",
-    "@hte/mention": "workspace:*",
-    "@hte/paragraph": "workspace:*",
-    "@hte/react": "workspace:*",
+    "@penline/bold": "workspace:*",
+    "@penline/code-block": "workspace:*",
+    "@penline/core": "workspace:*",
+    "@penline/font-size": "workspace:*",
+    "@penline/image": "workspace:*",
+    "@penline/mention": "workspace:*",
+    "@penline/paragraph": "workspace:*",
+    "@penline/react": "workspace:*",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },

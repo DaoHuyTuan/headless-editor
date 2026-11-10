@@ -11,20 +11,20 @@ body {
   margin: 0 0 8px;
 }
 /* Unknown blocks render empty: give them a visible, clickable box. */
-.editor [data-hte-unknown] {
+.editor [data-penline-unknown] {
   min-height: 24px;
   margin: 0 0 8px;
   border: 1px dashed var(--color-neutral-400);
   border-radius: 4px;
 }
 /* The node-selected block (atom or unknown). */
-.editor [data-hte-selected] {
+.editor [data-penline-selected] {
   outline: 2px solid var(--color-blue-500);
   outline-offset: 1px;
 }
-/* Image node view (@hte/image/react): picture, alt input and a resize handle (classed `image-resize` by
+/* Image node view (@penline/image/react): picture, alt input and a resize handle (classed `image-resize` by
    image-views.tsx through `classNames`) at the bottom right. */
-.editor [data-hte-image] {
+.editor [data-penline-image] {
   position: relative;
   display: inline-flex;
   flex-direction: column;
@@ -33,7 +33,7 @@ body {
   margin: 0 0 8px;
   white-space: normal;
 }
-.editor [data-hte-image] img {
+.editor [data-penline-image] img {
   display: block;
   max-width: 100%;
   min-width: 16px;
@@ -41,10 +41,10 @@ body {
   image-rendering: pixelated;
   background: repeating-conic-gradient(#eee 0 25%, #fff 0 50%) 0 0 / 12px 12px;
 }
-.editor [data-hte-image][data-uploading] img {
+.editor [data-penline-image][data-uploading] img {
   opacity: 0.5;
 }
-.editor [data-hte-image] input {
+.editor [data-penline-image] input {
   font: 13px system-ui, sans-serif;
   padding: 2px 4px;
   border: 1px solid var(--color-neutral-300);
@@ -56,29 +56,29 @@ body {
 .editor [data-custom-image] .image-resize {
   bottom: 50px;
 }
-/* Mention (@hte/mention/react): the open trigger (the chip and popup are classed in App.tsx). */
-.editor .hte-mention-query {
+/* Mention (@penline/mention/react): the open trigger (the chip and popup are classed in App.tsx). */
+.editor .penline-mention-query {
   background: var(--color-neutral-100);
   border-radius: 2px;
 }
-/* Code block (@hte/code-block/react): language select above a <pre>. */
-.editor [data-hte-code-block] {
+/* Code block (@penline/code-block/react): language select above a <pre>. */
+.editor [data-penline-code-block] {
   margin: 0 0 8px;
   border: 1px solid var(--color-neutral-200);
   border-radius: 4px;
   background: #f6f8fa;
 }
-.editor [data-hte-code-block] > div[contenteditable='false'] {
+.editor [data-penline-code-block] > div[contenteditable='false'] {
   padding: 2px 6px;
   border-bottom: 1px solid var(--color-neutral-200);
   text-align: right;
 }
-.editor [data-hte-code-block] select {
+.editor [data-penline-code-block] select {
   border: 1px solid var(--color-neutral-300);
   border-radius: 4px;
   background: #fff;
 }
-.editor [data-hte-code-block] pre {
+.editor [data-penline-code-block] pre {
   margin: 0;
   padding: 8px;
   font: 13px/1.5 ui-monospace, Consolas, monospace;

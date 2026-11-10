@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createSelection, definePlugin, serializeForClipboard, type Doc, type ElementNode, type Node, type Transaction } from '@hte/core'
-import { createTestEditor, doc, el, sel, stripIds, txt } from '@hte/core/testing'
-import { paragraph } from '@hte/paragraph'
+import { createSelection, definePlugin, serializeForClipboard, type Doc, type ElementNode, type Node, type Transaction } from '@penline/core'
+import { createTestEditor, doc, el, sel, stripIds, txt } from '@penline/core/testing'
+import { paragraph } from '@penline/paragraph'
 import { mention, type MentionState, type User } from '../src/index'
 
 interface Request {
@@ -98,11 +98,11 @@ describe('mention suggestion: opening and fetching', () => {
     expect(fetchUsers).not.toHaveBeenCalled()
   })
 
-  it('decorates the open trigger range with hte-mention-query', () => {
+  it('decorates the open trigger range with penline-mention-query', () => {
     const { root, type } = setup(doc(p(txt('hi '))))
     type('@jo')
     // The caret starts at 0: '@jo' is typed before 'hi '.
-    const deco = root.querySelector('.hte-mention-query')
+    const deco = root.querySelector('.penline-mention-query')
     expect(deco?.textContent).toBe('@jo')
   })
 

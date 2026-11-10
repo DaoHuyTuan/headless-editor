@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import type { ElementNode, TextNode } from '@hte/core'
+import type { ElementNode, TextNode } from '@penline/core'
 import {
   collectErrors,
   compose,
@@ -32,7 +32,7 @@ const textOf = (n: ElementNode): string =>
   (n.children ?? []).map((c) => ('text' in c ? c.text : textOf(c as ElementNode))).join('')
 const types = async (page: Page) => (await getDoc(page)).children.map((b) => b.type)
 const codeButton = (page: Page) => page.getByTestId('code-block')
-const pre = (page: Page) => page.locator('[data-testid=editor] [data-hte-code-block] pre')
+const pre = (page: Page) => page.locator('[data-testid=editor] [data-penline-code-block] pre')
 
 /** The code block at `index` among the top-level blocks: its single text child (asserted unmarked). */
 async function code(page: Page, index: number): Promise<TextNode> {
@@ -51,7 +51,7 @@ async function openSnippet(page: Page): Promise<void> {
 /** The viewport rect of the DOM character at `offset` of the code block's text (decorations split it into several DOM texts). */
 function charRect(page: Page, offset: number) {
   return page.evaluate((offset) => {
-    const content = document.querySelector('[data-testid=editor] [data-hte-code-block] [data-hte-content]')!
+    const content = document.querySelector('[data-testid=editor] [data-penline-code-block] [data-penline-content]')!
     const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT)
     let rest = offset
     while (walker.nextNode()) {
@@ -124,7 +124,7 @@ test('a trailing newline shows an empty last line that takes the caret', async (
     const s = window.getSelection()!
     const node = s.focusNode!
     const text = node.nodeType === 3 ? (node as Text).data.slice(0, s.focusOffset) : null
-    const br = document.querySelector('[data-testid=editor] [data-hte-content] [data-hte-leaf] br')
+    const br = document.querySelector('[data-testid=editor] [data-penline-content] [data-penline-leaf] br')
     return { before: text, lineTop: br?.getBoundingClientRect().top ?? null }
   })
   expect(caret.before).toBe('a\n')
@@ -180,7 +180,7 @@ test('bold does nothing inside a code block', async ({ page }) => {
   await expect(page.getByTestId('bold')).toBeDisabled()
   const text = await code(page, 1)
   expect(text).toEqual({ text: 'funqction greet(name) {\n  return `Hello, ${name}!`\n}', marks: [] })
-  await expect(page.locator('[data-testid=editor] [data-hte-code-block] strong')).toHaveCount(0)
+  await expect(page.locator('[data-testid=editor] [data-penline-code-block] strong')).toHaveCount(0)
   await expect(page.getByTestId('bold')).toHaveAttribute('aria-pressed', 'false')
 })
 
@@ -250,7 +250,7 @@ test('pasting rich HTML into a code block inserts its plain text', async ({ page
   expect(prevented).toBe(true)
   expect(await types(page)).toEqual(['paragraph', 'codeBlock', 'paragraph'])
   expect(await code(page, 1)).toEqual({ text: `${SNIPPET}bold big\nsecond line`, marks: [] })
-  await expect(page.locator('[data-testid=editor] [data-hte-code-block] :is(strong, em, [style])')).toHaveCount(0)
+  await expect(page.locator('[data-testid=editor] [data-penline-code-block] :is(strong, em, [style])')).toHaveCount(0)
   await expect.poll(() => getSelection(page)).toMatchObject({ focus: { path: [1, 0], offset: SNIPPET.length + 20 } })
 })
 
@@ -278,7 +278,7 @@ test('multi-line code copied from the block and pasted into a paragraph gives on
 
 test('highlight classes appear and follow the language', async ({ page }) => {
   await openSnippet(page)
-  const block = page.locator('[data-testid=editor] [data-hte-code-block]')
+  const block = page.locator('[data-testid=editor] [data-penline-code-block]')
   await expect(block.locator('.hljs-keyword').first()).toHaveText('function')
   await expect(block.locator('.hljs-keyword')).toContainText(['function', 'return'])
   await expect(block.locator('.hljs-string')).not.toHaveCount(0)

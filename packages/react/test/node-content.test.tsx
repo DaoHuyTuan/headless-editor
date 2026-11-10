@@ -2,9 +2,9 @@
 import { StrictMode, useState } from 'react'
 import { act, cleanup, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { definePlugin, modelToDom, type Editor, type TextNode } from '@hte/core'
-import { doc, el, sel, txt } from '@hte/core/testing'
-import { paragraph } from '@hte/paragraph'
+import { definePlugin, modelToDom, type Editor, type TextNode } from '@penline/core'
+import { doc, el, sel, txt } from '@penline/core/testing'
+import { paragraph } from '@penline/paragraph'
 import { EditorContent, NodeContent, useEditor, type ReactNodeView } from '../src/index'
 
 const box = definePlugin({
@@ -93,7 +93,7 @@ describe('NodeContent', () => {
     const observer = new MutationObserver((records) => {
       for (const r of records)
         for (const n of Array.from(r.addedNodes))
-          if (n.nodeType === 1 && (n as Element).hasAttribute('data-hte-content')) moves.push(n)
+          if (n.nodeType === 1 && (n as Element).hasAttribute('data-penline-content')) moves.push(n)
     })
     observer.observe(document.body, { childList: true, subtree: true })
 
@@ -108,7 +108,7 @@ describe('NodeContent', () => {
     await act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)))
     observer.disconnect()
 
-    const content = root.querySelector<HTMLElement>('[data-hte-content]')!
+    const content = root.querySelector<HTMLElement>('[data-penline-content]')!
     expect(content).not.toBeNull()
     expect(content.parentElement!.className).toBe('box-body')
     expect(content.parentElement!.parentElement!.className).toBe('box-view')
@@ -133,7 +133,7 @@ describe('NodeContent', () => {
     })
     await act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)))
     expect(root.querySelector('.box-view')!.getAttribute('data-tone')).toBe('warn')
-    expect(root.querySelector('[data-hte-content]')).toBe(content)
+    expect(root.querySelector('[data-penline-content]')).toBe(content)
     expect(content.parentElement!.className).toBe('box-body')
     expect(content.textContent).toBe('hello!')
     expect(texts(editor)).toEqual(['ab', 'hello!'])
@@ -160,7 +160,7 @@ describe('NodeContent', () => {
       editor.commands.undo()
     })
     await act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)))
-    expect(root.querySelector('[data-hte-content]')!.textContent).toBe('hello')
+    expect(root.querySelector('[data-penline-content]')!.textContent).toBe('hello')
     expect(texts(editor)).toEqual(['ab', 'hello'])
     expect(errors).not.toHaveBeenCalled()
   })
@@ -187,7 +187,7 @@ describe('NodeContent', () => {
       editor.view!.syncSelection()
     })
     expect(editor.state.selection).toEqual(sel([1, 0], 5))
-    const content = root.querySelectorAll<HTMLElement>('[data-hte-content]')[0]!
+    const content = root.querySelectorAll<HTMLElement>('[data-penline-content]')[0]!
     expect(content.textContent).toBe('world')
     const domSel = document.getSelection()!
     expect(content.contains(domSel.anchorNode)).toBe(true)
@@ -208,13 +208,13 @@ describe('NodeContent', () => {
       </StrictMode>,
     )
     const root = getByTestId('content')
-    const content = root.querySelector<HTMLElement>('[data-hte-content]')!
+    const content = root.querySelector<HTMLElement>('[data-penline-content]')!
     expect(content.parentElement!.tagName).toBe('DIV')
     act(() => {
       editor.commands.setNodeData([1], { inline: true })
     })
     await act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)))
-    expect(root.querySelector('[data-hte-content]')).toBe(content)
+    expect(root.querySelector('[data-penline-content]')).toBe(content)
     expect(content.parentElement!.tagName).toBe('SPAN')
     expect(content.parentElement!.className).toBe('body')
     expect(root.contains(content)).toBe(true)

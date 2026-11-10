@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import type { ElementNode } from '@hte/core'
+import type { ElementNode } from '@penline/core'
 import { collectErrors, compose, focusEnd, getDoc, getSelection, getText, openPlayground, openScenario, setCaret } from './helpers'
 
 let errors: string[]
@@ -12,9 +12,9 @@ test.afterEach(() => {
   expect(errors).toEqual([])
 })
 
-const popup = (page: Page) => page.locator('[data-hte-mention-suggestion]')
+const popup = (page: Page) => page.locator('[data-penline-mention-suggestion]')
 const options = (page: Page) => popup(page).getByRole('option')
-const editorMentions = (page: Page) => page.locator('[data-testid=editor] [data-hte-mention]')
+const editorMentions = (page: Page) => page.locator('[data-testid=editor] [data-penline-mention]')
 
 /** The children of the first block, as `text` / `@label` strings (mentions) for compact assertions. */
 async function inline(page: Page, block = 0): Promise<string[]> {
@@ -58,8 +58,8 @@ test('the popup sits right below the trigger, aligned with its left edge', async
   await focusEnd(page)
   await page.keyboard.type('Hi @an')
   await expect(options(page)).toHaveText(['Anna', 'Andrew'])
-  // The open trigger range is decorated (`hte-mention-query`): its box is the trigger's.
-  const trigger = (await page.locator('[data-testid=editor] .hte-mention-query').boundingBox())!
+  // The open trigger range is decorated (`penline-mention-query`): its box is the trigger's.
+  const trigger = (await page.locator('[data-testid=editor] .penline-mention-query').boundingBox())!
   const box = (await popup(page).boundingBox())!
   expect(Math.abs(box.x - trigger.x)).toBeLessThanOrEqual(2)
   // Below the trigger's line box (the playground adds a 2px top margin), never over it.
@@ -130,7 +130,7 @@ test('arrows jump over a mention at the start of a block (zero-width neighbour)'
   await expect(options(page)).toHaveText(['Carol'])
   await page.keyboard.press('Enter')
   await expect.poll(() => inline(page)).toEqual(['', '@Carol', ' '])
-  await expect(page.locator('[data-testid=editor] [data-hte-zw]')).toHaveCount(1)
+  await expect(page.locator('[data-testid=editor] [data-penline-zw]')).toHaveCount(1)
   await page.keyboard.press('ArrowLeft')
   await expect.poll(() => getSelection(page)).toMatchObject({ focus: { path: [0, 2], offset: 0 } })
   await page.keyboard.press('ArrowLeft')
@@ -164,7 +164,7 @@ test('a selection spanning a mention is replaced by typing; undo restores the me
 function charPoint(page: Page, leafText: string, offset: number) {
   return page.evaluate(
     ([leafText, offset]) => {
-      const leaves = Array.from(window.editor.view!.root.querySelectorAll('[data-hte-leaf]'))
+      const leaves = Array.from(window.editor.view!.root.querySelectorAll('[data-penline-leaf]'))
       const text = leaves.find((l) => l.textContent === leafText)!.firstChild as Text
       const range = document.createRange()
       range.setStart(text, offset)
@@ -191,7 +191,7 @@ test('a mouse drag from text across a mention selects a range covering it', asyn
   await expect
     .poll(() => getSelection(page))
     .toMatchObject({ anchor: { path: [0, 0], offset: 1 }, focus: { path: [0, 2], offset: 2 } })
-  expect(await page.evaluate(() => window.getSelection()!.containsNode(document.querySelector('[data-hte-mention]')!, false))).toBe(
+  expect(await page.evaluate(() => window.getSelection()!.containsNode(document.querySelector('[data-penline-mention]')!, false))).toBe(
     true,
   )
   await page.keyboard.type('Z')
@@ -247,7 +247,7 @@ test('?slowUsers=1: typing @a then @an quickly never shows a stale list', async 
     const seen: { query: string; labels: string[] }[] = []
     ;(window as unknown as { seen: typeof seen }).seen = seen
     new MutationObserver(() => {
-      const items = Array.from(document.querySelectorAll('[data-hte-mention-suggestion] [role=option]'))
+      const items = Array.from(document.querySelectorAll('[data-penline-mention-suggestion] [role=option]'))
       if (items.length === 0) return
       const st = window.editor.getPluginState<{ query: string }>('mention')
       seen.push({ query: st.query, labels: items.map((li) => li.textContent ?? '') })

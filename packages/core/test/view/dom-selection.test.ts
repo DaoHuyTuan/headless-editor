@@ -114,7 +114,7 @@ describe('domToModel', () => {
   it('maps a break and its leaf to offset 0', () => {
     ctx.renderer.render(doc(p('p1', txt(''))))
     const leaf = ctx.renderer.leafAt([0, 0])!
-    const br = leaf.querySelector('br[data-hte-break]')!
+    const br = leaf.querySelector('br[data-penline-break]')!
     expect(domToModel(ctx.renderer, br, 0)).toEqual({ path: [0, 0], offset: 0 })
     expect(domToModel(ctx.renderer, leaf, 1)).toEqual({ path: [0, 0], offset: 0 })
   })

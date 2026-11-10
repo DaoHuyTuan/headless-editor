@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import type { Node } from '@hte/core'
+import type { Node } from '@penline/core'
 import { collectErrors, focusEnd, getDoc, getText, openPlayground, setCaret } from './helpers'
 
 const current = (page: import('@playwright/test').Page, id: string) => page.getByTestId(`story-${id}`)

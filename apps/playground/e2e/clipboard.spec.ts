@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import type { Doc, ElementNode, Node, TextNode } from '@hte/core'
+import type { Doc, ElementNode, Node, TextNode } from '@penline/core'
 import {
   focusEnd,
   getDoc,
@@ -11,7 +11,7 @@ import {
   WEBKIT_KEYBOARD_CLIPBOARD,
 } from './helpers'
 
-const FRAGMENT_MIME = 'application/x-hte-fragment'
+const FRAGMENT_MIME = 'application/x-penline-fragment'
 
 test.beforeEach(async ({ page }) => {
   await openPlayground(page)

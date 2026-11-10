@@ -1,25 +1,59 @@
 {
-  "name": "@hte/react",
-  "version": "0.0.0",
-  "private": true,
+  "name": "@penline/react",
+  "version": "0.1.0",
+  "description": "React bindings for penline: useEditor, EditorContent, state hooks and node views.",
+  "license": "MIT",
   "type": "module",
+  "sideEffects": false,
+  "keywords": [
+    "editor",
+    "rich-text",
+    "headless",
+    "contenteditable",
+    "wysiwyg",
+    "penline"
+  ],
+  "homepage": "https://github.com/DaoHuyTuan/headless-editor#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DaoHuyTuan/headless-editor.git",
+    "directory": "packages/react"
+  },
+  "bugs": {
+    "url": "https://github.com/DaoHuyTuan/headless-editor/issues"
+  },
+  "files": [
+    "dist"
+  ],
   "exports": {
     ".": "./src/index.ts"
   },
-  "dependencies": {
-    "@hte/core": "workspace:*"
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean --tsconfig ../../tsconfig.build.json",
+    "prepublishOnly": "pnpm run build"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      }
+    }
   },
   "peerDependencies": {
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "@penline/core": "workspace:^"
   },
   "devDependencies": {
-    "@hte/bold": "workspace:*",
-    "@hte/paragraph": "workspace:*",
+    "@penline/bold": "workspace:*",
+    "@penline/paragraph": "workspace:*",
     "@testing-library/react": "^16.3.0",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "@penline/core": "workspace:*"
   }
 }

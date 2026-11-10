@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { definePlugin, textEntries, type DeepReadonly, type Doc } from '@hte/core'
-import { createTestEditor, doc, el, txt } from '@hte/core/testing'
-import { paragraph } from '@hte/paragraph'
+import { definePlugin, textEntries, type DeepReadonly, type Doc } from '@penline/core'
+import { createTestEditor, doc, el, txt } from '@penline/core/testing'
+import { paragraph } from '@penline/paragraph'
 
 // Pins what docs/plugin-authoring.md ("Lifecycle hooks") says about nested dispatch and the order of
 // hooks and editor events. (StrictMode mount counts are pinned in react.test.tsx.)

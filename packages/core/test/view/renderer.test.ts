@@ -71,30 +71,30 @@ describe('Renderer: DOM contract', () => {
   it('renders elements with ids and text leaves with marks', () => {
     ctx.renderer.render(doc(p('p1', txt('a'), txt('b', 'bold'))))
     expect(ctx.root.innerHTML).toBe(
-      '<p data-hte-id="p1"><span data-hte-leaf="">a</span><span data-hte-leaf=""><strong>b</strong></span></p>',
+      '<p data-penline-id="p1"><span data-penline-leaf="">a</span><span data-penline-leaf=""><strong>b</strong></span></p>',
     )
   })
 
   it('renders an empty text as a break', () => {
     ctx.renderer.render(doc(p('p1', txt(''))))
-    expect(ctx.root.innerHTML).toBe('<p data-hte-id="p1"><span data-hte-leaf=""><br data-hte-break=""></span></p>')
+    expect(ctx.root.innerHTML).toBe('<p data-penline-id="p1"><span data-penline-leaf=""><br data-penline-break=""></span></p>')
   })
 
   it('ends the last text of an element with a break when it ends with a newline', () => {
     ctx.renderer.render(doc(p('p1', 'a\n')))
-    expect(ctx.root.innerHTML).toBe('<p data-hte-id="p1"><span data-hte-leaf="">a\n<br data-hte-break=""></span></p>')
+    expect(ctx.root.innerHTML).toBe('<p data-penline-id="p1"><span data-penline-leaf="">a\n<br data-penline-break=""></span></p>')
     // Inside its marks, like the text.
     ctx.renderer.render(doc(p('p1', txt('b\n', 'bold'))))
     expect(ctx.root.innerHTML).toBe(
-      '<p data-hte-id="p1"><span data-hte-leaf=""><strong>b\n<br data-hte-break=""></strong></span></p>',
+      '<p data-penline-id="p1"><span data-penline-leaf=""><strong>b\n<br data-penline-break=""></strong></span></p>',
     )
   })
 
   it('adds no trailing break to a text ending with a newline that is not last, nor to one ending elsewhere', () => {
     ctx.renderer.render(doc(p('p1', txt('a\n'), txt('b', 'bold')), p('p2', 'a\nb')))
     expect(ctx.root.innerHTML).toBe(
-      '<p data-hte-id="p1"><span data-hte-leaf="">a\n</span><span data-hte-leaf=""><strong>b</strong></span></p>' +
-        '<p data-hte-id="p2"><span data-hte-leaf="">a\nb</span></p>',
+      '<p data-penline-id="p1"><span data-penline-leaf="">a\n</span><span data-penline-leaf=""><strong>b</strong></span></p>' +
+        '<p data-penline-id="p2"><span data-penline-leaf="">a\nb</span></p>',
     )
   })
 
@@ -103,7 +103,7 @@ describe('Renderer: DOM contract', () => {
     const leaf = ctx.renderer.leafAt([0, 0])!
     ctx.renderer.render(doc(p('p1', txt('a\n'))))
     expect(ctx.renderer.leafAt([0, 0])).toBe(leaf)
-    expect(leaf.innerHTML).toBe('a\n<br data-hte-break="">')
+    expect(leaf.innerHTML).toBe('a\n<br data-penline-break="">')
     ctx.renderer.render(doc(p('p1', txt('a\n'), txt('c', 'bold'))))
     expect(leaf.innerHTML).toBe('a\n')
   })
@@ -116,14 +116,14 @@ describe('Renderer: DOM contract', () => {
     expect(leaf.firstChild).toBe(text)
     leaf.querySelector('br')!.remove()
     ctx.renderer.render(doc(p('p1', 'a\n')))
-    expect(leaf.innerHTML).toBe('a\n<br data-hte-break="">')
+    expect(leaf.innerHTML).toBe('a\n<br data-penline-break="">')
   })
 
   it('nests marks by rank (lowest outermost) regardless of model order, ignoring unknown marks', () => {
     ctx.renderer.render(
       doc(p('p1', txt('x', { type: 'color', data: { value: 'red' } }, 'italic', 'nope', 'bold'))),
     )
-    const leaf = ctx.root.querySelector('[data-hte-leaf]')!
+    const leaf = ctx.root.querySelector('[data-penline-leaf]')!
     expect(leaf.innerHTML).toBe(
       '<strong><em><span data-c="1" style="background-color: red;">x</span></em></strong>',
     )
@@ -131,31 +131,31 @@ describe('Renderer: DOM contract', () => {
 
   it('renders renderHTML specs with options, attrs and the content hole', () => {
     ctx.renderer.render(doc(node('h', 'heading', { level: 2 }, txt('T'))))
-    expect(ctx.root.innerHTML).toBe('<h2 class="x" data-hte-id="h"><span data-hte-leaf="">T</span></h2>')
+    expect(ctx.root.innerHTML).toBe('<h2 class="x" data-penline-id="h"><span data-penline-leaf="">T</span></h2>')
   })
 
   it('places children at a nested hole', () => {
     ctx.renderer.render(doc(node('c', 'callout', {}, p('p1', 'a'))))
     expect(ctx.root.innerHTML).toBe(
-      '<aside data-hte-id="c"><span contenteditable="false">Note:</span><div><p data-hte-id="p1"><span data-hte-leaf="">a</span></p></div><footer>end</footer></aside>',
+      '<aside data-penline-id="c"><span contenteditable="false">Note:</span><div><p data-penline-id="p1"><span data-penline-leaf="">a</span></p></div><footer>end</footer></aside>',
     )
   })
 
   it('appends children to the root when the spec has no hole', () => {
     ctx.renderer.render(doc(node('s', 'noHole', {}, txt('a'))))
-    expect(ctx.root.innerHTML).toBe('<section a="1" data-hte-id="s"><span data-hte-leaf="">a</span></section>')
+    expect(ctx.root.innerHTML).toBe('<section a="1" data-penline-id="s"><span data-penline-leaf="">a</span></section>')
   })
 
   it('wraps known elements without renderHTML in a div (block) or span (inline)', () => {
     ctx.renderer.render(doc(node('b', 'bare', {}, txt('a'), node('i', 'bareInline', {}, txt('b')))))
     expect(ctx.root.innerHTML).toBe(
-      '<div data-hte-id="b"><span data-hte-leaf="">a</span><span data-hte-id="i"><span data-hte-leaf="">b</span></span></div>',
+      '<div data-penline-id="b"><span data-penline-leaf="">a</span><span data-penline-id="i"><span data-penline-leaf="">b</span></span></div>',
     )
   })
 
   it('renders unknown elements as non-editable placeholders without children', () => {
     ctx.renderer.render(doc(node('u', 'mystery', {}, txt('hidden'))))
-    expect(ctx.root.innerHTML).toBe('<div data-hte-id="u" data-hte-unknown="mystery" contenteditable="false"></div>')
+    expect(ctx.root.innerHTML).toBe('<div data-penline-id="u" data-penline-unknown="mystery" contenteditable="false"></div>')
   })
 
   it('throws on invalid tag or attribute names', () => {
@@ -173,7 +173,7 @@ describe('Renderer: DOM contract', () => {
     const r = new Renderer(root, editor)
     r.render(doc(p('p1', 'a')))
     expect(root.firstElementChild!.ownerDocument).toBe(other)
-    expect(root.querySelector('[data-hte-leaf]')!.ownerDocument).toBe(other)
+    expect(root.querySelector('[data-penline-leaf]')!.ownerDocument).toBe(other)
   })
 })
 
@@ -189,28 +189,28 @@ describe('Renderer: keyed patching', () => {
     expect(root.children[1]).toBe(p2)
     expect(p1!.firstElementChild).toBe(leaf1)
     expect(root.innerHTML).toBe(
-      '<p data-hte-id="p1"><span data-hte-leaf="">a</span></p><p data-hte-id="p2"><span data-hte-leaf="">bc</span></p>',
+      '<p data-penline-id="p1"><span data-penline-leaf="">a</span></p><p data-penline-id="p2"><span data-penline-leaf="">bc</span></p>',
     )
   })
 
   it('updates the Text node of a leaf in place when only its text changes', () => {
     const { renderer, root } = ctx
     renderer.render(doc(p('p1', 'a', txt('b', 'bold'))))
-    const [plain, marked] = [...root.querySelectorAll('[data-hte-leaf]')]
+    const [plain, marked] = [...root.querySelectorAll('[data-penline-leaf]')]
     const plainText = plain!.firstChild
     const markedText = marked!.querySelector('strong')!.firstChild
     renderer.render(doc(p('p1', 'ax', txt('by', 'bold'))))
     expect(plain!.firstChild).toBe(plainText)
     expect(marked!.querySelector('strong')!.firstChild).toBe(markedText)
     expect(root.innerHTML).toBe(
-      '<p data-hte-id="p1"><span data-hte-leaf="">ax</span><span data-hte-leaf=""><strong>by</strong></span></p>',
+      '<p data-penline-id="p1"><span data-penline-leaf="">ax</span><span data-penline-leaf=""><strong>by</strong></span></p>',
     )
   })
 
   it('still rebuilds a leaf whose marks change', () => {
     const { renderer, root } = ctx
     renderer.render(doc(p('p1', 'a')))
-    const leaf = root.querySelector('[data-hte-leaf]')!
+    const leaf = root.querySelector('[data-penline-leaf]')!
     const before = leaf.firstChild
     renderer.render(doc(p('p1', txt('a', 'bold'))))
     expect(leaf.firstChild).not.toBe(before)
@@ -234,7 +234,7 @@ describe('Renderer: keyed patching', () => {
     const p3 = root.children[2]
     renderer.render(doc(p('p1', 'a'), p('p4', 'd'), p('p3', 'c')))
     expect(root.innerHTML).toBe(
-      '<p data-hte-id="p1"><span data-hte-leaf="">a</span></p><p data-hte-id="p4"><span data-hte-leaf="">d</span></p><p data-hte-id="p3"><span data-hte-leaf="">c</span></p>',
+      '<p data-penline-id="p1"><span data-penline-leaf="">a</span></p><p data-penline-id="p4"><span data-penline-leaf="">d</span></p><p data-penline-id="p3"><span data-penline-leaf="">c</span></p>',
     )
     expect(root.children[0]).toBe(p1)
     expect(root.children[2]).toBe(p3)
@@ -244,10 +244,10 @@ describe('Renderer: keyed patching', () => {
   it('moves an element between parents, keeping its DOM', () => {
     const { renderer, root } = ctx
     renderer.render(doc(node('c1', 'callout', {}, p('p1', 'a')), node('c2', 'callout', {})))
-    const p1 = root.querySelector('[data-hte-id="p1"]')
+    const p1 = root.querySelector('[data-penline-id="p1"]')
     renderer.render(doc(node('c1', 'callout', {}), node('c2', 'callout', {}, p('p1', 'a'))))
-    expect(root.querySelector('[data-hte-id="c2"] [data-hte-id="p1"]')).toBe(p1)
-    expect(root.querySelectorAll('[data-hte-id="p1"]').length).toBe(1)
+    expect(root.querySelector('[data-penline-id="c2"] [data-penline-id="p1"]')).toBe(p1)
+    expect(root.querySelectorAll('[data-penline-id="p1"]').length).toBe(1)
     expect(renderer.elementAt([1, 0])).toBe(p1)
   })
 
@@ -259,7 +259,7 @@ describe('Renderer: keyed patching', () => {
     renderer.render(doc(node('h', 'heading', { level: 1 }, txt('T'))))
     expect(root.firstElementChild).toBe(h1) // deep-equal data → reused
     renderer.render(doc(node('h', 'heading', { level: 3 }, txt('T'))))
-    expect(root.innerHTML).toBe('<h3 class="x" data-hte-id="h"><span data-hte-leaf="">T</span></h3>')
+    expect(root.innerHTML).toBe('<h3 class="x" data-penline-id="h"><span data-penline-leaf="">T</span></h3>')
     expect(root.firstElementChild).not.toBe(h1)
     expect(root.firstElementChild!.firstElementChild).toBe(leaf)
     expect(renderer.elementAt([0])).toBe(root.firstElementChild)
@@ -269,24 +269,24 @@ describe('Renderer: keyed patching', () => {
     const { renderer, root } = ctx
     renderer.render(doc(p('x', 'a')))
     renderer.render(doc(node('x', 'heading', { level: 1 }, txt('a'))))
-    expect(root.innerHTML).toBe('<h1 class="x" data-hte-id="x"><span data-hte-leaf="">a</span></h1>')
+    expect(root.innerHTML).toBe('<h1 class="x" data-penline-id="x"><span data-penline-leaf="">a</span></h1>')
   })
 
   it('reconciles leaves positionally: reuses unchanged, updates changed, adds and removes', () => {
     const { renderer, root } = ctx
     renderer.render(doc(p('p1', txt('a'), txt('b', 'bold'), txt('c'))))
-    const leaves = [...root.querySelectorAll('[data-hte-leaf]')]
+    const leaves = [...root.querySelectorAll('[data-penline-leaf]')]
     const textA = leaves[0]!.firstChild
     renderer.render(doc(p('p1', txt('a'), txt('b'))))
-    const after = [...root.querySelectorAll('[data-hte-leaf]')]
+    const after = [...root.querySelectorAll('[data-penline-leaf]')]
     expect(after.length).toBe(2)
     expect(after[0]).toBe(leaves[0])
     expect(after[0]!.firstChild).toBe(textA)
     expect(after[1]).toBe(leaves[1])
-    expect(root.innerHTML).toBe('<p data-hte-id="p1"><span data-hte-leaf="">a</span><span data-hte-leaf="">b</span></p>')
+    expect(root.innerHTML).toBe('<p data-penline-id="p1"><span data-penline-leaf="">a</span><span data-penline-leaf="">b</span></p>')
     renderer.render(doc(p('p1', txt('a'), txt('b'), txt(''))))
     expect(root.innerHTML).toBe(
-      '<p data-hte-id="p1"><span data-hte-leaf="">a</span><span data-hte-leaf="">b</span><span data-hte-leaf=""><br data-hte-break=""></span></p>',
+      '<p data-penline-id="p1"><span data-penline-leaf="">a</span><span data-penline-leaf="">b</span><span data-penline-leaf=""><br data-penline-break=""></span></p>',
     )
   })
 
@@ -295,7 +295,7 @@ describe('Renderer: keyed patching', () => {
     renderer.render(doc(node('b', 'bare', {}, txt('a'), node('i', 'bareInline', {}, txt('b')), txt('c'))))
     renderer.render(doc(node('b', 'bare', {}, txt('a'), txt('c'), node('i', 'bareInline', {}, txt('b')))))
     expect(root.innerHTML).toBe(
-      '<div data-hte-id="b"><span data-hte-leaf="">a</span><span data-hte-leaf="">c</span><span data-hte-id="i"><span data-hte-leaf="">b</span></span></div>',
+      '<div data-penline-id="b"><span data-penline-leaf="">a</span><span data-penline-leaf="">c</span><span data-penline-id="i"><span data-penline-leaf="">b</span></span></div>',
     )
   })
 
@@ -310,7 +310,7 @@ describe('Renderer: keyed patching', () => {
     expect(leaf.innerHTML).toBe('ab')
     renderer.render(doc(p('p1', txt('abc', 'bold'))))
     expect(leaf.innerHTML).toBe('<strong>abc</strong>')
-    expect(root.querySelectorAll('[data-hte-leaf]').length).toBe(1)
+    expect(root.querySelectorAll('[data-penline-leaf]').length).toBe(1)
   })
 
   it('does not rewrite a skipped leaf whose DOM already matches the model', () => {
@@ -341,13 +341,13 @@ describe('Renderer: keyed patching', () => {
     const l1 = renderer.leafAt([0, 1])!
     const text = l1.firstChild
     renderer.render(doc(p('p1', txt('ab'))), { skipLeaf: l1, skipPath: [0, 0] })
-    expect(root.querySelectorAll('[data-hte-leaf]').length).toBe(1)
+    expect(root.querySelectorAll('[data-penline-leaf]').length).toBe(1)
     expect(root.contains(l1)).toBe(true)
     expect(l1.firstChild).toBe(text)
     expect(renderer.leafAt([0, 0])).toBe(l1)
     expect(renderer.pathOfLeaf(l1)).toEqual([0, 0])
     renderer.render(doc(p('p1', txt('ab'))))
-    expect(root.innerHTML).toBe('<p data-hte-id="p1"><span data-hte-leaf="">ab</span></p>')
+    expect(root.innerHTML).toBe('<p data-penline-id="p1"><span data-penline-leaf="">ab</span></p>')
     expect(renderer.leafAt([0, 0])).toBe(l1)
   })
 
@@ -357,12 +357,12 @@ describe('Renderer: keyed patching', () => {
     const leaf = renderer.leafAt([0, 0])!
     const text = leaf.firstChild
     renderer.render(doc(p('p1', txt('x', 'bold'), txt('b'))), { skipLeaf: leaf, skipPath: [0, 1] })
-    expect(root.querySelectorAll('[data-hte-leaf]').length).toBe(2)
+    expect(root.querySelectorAll('[data-penline-leaf]').length).toBe(2)
     expect(renderer.leafAt([0, 1])).toBe(leaf)
     expect(renderer.pathOfLeaf(leaf)).toEqual([0, 1])
     expect(leaf.firstChild).toBe(text)
     expect(root.innerHTML).toBe(
-      '<p data-hte-id="p1"><span data-hte-leaf=""><strong>x</strong></span><span data-hte-leaf="">b</span></p>',
+      '<p data-penline-id="p1"><span data-penline-leaf=""><strong>x</strong></span><span data-penline-leaf="">b</span></p>',
     )
   })
 
@@ -380,9 +380,9 @@ describe('Renderer: foreign DOM cleanup', () => {
   it('clears pre-existing root content on the first render', () => {
     const { editor } = ctx
     const root = document.createElement('div')
-    root.innerHTML = 'junk<b>old</b><p data-hte-id="p1">stale</p>'
+    root.innerHTML = 'junk<b>old</b><p data-penline-id="p1">stale</p>'
     new Renderer(root, editor).render(doc(p('p1', 'a')))
-    expect(root.innerHTML).toBe('<p data-hte-id="p1"><span data-hte-leaf="">a</span></p>')
+    expect(root.innerHTML).toBe('<p data-penline-id="p1"><span data-penline-leaf="">a</span></p>')
   })
 
   it('removes stray nodes the browser put into a hole or the root', () => {
@@ -394,7 +394,7 @@ describe('Renderer: foreign DOM cleanup', () => {
     root.appendChild(document.createTextNode('loose'))
     renderer.render(doc(p('p1', txt('a'), txt('b', 'bold'))))
     expect(root.innerHTML).toBe(
-      '<p data-hte-id="p1"><span data-hte-leaf="">a</span><span data-hte-leaf=""><strong>b</strong></span></p>',
+      '<p data-penline-id="p1"><span data-penline-leaf="">a</span><span data-penline-leaf=""><strong>b</strong></span></p>',
     )
     expect(root.firstElementChild).toBe(p1)
   })
@@ -407,7 +407,7 @@ describe('Renderer: foreign DOM cleanup', () => {
     ;(l1.firstChild!.firstChild as Text).data = 'zz'
     renderer.render(doc(p('p1', txt('a'), txt('b', 'bold'))))
     expect(root.innerHTML).toBe(
-      '<p data-hte-id="p1"><span data-hte-leaf="">a</span><span data-hte-leaf=""><strong>b</strong></span></p>',
+      '<p data-penline-id="p1"><span data-penline-leaf="">a</span><span data-penline-leaf=""><strong>b</strong></span></p>',
     )
     expect(renderer.leafAt([0, 0])).toBe(l0)
   })
@@ -429,8 +429,8 @@ describe('Renderer: foreign DOM cleanup', () => {
     root.querySelector('section')!.appendChild(document.createTextNode('stray'))
     renderer.render(doc(node('c', 'callout', {}, p('p1', 'a'), p('p2', 'b')), node('s', 'noHole', {}, txt('b'))))
     expect(root.innerHTML).toBe(
-      '<aside data-hte-id="c"><span contenteditable="false">Note:</span><div><p data-hte-id="p1"><span data-hte-leaf="">a</span></p><p data-hte-id="p2"><span data-hte-leaf="">b</span></p></div><footer>end</footer></aside>' +
-        '<section a="1" data-hte-id="s"><span data-hte-leaf="">b</span></section>',
+      '<aside data-penline-id="c"><span contenteditable="false">Note:</span><div><p data-penline-id="p1"><span data-penline-leaf="">a</span></p><p data-penline-id="p2"><span data-penline-leaf="">b</span></p></div><footer>end</footer></aside>' +
+        '<section a="1" data-penline-id="s"><span data-penline-leaf="">b</span></section>',
     )
   })
 
@@ -452,20 +452,20 @@ describe('Renderer: foreign DOM cleanup', () => {
     fig.insertBefore(document.createTextNode('stray'), fig.lastChild)
     r.render(doc(node('f', 'fig', {}, p('p2', 'z'), p('p1', 'a'))))
     expect(root.innerHTML).toBe(
-      '<figure data-hte-id="f"><b>pre</b><p data-hte-id="p2"><span data-hte-leaf="">z</span></p><p data-hte-id="p1"><span data-hte-leaf="">a</span></p><i>post</i></figure>',
+      '<figure data-penline-id="f"><b>pre</b><p data-penline-id="p2"><span data-penline-leaf="">z</span></p><p data-penline-id="p1"><span data-penline-leaf="">a</span></p><i>post</i></figure>',
     )
-    expect(r.elementAt([0, 1])).toBe(root.querySelector('[data-hte-id="p1"]'))
+    expect(r.elementAt([0, 1])).toBe(root.querySelector('[data-penline-id="p1"]'))
   })
 
   it('re-renders an element shell whose hole boundary nodes were removed, keeping child DOM', () => {
     const { renderer, root } = ctx
     renderer.render(doc(node('c', 'callout', {}, p('p1', 'a'))))
-    const p1 = root.querySelector('[data-hte-id="p1"]')
+    const p1 = root.querySelector('[data-penline-id="p1"]')
     const aside = root.firstElementChild!
     aside.querySelector(':scope > div')!.remove() // the hole itself
     renderer.render(doc(node('c', 'callout', {}, p('p1', 'a'))))
     expect(root.firstElementChild).not.toBe(aside)
-    expect(root.querySelector('aside > div > [data-hte-id="p1"]')).toBe(p1)
+    expect(root.querySelector('aside > div > [data-penline-id="p1"]')).toBe(p1)
   })
 })
 
@@ -478,8 +478,8 @@ describe('Renderer: lookups', () => {
     expect(renderer.pathOfLeaf(leaf)).toEqual([1, 0, 1])
     expect(renderer.pathOfLeaf(leaf.firstElementChild!)).toBeNull()
     expect(renderer.pathOfLeaf(renderer.leafAt([0, 0])!)).toEqual([0, 0])
-    expect(renderer.elementAt([1, 0])).toBe(root.querySelector('[data-hte-id="p2"]'))
-    expect(renderer.elementAt([1])).toBe(root.querySelector('[data-hte-id="c"]'))
+    expect(renderer.elementAt([1, 0])).toBe(root.querySelector('[data-penline-id="p2"]'))
+    expect(renderer.elementAt([1])).toBe(root.querySelector('[data-penline-id="c"]'))
     expect(renderer.elementAt([0, 0])).toBeNull() // a leaf, not an element
     expect(renderer.leafAt([1, 0])).toBeNull() // an element, not a leaf
     expect(renderer.leafAt([5, 0])).toBeNull()
@@ -503,7 +503,7 @@ describe('Renderer: lookups', () => {
     const { renderer } = ctx
     renderer.render(doc(node('u', 'mystery', {}, txt('x'))))
     expect(renderer.leafAt([0, 0])).toBeNull()
-    expect(renderer.elementAt([0])!.getAttribute('data-hte-unknown')).toBe('mystery')
+    expect(renderer.elementAt([0])!.getAttribute('data-penline-unknown')).toBe('mystery')
   })
 })
 
@@ -537,14 +537,14 @@ describe('Renderer: mark invalidation', () => {
     const renderer = new Renderer(root, editor)
     const d = doc(p('p1', txt('a', 'tagged'), txt('b', 'bold')))
     renderer.render(d)
-    const leaves = [...root.querySelectorAll('[data-hte-leaf]')]
+    const leaves = [...root.querySelectorAll('[data-penline-leaf]')]
     expect(leaves[0]!.innerHTML).toBe('<u class="one">a</u>')
     editor.setPluginOptions('tagged', { cls: 'two' })
     renderer.render(d)
-    expect(root.querySelectorAll('[data-hte-leaf]')[0]!.innerHTML).toBe('<u class="one">a</u>')
+    expect(root.querySelectorAll('[data-penline-leaf]')[0]!.innerHTML).toBe('<u class="one">a</u>')
     renderer.invalidateMark('tagged')
     renderer.render(d)
-    const after = [...root.querySelectorAll('[data-hte-leaf]')]
+    const after = [...root.querySelectorAll('[data-penline-leaf]')]
     expect(after[0]!.innerHTML).toBe('<u class="two">a</u>')
     expect(after[1]).toBe(leaves[1])
   })

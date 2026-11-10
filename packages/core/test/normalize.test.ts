@@ -371,7 +371,7 @@ describe('normalize: rule 11 on the editing paths that join text with newlines',
   it('a drop of inline text holding a newline into a paragraph', () => {
     const e = ed(doc(el('paragraph', txt('pq'))), sel([0, 0], 0))
     const json = JSON.stringify([txt('xy\nz')])
-    const dataTransfer = { getData: (t: string) => (t === 'application/x-hte-fragment' ? json : '') } as unknown as DataTransfer
+    const dataTransfer = { getData: (t: string) => (t === 'application/x-penline-fragment' ? json : '') } as unknown as DataTransfer
     e.handleIntent({ inputType: 'insertFromDrop', data: null, range: mainRange(sel([0, 0], 1)), dataTransfer })
     expect(shape(e)).toEqual(stripIds(doc(el('paragraph', txt('pxy')), el('paragraph', txt('zq')))))
     expect(e.state.selection).toEqual(sel([1, 0], 1))

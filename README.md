@@ -1,9 +1,15 @@
-# headless-text-editor
+# penline
 
 A headless rich-text editor with its own editing engine. It is not built on ProseMirror.
 
+```sh
+npm install @penline/core @penline/react @penline/paragraph @penline/bold
+```
+
+> Pre-release (0.x): the API can still change between minor versions until 1.0.
+
 - **Headless.** The editor ships behaviour, not styles. You own the markup and the CSS.
-- **Framework-free core.** `@hte/core` has no UI framework dependency. `@hte/react` is the React adapter, and the core is designed so a Vue adapter can be added later.
+- **Framework-free core.** `@penline/core` has no UI framework dependency. `@penline/react` is the React adapter, and the core is designed so a Vue adapter can be added later.
 - **Plugins in control.** Every feature (paragraph, bold, image, mention, code block…) is a plugin defined with `definePlugin`. A plugin owns its schema, commands, keys, HTML, paste handling and view. Each built-in plugin can be customized at several levels, from CSS up to rebuilding its view from hooks.
 - **Operations-based.** Every change goes through invertible operations. That gives exact undo/redo, and leaves the door open for realtime collaboration later. Collaboration is not built yet.
 
@@ -46,9 +52,9 @@ Open the URL Vite prints (default `http://localhost:5173`).
 ## Use the editor in React
 
 ```tsx
-import { EditorContent, useEditor, useEditorState } from '@hte/react'
-import { paragraph } from '@hte/paragraph'
-import { bold } from '@hte/bold'
+import { EditorContent, useEditor, useEditorState } from '@penline/react'
+import { paragraph } from '@penline/paragraph'
+import { bold } from '@penline/bold'
 
 // Module-level: the same array on every render.
 const plugins = [paragraph, bold] as const
@@ -84,10 +90,10 @@ How the pieces fit together:
 Plugins with a React view, such as image, mention and code block, take a `nodeViews` entry. Options that are functions go in `pluginOptions`:
 
 ```tsx
-import { image } from '@hte/image'
-import { ImageView } from '@hte/image/react'
-import { mention } from '@hte/mention'
-import { MentionSuggestion, MentionView } from '@hte/mention/react'
+import { image } from '@penline/image'
+import { ImageView } from '@penline/image/react'
+import { mention } from '@penline/mention'
+import { MentionSuggestion, MentionView } from '@penline/mention/react'
 
 const plugins = [paragraph, bold, image, mention] as const
 // Keep these stable (module constants or useMemo): new objects on every render re-render every node view.
@@ -113,9 +119,9 @@ function MyEditor() {
 ## Use the core without React
 
 ```ts
-import { Editor } from '@hte/core'
-import { paragraph } from '@hte/paragraph'
-import { bold } from '@hte/bold'
+import { Editor } from '@penline/core'
+import { paragraph } from '@penline/paragraph'
+import { bold } from '@penline/bold'
 
 const editor = new Editor({ plugins: [paragraph, bold], content: '<p>Hello</p>' })
 editor.mount(document.querySelector('#editor')!) // makes the element contenteditable and renders into it
@@ -165,12 +171,12 @@ In JSON, an element whose `type` no plugin knows is kept as an opaque, non-edita
 
 | Package | What it does | React view |
 |---|---|---|
-| `@hte/paragraph` | the default block | – |
-| `@hte/bold` | bold mark, `Mod-b` | – |
-| `@hte/font-size` | font-size mark | – |
-| `@hte/image` | image block: upload with preview, resize, alt text, safe `src` policy | `@hte/image/react` |
-| `@hte/mention` | `@` mentions with an async suggestion popup | `@hte/mention/react` |
-| `@hte/code-block` | code block with highlight.js highlighting, Tab indent, triple-Enter exit | `@hte/code-block/react` |
+| `@penline/paragraph` | the default block | – |
+| `@penline/bold` | bold mark, `Mod-b` | – |
+| `@penline/font-size` | font-size mark | – |
+| `@penline/image` | image block: upload with preview, resize, alt text, safe `src` policy | `@penline/image/react` |
+| `@penline/mention` | `@` mentions with an async suggestion popup | `@penline/mention/react` |
+| `@penline/code-block` | code block with highlight.js highlighting, Tab indent, triple-Enter exit | `@penline/code-block/react` |
 
 Undo and redo (`Mod-z`, `Mod-Shift-z`) are built in. Pass `history: false` to turn them off.
 
@@ -181,7 +187,7 @@ Every plugin with a view can be customized at six levels, from least to most eff
 | Level | How | Example |
 |---|---|---|
 | 0 | use the default view | `nodeViews: { image: ImageView }` |
-| 1 | CSS on stable `data-*` attributes | `[data-hte-image][data-selected] { outline: 2px solid }` |
+| 1 | CSS on stable `data-*` attributes | `[data-penline-image][data-selected] { outline: 2px solid }` |
 | 2 | `HTMLAttributes` option, `classNames` prop | `<ImageView {...props} classNames={{ root: 'my-figure' }} />` |
 | 3 | hide or replace parts | `<ImageView {...props} parts={{ altInput: false }} />` |
 | 4 | build your own view from the hooks | `useImageResize`, `useAltDraft`, `useImageState` |
@@ -192,7 +198,7 @@ Levels 3 and 4 are marked `@experimental` and may still change. [docs/plugin-aut
 ## Writing your own plugin
 
 ```ts
-import { definePlugin, type Command } from '@hte/core'
+import { definePlugin, type Command } from '@penline/core'
 
 export const italic = definePlugin({
   name: 'italic',
@@ -226,8 +232,8 @@ The first e2e run needs browsers: `pnpm --filter playground exec playwright inst
 
 ```
 packages/
-  core/            @hte/core: model, operations, transactions, history, plugins, DOM view
-  react/           @hte/react: useEditor, EditorContent, useEditorState, node views, customization helpers
+  core/            @penline/core: model, operations, transactions, history, plugins, DOM view
+  react/           @penline/react: useEditor, EditorContent, useEditorState, node views, customization helpers
   plugins/
     paragraph/ bold/ font-size/ image/ mention/ code-block/
 apps/

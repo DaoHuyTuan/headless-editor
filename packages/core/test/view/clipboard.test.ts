@@ -22,7 +22,7 @@ const range = (path: number[], offset: number, focusPath: number[], focusOffset:
 })
 const caret = (path: number[], offset: number): Selection => range(path, offset, path, offset)
 
-const HTE_MIME = 'application/x-hte-fragment'
+const HTE_MIME = 'application/x-penline-fragment'
 
 function setup(content: Doc, selection: Selection, plugins: AnyPlugin[] = [testParagraph, testBold]) {
   const editor = createTestEditor({ plugins, doc: content, selection })

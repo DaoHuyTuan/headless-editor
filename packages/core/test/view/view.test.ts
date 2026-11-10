@@ -346,14 +346,14 @@ describe('EditorView: plugin options', () => {
     const root = document.createElement('div')
     document.body.appendChild(root)
     editor.mount(root)
-    const shell = root.querySelector('[data-hte-id]')!
-    const leaf = root.querySelector('[data-hte-leaf]')!
+    const shell = root.querySelector('[data-penline-id]')!
+    const leaf = root.querySelector('[data-penline-leaf]')!
     expect(shell.className).toBe('a')
     editor.setPluginOptions('boxed', { className: 'b' })
-    const next = root.querySelector('[data-hte-id]')!
+    const next = root.querySelector('[data-penline-id]')!
     expect(next.className).toBe('b')
     expect(next).not.toBe(shell)
-    expect(root.querySelector('[data-hte-leaf]')).toBe(leaf)
+    expect(root.querySelector('[data-penline-leaf]')).toBe(leaf)
     expect(next.contains(leaf)).toBe(true)
   })
 

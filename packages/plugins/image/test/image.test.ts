@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createSelection, mainRange } from '@hte/core'
+import { createSelection, mainRange } from '@penline/core'
 import {
   clearHistory,
   FRAGMENT_MIME,
@@ -11,9 +11,9 @@ import {
   type Doc,
   type ElementNode,
   type InputIntent,
-} from '@hte/core'
-import { createTestEditor, doc, el, sel, stripIds, txt } from '@hte/core/testing'
-import { paragraph } from '@hte/paragraph'
+} from '@penline/core'
+import { createTestEditor, doc, el, sel, stripIds, txt } from '@penline/core/testing'
+import { paragraph } from '@penline/paragraph'
 import { image, safeSrc } from '../src/index'
 
 interface Deferred {
@@ -304,7 +304,7 @@ describe('image upload', () => {
       expect(images(editor.state.doc as Doc)).toHaveLength(1)
       expect(images(editor.state.doc as Doc)[0]!.data.src).toBe('https://x/a.png')
       expect(onUploadError).not.toHaveBeenCalled()
-      expect(errorSpy).toHaveBeenCalledWith('@hte/image:', expect.objectContaining({ message: 'listener boom' }))
+      expect(errorSpy).toHaveBeenCalledWith('@penline/image:', expect.objectContaining({ message: 'listener boom' }))
     } finally {
       errorSpy.mockRestore()
     }
@@ -323,7 +323,7 @@ describe('image upload', () => {
       await flush()
       expect(images(editor.state.doc as Doc)).toHaveLength(0)
       expect(editor.storage.image.isUploading()).toBe(false)
-      expect(errorSpy).toHaveBeenCalledWith('@hte/image:', expect.objectContaining({ message: 'handler boom' }))
+      expect(errorSpy).toHaveBeenCalledWith('@penline/image:', expect.objectContaining({ message: 'handler boom' }))
     } finally {
       errorSpy.mockRestore()
     }

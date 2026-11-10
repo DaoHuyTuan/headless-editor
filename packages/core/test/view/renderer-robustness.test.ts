@@ -74,7 +74,7 @@ describe('Renderer: a render that throws', () => {
     throwing = false
     renderer.render(d(2))
     expect(root.querySelector('h1')).not.toBe(h)
-    expect(root.querySelectorAll('[data-hte-id="h"]').length).toBe(1)
+    expect(root.querySelectorAll('[data-penline-id="h"]').length).toBe(1)
   })
 
   it('shows the node view rebuilt by the failed render, or a newer one, never a destroyed one', () => {
@@ -90,7 +90,7 @@ describe('Renderer: a render that throws', () => {
     expect(root.children[0]).toBe(view.created.at(-1))
     expect(view.destroyed()).toBe(view.created.length - 1)
     expect(renderer.elementAt([0])).toBe(view.created.at(-1))
-    expect(root.querySelectorAll('[data-hte-id="i"]').length).toBe(1)
+    expect(root.querySelectorAll('[data-penline-id="i"]').length).toBe(1)
   })
 
   it('keeps element lookups consistent with the DOM after recovering', () => {
@@ -120,7 +120,7 @@ describe('Renderer: skipLeaf', () => {
     frame.insertBefore(leaf, frame.firstChild)
     renderer.render(d, { skipLeaf: leaf, skipPath: [0, 0] })
     expect(root.innerHTML).toBe(
-      '<div data-hte-id="fr"><span contenteditable="false">A</span><span data-hte-leaf="">x</span><span contenteditable="false">Z</span></div>',
+      '<div data-penline-id="fr"><span contenteditable="false">A</span><span data-penline-leaf="">x</span><span contenteditable="false">Z</span></div>',
     )
     expect(renderer.leafAt([0, 0])).toBe(leaf)
   })
@@ -133,7 +133,7 @@ describe('Renderer: skipLeaf', () => {
     const insert = vi.spyOn(root, 'insertBefore')
     renderer.render(doc(p('p2', 'b'), p('p1', 'a')), { skipLeaf: leaf, skipPath: [1, 0] })
     expect(insert.mock.calls.some(([moved]) => moved === p1)).toBe(false)
-    expect([...root.children].map((c) => c.getAttribute('data-hte-id'))).toEqual(['p2', 'p1'])
+    expect([...root.children].map((c) => c.getAttribute('data-penline-id'))).toEqual(['p2', 'p1'])
     expect(renderer.leafAt([1, 0])).toBe(leaf)
   })
 
@@ -150,6 +150,6 @@ describe('Renderer: skipLeaf', () => {
     const h2 = root.firstElementChild!
     expect(h2.tagName).toBe('H2')
     expect(leaf.parentNode).toBe(h2)
-    expect(root.querySelectorAll('[data-hte-id="h"]').length).toBe(1)
+    expect(root.querySelectorAll('[data-penline-id="h"]').length).toBe(1)
   })
 })

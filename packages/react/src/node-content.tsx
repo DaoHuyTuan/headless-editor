@@ -74,8 +74,8 @@ export function NodeContent({ as: Tag = 'div', className }: NodeContentProps) {
     warned.current = true
     console.warn(
       ctx
-        ? `[hte] <NodeContent /> is rendered in the node view of "${ctx.type}", an atom: it has no content to show.`
-        : '[hte] <NodeContent /> is rendered outside a node view: it shows nothing.',
+        ? `[penline] <NodeContent /> is rendered in the node view of "${ctx.type}", an atom: it has no content to show.`
+        : '[penline] <NodeContent /> is rendered outside a node view: it shows nothing.',
     )
   }, [ctx, contentDOM])
   useLayoutEffect(() => {
@@ -83,7 +83,7 @@ export function NodeContent({ as: Tag = 'div', className }: NodeContentProps) {
     if (!ctx || !contentDOM || !placeholder) return
     if (ctx.mounted.count > 0 && ctx.dev && !warned.current) {
       warned.current = true
-      console.warn('[hte] <NodeContent /> is rendered more than once in a node view: only one shows the content.')
+      console.warn('[penline] <NodeContent /> is rendered more than once in a node view: only one shows the content.')
     }
     ctx.mounted.count++
     // StrictMode re-runs this effect right after its cleanup: the content is still in place then.

@@ -100,7 +100,7 @@ describe('composition', () => {
     leaf.before(leaf.ownerDocument.createTextNode('<'))
     fire(root, 'compositionend')
     expect(texts(editor)).toEqual(['<abxy'])
-    expect(root.querySelectorAll('p > :not([data-hte-leaf])').length + [...root.querySelector('p')!.childNodes].filter((n) => n.nodeType === 3).length).toBe(0)
+    expect(root.querySelectorAll('p > :not([data-penline-leaf])').length + [...root.querySelector('p')!.childNodes].filter((n) => n.nodeType === 3).length).toBe(0)
   })
 
   it('does not take a static text of the block renderHTML beside the leaf as IME text', () => {
@@ -129,7 +129,7 @@ describe('composition', () => {
     fire(root, 'compositionend')
     expect(count).toBe(0)
     expect(texts(editor)).toEqual([''])
-    expect(root.querySelector('br[data-hte-break]')).not.toBeNull()
+    expect(root.querySelector('br[data-penline-break]')).not.toBeNull()
   })
 
   it('keeps marks of the composing text', () => {
@@ -326,7 +326,7 @@ describe('composition in a zero-width leaf (5.15)', () => {
     editor.mount(root)
     const view = editor.view!
     view.focus()
-    expect(view.renderer.leafAt([0, 2])!.hasAttribute('data-hte-zw')).toBe(true)
+    expect(view.renderer.leafAt([0, 2])!.hasAttribute('data-penline-zw')).toBe(true)
     fire(root, 'compositionstart')
     // The placeholder, then the composed text with a genuine zero-width space in it.
     imeWrite(view, [0, 2], '\u200ba\u200bb')
@@ -352,12 +352,12 @@ describe('zero-width leaves', () => {
 
   it('typing into a zero-width leaf inserts the text without the placeholder and shows it as a plain leaf', () => {
     const { editor, root, view } = mountChips([txt('x'), chipNode('c1'), txt('')], caret([0, 2], 0))
-    expect(view.renderer.leafAt([0, 2])!.hasAttribute('data-hte-zw')).toBe(true)
+    expect(view.renderer.leafAt([0, 2])!.hasAttribute('data-penline-zw')).toBe(true)
     root.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, cancelable: true, inputType: 'insertText', data: 'a' }))
     expect(textAt(editor, 2)).toBe('a')
     expect(editor.state.selection).toEqual(caret([0, 2], 1))
     const leaf = view.renderer.leafAt([0, 2])!
-    expect(leaf.hasAttribute('data-hte-zw')).toBe(false)
+    expect(leaf.hasAttribute('data-penline-zw')).toBe(false)
     expect(leaf.textContent).toBe('a')
   })
 
@@ -375,7 +375,7 @@ describe('zero-width leaves', () => {
 
   it('IME before a chip: a composition in the leading zero-width leaf commits there, the chip stays', () => {
     const { editor, root, view } = mountChips([txt(''), chipNode('c1'), txt('y')], caret([0, 0], 0))
-    expect(view.renderer.leafAt([0, 0])!.hasAttribute('data-hte-zw')).toBe(true)
+    expect(view.renderer.leafAt([0, 0])!.hasAttribute('data-penline-zw')).toBe(true)
     fire(root, 'compositionstart')
     expect(view.composition?.leaf).toBe(view.renderer.leafAt([0, 0]))
     imeWrite(view, [0, 0], '\u200b\u00ea')
@@ -384,7 +384,7 @@ describe('zero-width leaves', () => {
     expect((editor.state.doc.children[0] as ElementNode).children![1]).toMatchObject({ type: 'chip' })
     expect(textAt(editor, 2)).toBe('y')
     expect(editor.state.selection).toEqual(caret([0, 0], 1))
-    expect(view.renderer.leafAt([0, 0])!.hasAttribute('data-hte-zw')).toBe(false)
+    expect(view.renderer.leafAt([0, 0])!.hasAttribute('data-penline-zw')).toBe(false)
     expect(view.renderer.leafAt([0, 0])!.textContent).toBe('\u00ea')
   })
 
@@ -397,18 +397,18 @@ describe('zero-width leaves', () => {
     expect(textAt(editor, 0)).toBe('ab\u00ea')
     expect(textAt(editor, 2)).toBe('')
     expect(view.renderer.leafAt([0, 2])).toBe(zw)
-    expect(zw.hasAttribute('data-hte-zw')).toBe(true)
+    expect(zw.hasAttribute('data-penline-zw')).toBe(true)
   })
 
   it('removing the last chip turns the zero-width leaves into one empty leaf with a <br>', () => {
     const { editor, view } = mountChips([txt(''), chipNode('c1'), txt('')], caret([0, 2], 0))
-    expect(view.renderer.leafAt([0, 0])!.hasAttribute('data-hte-zw')).toBe(true)
-    expect(view.renderer.leafAt([0, 2])!.hasAttribute('data-hte-zw')).toBe(true)
+    expect(view.renderer.leafAt([0, 0])!.hasAttribute('data-penline-zw')).toBe(true)
+    expect(view.renderer.leafAt([0, 2])!.hasAttribute('data-penline-zw')).toBe(true)
     editor.dispatch(editor.createTransaction().removeNode([0, 1]))
     expect((editor.state.doc.children[0] as ElementNode).children).toEqual([expect.objectContaining({ text: '' })])
     const leaf = view.renderer.leafAt([0, 0])!
-    expect(leaf.hasAttribute('data-hte-zw')).toBe(false)
-    expect(leaf.innerHTML).toBe('<br data-hte-break="">')
+    expect(leaf.hasAttribute('data-penline-zw')).toBe(false)
+    expect(leaf.innerHTML).toBe('<br data-penline-break="">')
     expect(leaf.textContent).not.toContain('\u200b')
     expect(view.renderer.leafAt([0, 1])).toBeNull()
   })
@@ -418,6 +418,6 @@ describe('zero-width leaves', () => {
     root.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, cancelable: true, inputType: 'deleteContentBackward' }))
     expect((editor.state.doc.children[0] as ElementNode).children).toEqual([expect.objectContaining({ text: '' })])
     expect(editor.state.selection).toEqual(caret([0, 0], 0))
-    expect(view.renderer.leafAt([0, 0])!.innerHTML).toBe('<br data-hte-break="">')
+    expect(view.renderer.leafAt([0, 0])!.innerHTML).toBe('<br data-penline-break="">')
   })
 })

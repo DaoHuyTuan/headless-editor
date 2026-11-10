@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useSyncExternalStore, type HTMLAttributes } from 'react'
 import { createPortal } from 'react-dom'
-import type { AnyPlugin, Editor } from '@hte/core'
+import type { AnyPlugin, Editor } from '@penline/core'
 import { NodeViewScope } from './node-content'
 import { getPortalStore, type PortalEntry, type PortalStore } from './node-views'
 

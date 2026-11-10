@@ -143,7 +143,7 @@ export interface NodeViewProps<D = Data, O = unknown, T = unknown, S = unknown> 
    */
   updateData(partial: Partial<D>): boolean
   /**
-   * For a non-atom node: the element the core renders the node's children into (`<div data-hte-content
+   * For a non-atom node: the element the core renders the node's children into (`<div data-penline-content
    * contenteditable="true">`, a `<span>` for an inline node). Created with the view and the same in
    * every update. The view places it inside its own DOM, never under a `contenteditable="false"`
    * element (see `NodeViewFactory`), and never changes it; the core owns it.

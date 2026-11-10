@@ -1,8 +1,8 @@
 /**
- * Paragraph block (`@hte/paragraph`, the default block). Renders `<p>`; `options.HTMLAttributes` is
+ * Paragraph block (`@penline/paragraph`, the default block). Renders `<p>`; `options.HTMLAttributes` is
  * merged into it. No React view, so no `data-*` attributes and no parts.
  */
-import { definePlugin, mergeAttrs, type HTMLAttributes } from '@hte/core'
+import { definePlugin, mergeAttrs, type HTMLAttributes } from '@penline/core'
 
 export interface ParagraphOptions {
   /** Extra attributes merged into the `<p>`. */

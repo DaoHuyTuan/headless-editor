@@ -1,6 +1,6 @@
 import { deflateSync } from 'node:zlib'
 import { expect, test, type Page } from '@playwright/test'
-import type { Doc, ElementNode } from '@hte/core'
+import type { Doc, ElementNode } from '@penline/core'
 import {
   focusEnd,
   getDoc,
@@ -92,7 +92,7 @@ async function caret(page: Page, path: number[], offset: number): Promise<void> 
 }
 
 /** The `<img>` of the image node views (by their stable marker, not any `<img>` in the editor). */
-const editorImg = (page: Page) => page.locator('[data-testid=editor] [data-hte-image] img')
+const editorImg = (page: Page) => page.locator('[data-testid=editor] [data-penline-image] img')
 
 test.describe('inserting', () => {
   test('the file input inserts an image that is uploaded; undo and redo keep the uploaded src', async ({ page }) => {
@@ -230,7 +230,7 @@ test.describe('the image scenario', () => {
   test('clicking the image node-selects it', async ({ page }) => {
     await editorImg(page).click()
     expect((await getSelection(page))?.node).toEqual([1])
-    await expect(page.locator('[data-testid=editor] [data-hte-node-view]')).toHaveAttribute('data-hte-selected', '')
+    await expect(page.locator('[data-testid=editor] [data-penline-node-view]')).toHaveAttribute('data-penline-selected', '')
   })
 
   test('Backspace removes the selected image', async ({ page }) => {
@@ -246,7 +246,7 @@ test.describe('the image scenario', () => {
     await page.keyboard.press('Backspace')
     expect((await getSelection(page))?.node).toEqual([1])
     expect(await types(page)).toEqual(['paragraph', 'image', 'paragraph'])
-    await expect(page.locator('[data-testid=editor] [data-hte-node-view]')).toHaveAttribute('data-hte-selected', '')
+    await expect(page.locator('[data-testid=editor] [data-penline-node-view]')).toHaveAttribute('data-penline-selected', '')
   })
 
   test('typing while the image is selected replaces it with a paragraph of the typed text', async ({ page }) => {
@@ -299,7 +299,7 @@ test.describe('the image scenario', () => {
 
   test('dragging the resize handle by +40px increases the width', async ({ page }) => {
     const start = (await editorImg(page).boundingBox())!.width
-    const handle = page.locator('[data-testid=editor] [data-hte-image] [role=separator]')
+    const handle = page.locator('[data-testid=editor] [data-penline-image] [role=separator]')
     const box = (await handle.boundingBox())!
     const x = box.x + box.width / 2
     const y = box.y + box.height / 2
@@ -344,7 +344,7 @@ test.describe('the image scenario', () => {
   })
 
   // The same flows through synthetic events sharing one clipboard: WebKit keeps coverage of the handlers.
-  for (const without of [[], ['application/x-hte-fragment']]) {
+  for (const without of [[], ['application/x-penline-fragment']]) {
     test(`synthetic copy of a selected image, pasted elsewhere, adds an equal image with a fresh id (${without.length ? 'html fallback' : 'json'})`, async ({
       page,
     }) => {

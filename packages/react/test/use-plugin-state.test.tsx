@@ -2,9 +2,9 @@
 import { StrictMode } from 'react'
 import { act, cleanup, render } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { definePlugin, Editor, type Decoration, type NodeViewProps } from '@hte/core'
-import { doc, el, sel, txt } from '@hte/core/testing'
-import { paragraph } from '@hte/paragraph'
+import { definePlugin, Editor, type Decoration, type NodeViewProps } from '@penline/core'
+import { doc, el, sel, txt } from '@penline/core/testing'
+import { paragraph } from '@penline/paragraph'
 import { EditorContent, useEditor, usePluginState } from '../src/index'
 
 afterEach(cleanup)
@@ -111,7 +111,7 @@ describe('usePluginState inside a mounted editor (StrictMode)', () => {
         <App />
       </StrictMode>,
     )
-    expect(getByTestId('content').querySelector('[data-hte-zw]')).not.toBeNull()
+    expect(getByTestId('content').querySelector('[data-penline-zw]')).not.toBeNull()
     expect(container.querySelector('output')!.textContent).toBe('0')
     act(() => {
       editor.dispatch(editor.createTransaction().insertText('z', { anchor: { path: [0, 2], offset: 0 }, focus: { path: [0, 2], offset: 0 } }))

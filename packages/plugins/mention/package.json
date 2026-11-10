@@ -1,20 +1,59 @@
 {
-  "name": "@hte/mention",
-  "version": "0.0.0",
-  "private": true,
+  "name": "@penline/mention",
+  "version": "0.1.0",
+  "description": "Mentions for penline: an inline atom and a suggestion popup.",
+  "license": "MIT",
   "type": "module",
+  "sideEffects": false,
+  "keywords": [
+    "editor",
+    "rich-text",
+    "headless",
+    "contenteditable",
+    "wysiwyg",
+    "penline"
+  ],
+  "homepage": "https://github.com/DaoHuyTuan/headless-editor#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DaoHuyTuan/headless-editor.git",
+    "directory": "packages/plugins/mention"
+  },
+  "bugs": {
+    "url": "https://github.com/DaoHuyTuan/headless-editor/issues"
+  },
+  "files": [
+    "dist"
+  ],
   "exports": {
     ".": "./src/index.ts",
     "./react": "./src/react.tsx"
   },
+  "scripts": {
+    "build": "tsup src/index.ts src/react.tsx --format esm --dts --clean --tsconfig ../../../tsconfig.build.json",
+    "prepublishOnly": "pnpm run build"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      },
+      "./react": {
+        "types": "./dist/react.d.ts",
+        "import": "./dist/react.js"
+      }
+    }
+  },
   "dependencies": {
-    "@hte/core": "workspace:*",
     "zod": "^4.0.0"
   },
   "peerDependencies": {
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "@hte/react": "workspace:*"
+    "@penline/react": "workspace:^",
+    "@penline/core": "workspace:^"
   },
   "peerDependenciesMeta": {
     "react": {
@@ -23,17 +62,18 @@
     "react-dom": {
       "optional": true
     },
-    "@hte/react": {
+    "@penline/react": {
       "optional": true
     }
   },
   "devDependencies": {
-    "@hte/paragraph": "workspace:*",
-    "@hte/react": "workspace:*",
+    "@penline/paragraph": "workspace:*",
+    "@penline/react": "workspace:*",
     "@testing-library/react": "^16.3.0",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "@penline/core": "workspace:*"
   }
 }

@@ -5,7 +5,7 @@ This page describes the object passed to `definePlugin({...})`. It covers each f
 For a guided walkthrough (customization levels, writing a plugin with hooks, parts and a view), read [plugin-authoring.md](plugin-authoring.md). The source of truth is `PluginSpec` in `packages/core/src/plugin/types.ts`. Every sample on this page is typechecked in `packages/plugins/image/test/docs-examples.test-d.tsx`, marked `doc: api`.
 
 ```ts
-import { definePlugin, mergeAttrs, type Command, type Data, type HTMLAttributes } from '@hte/core'
+import { definePlugin, mergeAttrs, type Command, type Data, type HTMLAttributes } from '@penline/core'
 import { z } from 'zod'
 
 export const highlight = definePlugin({
@@ -306,7 +306,7 @@ Example uses: syntax highlighting, a search-match highlight, the active mention 
 
 A widget's `key` is its identity. While a widget with the same key is decorated, the view keeps the element the first `render` returned: `render` is not called again, even if it would now build something else, and the element moves with `at`. To show new content, use a new key (or update the kept element yourself). Two widgets with the same key in one render: the second gets its own, unkeyed element.
 
-The view marks what it renders for decorations: every widget element gets `data-hte-widget` and every inline decoration span gets `data-hte-deco`. The names are exported as `WIDGET_ATTR` and `DECO_ATTR` from `@hte/core`, to style or find them (in CSS, tests, or a `stopEvent` hook). Never set them yourself.
+The view marks what it renders for decorations: every widget element gets `data-penline-widget` and every inline decoration span gets `data-penline-deco`. The names are exported as `WIDGET_ATTR` and `DECO_ATTR` from `@penline/core`, to style or find them (in CSS, tests, or a `stopEvent` hook). Never set them yourself.
 
 ### `stopEvent(event, node, ctx) => boolean`
 For an event inside one of your node views, outside its `contentDOM`. Return `true` to make the editor ignore the event entirely, without handling it or calling `preventDefault`.

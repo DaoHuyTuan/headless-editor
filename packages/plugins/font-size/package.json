@@ -1,17 +1,55 @@
 {
-  "name": "@hte/font-size",
-  "version": "0.0.0",
-  "private": true,
+  "name": "@penline/font-size",
+  "version": "0.1.0",
+  "description": "Font size mark for penline.",
+  "license": "MIT",
   "type": "module",
+  "sideEffects": false,
+  "keywords": [
+    "editor",
+    "rich-text",
+    "headless",
+    "contenteditable",
+    "wysiwyg",
+    "penline"
+  ],
+  "homepage": "https://github.com/DaoHuyTuan/headless-editor#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DaoHuyTuan/headless-editor.git",
+    "directory": "packages/plugins/font-size"
+  },
+  "bugs": {
+    "url": "https://github.com/DaoHuyTuan/headless-editor/issues"
+  },
+  "files": [
+    "dist"
+  ],
   "exports": {
     ".": "./src/index.ts"
   },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean --tsconfig ../../../tsconfig.build.json",
+    "prepublishOnly": "pnpm run build"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      }
+    }
+  },
   "dependencies": {
-    "@hte/core": "workspace:*",
     "zod": "^4.0.0"
   },
+  "peerDependencies": {
+    "@penline/core": "workspace:^"
+  },
   "devDependencies": {
-    "@hte/bold": "workspace:*",
-    "@hte/paragraph": "workspace:*"
+    "@penline/bold": "workspace:*",
+    "@penline/paragraph": "workspace:*",
+    "@penline/core": "workspace:*"
   }
 }

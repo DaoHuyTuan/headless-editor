@@ -57,7 +57,7 @@ export class NodeViewHost {
       const current = this.views.get(node.id)?.instance === instance
       if (!current || !container.isConnected || container.contains(contentDOM)) return
       console.warn(
-        `[hte] The node view of "${node.type}" did not place its contentDOM in its container: its content is ` +
+        `[penline] The node view of "${node.type}" did not place its contentDOM in its container: its content is ` +
           'neither shown nor editable. Append props.contentDOM (a React node view renders <NodeContent /> exactly once).',
       )
     }, 0)

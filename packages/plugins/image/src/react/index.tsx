@@ -1,5 +1,5 @@
 import type { ComponentType } from 'react'
-import { resolveParts, type ViewCustomization } from '@hte/react'
+import { resolveParts, type ViewCustomization } from '@penline/react'
 import type { ImageProps } from './hooks'
 import { Image, useImage, type ImagePartProps } from './parts'
 
@@ -26,7 +26,7 @@ export type ImageViewProps = ImageProps & ViewCustomization<ImageParts>
 
 /**
  * Default React node view of the image plugin: the picture, an alt-text input and a resize handle.
- * Stable attributes: `data-hte-image` on the root, `data-selected` when node-selected and
+ * Stable attributes: `data-penline-image` on the root, `data-selected` when node-selected and
  * `data-uploading` while the upload is pending. `parts` / `classNames` keys: `root`, `img`,
  * `altInput`, `resizeHandle`.
  */

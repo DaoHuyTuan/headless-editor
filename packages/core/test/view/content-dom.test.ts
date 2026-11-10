@@ -79,8 +79,8 @@ function mount(content: Doc, opts: { selection?: Selection; plugins?: AnyPlugin[
   return { editor, root, view: editor.view!, rec: view.rec }
 }
 
-const container = (root: HTMLElement) => root.querySelector<HTMLElement>('[data-hte-node-view]')!
-const contentOf = (root: HTMLElement) => container(root).querySelector<HTMLElement>('[data-hte-content]')!
+const container = (root: HTMLElement) => root.querySelector<HTMLElement>('[data-penline-node-view]')!
+const contentOf = (root: HTMLElement) => container(root).querySelector<HTMLElement>('[data-penline-content]')!
 const header = (root: HTMLElement) => container(root).querySelector<HTMLElement>('.header')!
 const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0))
 const texts = (editor: Editor) =>
@@ -118,7 +118,7 @@ describe('non-atom node views: rendering', () => {
     expect(c.hasAttribute('contenteditable')).toBe(false)
     const content = props.contentDOM!
     expect(content.tagName).toBe('DIV')
-    expect(content.getAttribute('data-hte-content')).toBe('')
+    expect(content.getAttribute('data-penline-content')).toBe('')
     expect(content.getAttribute('contenteditable')).toBe('true')
     expect(content.parentElement!.tagName).toBe('SECTION')
     expect(content.textContent).toBe('hello')
@@ -175,7 +175,7 @@ describe('non-atom node views: rendering', () => {
     tr.removeNode([1])
     editor.dispatch(tr)
     expect(rec.destroyed).toBe(1)
-    expect(root.querySelector('[data-hte-node-view]')).toBeNull()
+    expect(root.querySelector('[data-penline-node-view]')).toBeNull()
     editor.commands.undo()
     expect(rec.created).toHaveLength(2)
     expect(contentOf(root).textContent).toBe('hello')
