@@ -26,7 +26,6 @@ import {
   mainRange,
   mergeAttrs,
   nextPath,
-  nodeEntries,
   nodeText,
   type Command,
   type Decoration,
@@ -63,6 +62,8 @@ export interface CodeBlockOptions {
   languages: string[]
   /** Extra attributes merged into the `<pre>`. The `<code>`'s `language-*` class comes from the data. */
   HTMLAttributes: HTMLAttributes
+  /** The accessible name of a view's language select (`aria-label`). Default `'Language'`. */
+  languageLabel: string
 }
 
 const NAME = 'codeBlock'
@@ -77,7 +78,7 @@ type ReadonlyDoc = DeepReadonly<Doc> | Doc
  */
 function blockPathOf(doc: ReadonlyDoc, registry: Registry, path: Path): Path | null {
   for (let depth = path.length; depth >= 1; depth--) {
-    let node: Node
+    let node: DeepReadonly<Node>
     try {
       node = getNode(doc as Doc, path.slice(0, depth))
     } catch {
@@ -211,7 +212,9 @@ const indentsLines = (code: CodeAt): boolean => code.from !== code.to && lineSta
  * Tab at every range in a code block: two spaces at a caret (replacing a selection within one line),
  * or an indent of every line a multi-line selection touches. A line touched by several ranges is
  * indented once: a caret or single-line selection on a line another range indents adds nothing of its
- * own. Ranges outside a code block are left alone (Tab has no default edit for them).
+ * own. A multi-line selection ending at the start of a line another range indents keeps ending
+ * before that line's new indent. Ranges outside a code block are left alone (Tab has no default edit
+ * for them).
  */
 function indent(tr: Transaction): boolean {
   const ranges = codeRanges(tr)
@@ -242,7 +245,28 @@ function indent(tr: Transaction): boolean {
     const { code } = ranges.find((r) => r.code.textPath.join() === key)!
     for (const start of set) planFor(plan, code).push({ offset: start, remove: '', insert: INDENT })
   }
+  // A multi-line selection ending at a line start leaves that line out; when another range indents
+  // that line, the mapping would carry the end over the new indent. Those ends are put back before it.
+  const before = tr.selection!
+  const pullBack = before.ranges.map((range) => {
+    const code = codeAtRange(tr, range)
+    if (!code || !indentsLines(code) || !lines.get(code.textPath.join())?.has(code.to)) return null
+    return code.anchor > code.focus ? 'anchor' : 'focus'
+  })
   applyPlan(tr, plan)
+  const after = tr.selection!
+  if (tr.rejected === null && pullBack.some(Boolean) && after.ranges.length === before.ranges.length) {
+    tr.setSelection(
+      createSelection(
+        after.ranges.map((range, i) => {
+          const end = pullBack[i]
+          if (!end) return range
+          return { ...range, [end]: { ...range[end], offset: range[end].offset - INDENT.length } }
+        }),
+        after.main,
+      ),
+    )
+  }
   return tr.rejected === null
 }
 
@@ -513,22 +537,55 @@ function linesToBlocks(fragment: Fragment, registry: Registry): Fragment {
   }))
 }
 
-/** Per code block node (nodes are immutable), the tokens last computed and the highlighter that made them. */
-const tokenCache = new WeakMap<object, { highlighter: Highlighter; tokens: HighlightToken[] }>()
+/** A valid highlight token of a code block below some subtree root: `path` is its text's, relative to that root. */
+interface SubtreeToken {
+  path: Path
+  from: number
+  to: number
+  className: string
+}
 
-function tokensFor(block: DeepReadonly<ElementNode>, text: string, highlighter: Highlighter): HighlightToken[] {
-  const cached = tokenCache.get(block)
-  if (cached && cached.highlighter === highlighter) return cached.tokens
+/**
+ * Per element node (nodes are immutable and unchanged subtrees keep their identity), the highlight
+ * tokens of the code blocks below it and the highlighter and code block type that made them. An
+ * update walks only the elements that changed: an unchanged subtree, code block or not, is reused
+ * without being walked or highlighted again.
+ */
+const subtreeCache = new WeakMap<object, { highlighter: Highlighter; name: string; tokens: readonly SubtreeToken[] }>()
+
+/** The valid tokens `highlighter` gives a code block with a single non-empty text (others have none). */
+function blockTokens(block: ElementNode, highlighter: Highlighter): SubtreeToken[] {
+  const kids = block.children ?? []
+  const only = kids[0]
+  if (kids.length !== 1 || !only || !isText(only) || only.text === '') return []
+  const text = only.text
   const language = typeof block.data.language === 'string' ? block.data.language : 'plaintext'
-  let tokens: HighlightToken[] = []
+  let raw: HighlightToken[] = []
   try {
-    const raw = highlighter(text, language)
-    tokens = Array.isArray(raw) ? raw : []
+    const result = highlighter(text, language)
+    raw = Array.isArray(result) ? result : []
   } catch (error) {
     // A throwing highlighter only loses the highlighting, never the render.
     console.error('@hte/code-block:', error)
   }
-  tokenCache.set(block, { highlighter, tokens })
+  const out: SubtreeToken[] = []
+  for (const t of raw) {
+    const ok = Number.isInteger(t.from) && Number.isInteger(t.to) && t.from >= 0 && t.to > t.from && t.to <= text.length
+    if (ok && typeof t.className === 'string') out.push({ path: [0], from: t.from, to: t.to, className: t.className })
+  }
+  return out
+}
+
+/** The tokens of the code blocks (type `name`) in the subtree of `node`, in document order, cached per node. */
+function subtreeTokens(node: Node, name: string, highlighter: Highlighter): readonly SubtreeToken[] {
+  if (!isElement(node)) return []
+  const cached = subtreeCache.get(node)
+  if (cached && cached.highlighter === highlighter && cached.name === name) return cached.tokens
+  const tokens: SubtreeToken[] = node.type === name ? blockTokens(node, highlighter) : []
+  ;(node.children ?? []).forEach((child, i) => {
+    for (const t of subtreeTokens(child, name, highlighter)) tokens.push({ ...t, path: [i, ...t.path] })
+  })
+  subtreeCache.set(node, { highlighter, name, tokens })
   return tokens
 }
 
@@ -541,7 +598,9 @@ function tokensFor(block: DeepReadonly<ElementNode>, text: string, highlighter: 
  *   consumed there, so focus never tabs out of the block), Enter inserts `\n` (at the end of a block
  *   ending with `\n\n` it removes them and exits to a new paragraph), Shift-Enter inserts `\n`,
  *   Mod-Enter exits the block to a new paragraph after it, Backspace at the start of an empty block
- *   turns it into a paragraph. `insertParagraph` / `insertLineBreak` intents behave like Enter.
+ *   turns it into a paragraph. `insertParagraph` / `insertLineBreak` intents behave like Enter (a
+ *   mention popup open at the main caret claims `insertParagraph` first: `@hte/mention` has the
+ *   higher priority).
  * - Several ranges: every key works per range. Code-block behaviour applies only to ranges inside a
  *   code block; Enter and Shift-Enter give the other ranges the editor's default split, Tab and
  *   Shift-Tab leave them alone, and Backspace is the editor's unless every range is at the start of an
@@ -567,6 +626,7 @@ export const codeBlock = definePlugin({
     highlighter: defaultHighlighter,
     languages: ['plaintext', 'javascript', 'typescript', 'json', 'css', 'html', 'python', 'bash'],
     HTMLAttributes: {},
+    languageLabel: 'Language',
   } as CodeBlockOptions,
   // `commands` comes before every hook taking `ctx`: TypeScript types those hooks in order.
   commands: () => ({
@@ -664,18 +724,14 @@ export const codeBlock = definePlugin({
     const out: Decoration[] = []
     const highlighter = ctx.options.highlighter
     if (typeof highlighter !== 'function') return out
-    for (const [node, path] of nodeEntries(state.doc)) {
-      if (!isElement(node) || node.type !== ctx.name) continue
-      const kids = node.children ?? []
-      const only = kids[0]
-      if (kids.length !== 1 || !only || !isText(only) || only.text === '') continue
-      const text = only.text
-      const at = (offset: number): Point => ({ path: [...path, 0], offset })
-      for (const t of tokensFor(node, text, highlighter)) {
-        const ok = Number.isInteger(t.from) && Number.isInteger(t.to) && t.from >= 0 && t.to > t.from && t.to <= text.length
-        if (ok && typeof t.className === 'string') out.push({ type: 'inline', from: at(t.from), to: at(t.to), attrs: { class: t.className } })
+    // Only the top-level blocks are visited on every update; below them, `subtreeTokens` reuses
+    // every subtree that did not change.
+    ;(state.doc as Doc).children.forEach((block, i) => {
+      for (const t of subtreeTokens(block, ctx.name, highlighter)) {
+        const at = (offset: number): Point => ({ path: [i, ...t.path], offset })
+        out.push({ type: 'inline', from: at(t.from), to: at(t.to), attrs: { class: t.className } })
       }
-    }
+    })
     return out
   },
 })

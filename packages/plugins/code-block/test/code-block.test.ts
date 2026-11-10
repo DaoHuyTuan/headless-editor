@@ -204,6 +204,57 @@ describe('code block line-break intents (beforeinput without keydown)', () => {
       { type: 'paragraph', text: 'b' },
     ])
   })
+
+  // The main caret after "@an" in a paragraph (mention popup open), another caret in a code block:
+  // both plugins handle insertParagraph. The open popup wins, whichever plugin is registered first.
+  describe('with the mention popup open at the main caret and a caret in a code block', () => {
+    const flush = () => new Promise<void>((r) => setTimeout(r, 0))
+    const at = (path: number[], offset: number) => ({ anchor: { path, offset }, focus: { path, offset } })
+    const withPopup = async (codeFirst: boolean, users: { id: string; label: string }[]) => {
+      const m = mention.configure({ fetchUsers: async () => users })
+      const ed = createTestEditor({
+        plugins: codeFirst ? [paragraph, bold, codeBlock, m] : [paragraph, bold, m, codeBlock],
+        doc: doc(p(txt('@an')), code('xy')),
+        selection: caret([0, 0], 3),
+      }) as unknown as Ed
+      const root = document.createElement('div')
+      document.body.appendChild(root)
+      ed.mount(root)
+      ed.view!.focus()
+      const tr = ed.createTransaction()
+      tr.setSelection(createSelection([at([0, 0], 3), at([1, 0], 1)], 0))
+      ed.dispatch(tr)
+      await flush()
+      return ed
+    }
+    const popup = (ed: Ed) => ed.getPluginState<{ open: boolean; items: unknown[] }>('mention')
+
+    for (const codeFirst of [false, true]) {
+      const order = codeFirst ? 'code block registered first' : 'mention registered first'
+
+      it(`insertParagraph accepts the suggestion; the code caret gets no newline (${order})`, async () => {
+        const ed = await withPopup(codeFirst, [{ id: 'u1', label: 'Ann' }])
+        expect(popup(ed)).toMatchObject({ open: true, items: [{ id: 'u1' }] })
+        expect(intent(ed, 'insertParagraph')).toBe(true)
+        expect(blocks(ed)).toEqual([
+          { type: 'paragraph', text: '<mention> ' },
+          { type: 'codeBlock', text: 'xy' },
+        ])
+        expect(popup(ed).open).toBe(false)
+      })
+
+      it(`with zero results the popup lets the code block handle it (${order})`, async () => {
+        const ed = await withPopup(codeFirst, [])
+        expect(popup(ed)).toMatchObject({ open: true, items: [] })
+        expect(intent(ed, 'insertParagraph')).toBe(true)
+        expect(blocks(ed)).toEqual([
+          { type: 'paragraph', text: '@an' },
+          { type: 'paragraph', text: '' },
+          { type: 'codeBlock', text: 'x\ny' },
+        ])
+      })
+    }
+  })
 })
 
 describe('code block commands', () => {
@@ -420,6 +471,23 @@ describe('code block paste', () => {
       { type: 'paragraph', text: 'y' },
     ])
   })
+
+  it('multi-line plain text from another app pasted into a paragraph splits it, one paragraph per line', () => {
+    const ed = setup(doc(p(txt('ab'))), caret([0, 0], 1))
+    paste(ed, { 'text/plain': 'x\ny' })
+    expect(blocks(ed)).toEqual([
+      { type: 'paragraph', text: 'ax' },
+      { type: 'paragraph', text: 'yb' },
+    ])
+    expect(blocks(ed).some((b) => b.text.includes('\n'))).toBe(false)
+  })
+
+  it('HTML with a newline in its text (not from a code block) pasted into a paragraph collapses it', () => {
+    const ed = setup(doc(p(txt('ab'))), caret([0, 0], 1))
+    paste(ed, { 'text/html': '<span>x\ny</span>', 'text/plain': 'x\ny' })
+    // HTML whitespace rules: the newline collapses to a space.
+    expect(blocks(ed)).toEqual([{ type: 'paragraph', text: 'ax yb' }])
+  })
 })
 
 describe('code block HTML', () => {
@@ -467,6 +535,82 @@ describe('code block decorations', () => {
     expect(inline(ed)).toEqual([
       { type: 'inline', from: { path: [0, 0], offset: 0 }, to: { path: [0, 0], offset: 2 }, attrs: { class: 'hljs-x' } },
     ])
+  })
+
+  /** A highlighter recording each call, giving one token over the whole text. */
+  function counting() {
+    const calls: string[] = []
+    const plugin = codeBlock.configure({
+      highlighter: (text, lang) => {
+        calls.push(text)
+        return [{ from: 0, to: text.length, className: `hljs-${lang}` }]
+      },
+    })
+    return { calls, plugin }
+  }
+  const tok = (path: number[], to: number, lang: string) => ({
+    type: 'inline',
+    from: { path, offset: 0 },
+    to: { path, offset: to },
+    attrs: { class: `hljs-${lang}` },
+  })
+
+  it('an edit outside the code blocks re-highlights none; an edit in one re-highlights only it', () => {
+    const { calls, plugin } = counting()
+    const ed = setup(doc(code('ab', 'x'), p(txt('p')), code('cd', 'y')), caret([1, 0], 1), plugin)
+    expect(inline(ed)).toEqual([tok([0, 0], 2, 'x'), tok([2, 0], 2, 'y')])
+    expect(calls).toEqual(['ab', 'cd'])
+    calls.length = 0
+    ed.commands.insertText('q')
+    expect(inline(ed)).toEqual([tok([0, 0], 2, 'x'), tok([2, 0], 2, 'y')])
+    expect(calls).toEqual([])
+    ed.dispatch(ed.createTransaction().insertText('e', { start: { path: [0, 0], offset: 2 }, end: { path: [0, 0], offset: 2 } }))
+    expect(inline(ed)).toEqual([tok([0, 0], 3, 'x'), tok([2, 0], 2, 'y')])
+    expect(calls).toEqual(['abe'])
+  })
+
+  it('a block inserted before the code blocks shifts their decorations without re-highlighting', () => {
+    const { calls, plugin } = counting()
+    const ed = setup(doc(p(txt('p')), code('ab', 'x')), caret([0, 0], 0), plugin)
+    expect(inline(ed)).toEqual([tok([1, 0], 2, 'x')])
+    calls.length = 0
+    ed.commands.splitBlock()
+    expect(inline(ed)).toEqual([tok([2, 0], 2, 'x')])
+    expect(calls).toEqual([])
+  })
+
+  it('a changed language or highlighter highlights again', () => {
+    const { calls, plugin } = counting()
+    const ed = setup(doc(code('ab', 'x')), caret([0, 0], 0), plugin)
+    inline(ed)
+    calls.length = 0
+    ed.commands.setLanguage('css')
+    expect(inline(ed)).toEqual([tok([0, 0], 2, 'css')])
+    expect(calls).toEqual(['ab'])
+    const other = counting()
+    const ed2 = setup(ed.state.doc as Doc, caret([0, 0], 0), other.plugin)
+    expect(ed2.getDecorations(ed.state).filter((d) => d.type === 'inline')).toEqual([tok([0, 0], 2, 'css')])
+    expect(other.calls).toEqual(['ab'])
+  })
+
+  it('does not walk again into a subtree that did not change', () => {
+    const { plugin } = counting()
+    const ed = setup(doc(p(txt('a')), code('ab', 'x')), caret([0, 0], 0), plugin)
+    let reads = 0
+    const para = new Proxy(ed.state.doc.children[0]!, {
+      get(target, key, receiver) {
+        if (key === 'children') reads++
+        return Reflect.get(target, key, receiver)
+      },
+    })
+    const withPara = (children: readonly unknown[]) => ({ ...ed.state, doc: { ...ed.state.doc, children } }) as typeof ed.state
+    const [, block] = ed.state.doc.children
+    expect(ed.getDecorations(withPara([para, block])).filter((d) => d.type === 'inline')).toEqual([tok([1, 0], 2, 'x')])
+    reads = 0
+    // A new doc (another block appended) holding the same paragraph node.
+    const extra = { id: 'z', type: 'paragraph', data: {}, children: [{ text: 'z', marks: [] }] }
+    expect(ed.getDecorations(withPara([para, block, extra])).filter((d) => d.type === 'inline')).toEqual([tok([1, 0], 2, 'x')])
+    expect(reads).toBe(0)
   })
 })
 
@@ -530,6 +674,22 @@ describe('code block with several ranges', () => {
     const ed = setup(doc(code('a\nbc\nd')), multi(rng([0, 0], 0, 3), rng([0, 0], 4)))
     expect(ed.runKeymap('Tab')).toBe(true)
     expect(texts(ed)).toEqual(['  a\n  bc\nd'])
+  })
+
+  // "ab\ncd\nef\ngh": A = 0..6 (lines ab, cd; it ends at the start of ef), B = 7..10 (lines ef, gh).
+  // B indents ef: A keeps ending at the start of that line, before its new indent, as it ended
+  // before the line's text (it does not grow over B's indent).
+  it('Tab: a range ending at a line start another range indents stays before that indent', () => {
+    const ed = setup(doc(code('ab\ncd\nef\ngh')), multi(rng([0, 0], 0, 6), rng([0, 0], 7, 10)))
+    expect(ed.runKeymap('Tab')).toBe(true)
+    expect(texts(ed)).toEqual(['  ab\n  cd\n  ef\n  gh'])
+    expect(ed.state.selection).toEqual(multi(rng([0, 0], 2, 10), rng([0, 0], 13, 18)))
+  })
+
+  it('Tab: the same for a backward range (its anchor at the line start)', () => {
+    const ed = setup(doc(code('ab\ncd\nef\ngh')), multi(rng([0, 0], 6, 0), rng([0, 0], 7, 10)))
+    expect(ed.runKeymap('Tab')).toBe(true)
+    expect(ed.state.selection).toEqual(multi(rng([0, 0], 10, 2), rng([0, 0], 13, 18)))
   })
 
   it('Tab with a caret in a code block and a caret in a paragraph leaves the paragraph alone', () => {

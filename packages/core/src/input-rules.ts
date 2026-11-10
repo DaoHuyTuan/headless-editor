@@ -6,7 +6,8 @@ import type { Point, Range, SelectionRange } from './model/types'
 import { transformRange } from './ops/transform'
 import type { AnyPlugin, PluginContext } from './plugin/types'
 import { lockSelection } from './transaction/ranges'
-import { blockPathOf, fromBlockOffset, runAt, toBlockOffset, type Run } from './transaction/text'
+import { textBeforeCaret } from './suggestion'
+import { fromBlockOffset } from './transaction/text'
 import { Transaction } from './transaction/transaction'
 
 /** Meta key set on the tr of a fired input rule (recorded as its own history entry of kind `'other'`). */
@@ -16,14 +17,17 @@ type RulesEditor = Pick<Editor, 'state' | 'registry' | 'createTransaction' | 'di
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ContextOf = (plugin: AnyPlugin) => PluginContext<any, any, any, any>
 
-/** The block text of the caret's run, from its start to `caret`, or null when it has none. */
-function textBefore(tr: Transaction, caret: Point): { run: Run; text: string } | null {
-  try {
-    const run = runAt(tr, blockPathOf(tr, caret.path), caret)
-    return { run, text: run.text.slice(0, toBlockOffset(run, caret)) }
-  } catch {
-    return null
-  }
+const anchoredCache = new WeakMap<RegExp, RegExp>()
+
+/**
+ * `match` anchored to the end of the text (`(?:source)(?![\s\S])`, same flags): its leftmost match
+ * is the leftmost one ending at the caret, whether or not the rule wrote `$`. The source's groups,
+ * `^` and flags keep their meaning.
+ */
+function anchored(match: RegExp): RegExp {
+  let re = anchoredCache.get(match)
+  if (!re) anchoredCache.set(match, (re = new RegExp(`(?:${match.source})(?![\\s\\S])`, match.flags)))
+  return re
 }
 
 /**
@@ -31,13 +35,14 @@ function textBefore(tr: Transaction, caret: Point): { run: Run; text: string } |
  * first handler returning true wins. Returns that tr, or null when no rule fired.
  */
 function fireAt(editor: RulesEditor, contextOf: ContextOf, probe: Transaction, caret: Point, trFor: () => Transaction): Transaction | null {
-  const found = textBefore(probe, caret)
+  const found = textBeforeCaret(probe, caret)
   if (!found) return null
   const { run, text } = found
   for (const plugin of editor.registry.plugins) {
     for (const rule of plugin.spec.inputRules ?? []) {
-      rule.match.lastIndex = 0
-      const match = rule.match.exec(text)
+      const re = anchored(rule.match)
+      re.lastIndex = 0
+      const match = re.exec(text)
       if (!match || match.index + match[0].length !== text.length) continue
       const range: Range = { start: fromBlockOffset(run, match.index), end: caret }
       const tr = trFor()
@@ -51,7 +56,10 @@ function fireAt(editor: RulesEditor, contextOf: ContextOf, probe: Transaction, c
 
 /**
  * Runs the input rules of every plugin, by priority, against the text of each caret's run (the
- * block's texts no inline atom separates, model text only) from its start to the caret. At each
+ * block's texts no inline atom separates, model text only) from its start to the caret: the same
+ * text `findTrigger` searches when given the registry (`textBeforeCaret`). A rule's `match` must
+ * match text ending at the caret: it is tested anchored there, so a rule without `$` gets the
+ * leftmost match ending at the caret (not the leftmost match, which may end earlier). At each
  * collapsed caret, checked on its own, the first handler returning true wins and ends that caret's
  * run. Every firing goes into one rule tr (origin `input`, meta `inputRule: true`), dispatched when
  * it changed anything, so the rules are one undo step after the typing. True when a rule fired.

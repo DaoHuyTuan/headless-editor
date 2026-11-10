@@ -29,7 +29,8 @@ function cloneData(value: unknown): Data {
   return isObject(value) ? (cloneJson(value) as Data) : {}
 }
 
-function preview(raw: unknown): string {
+/** A short JSON preview of `raw`, for warnings. */
+export function preview(raw: unknown): string {
   try {
     return JSON.stringify(raw)?.slice(0, 200) ?? String(raw)
   } catch {
@@ -37,8 +38,19 @@ function preview(raw: unknown): string {
   }
 }
 
+/** Called for every node or mark `coerceDoc` drops: what it was (e.g. `"heading" node`), the raw value and why. */
+export type DropHandler = (what: string, raw: unknown, reason: string) => void
+
+/** `coerceDoc`'s default: one warning per dropped node or mark. */
 function warnDrop(what: string, raw: unknown, reason: string): void {
   console.warn(`[hte] Dropped ${what} while loading content (${reason}): ${preview(raw)}`)
+}
+
+/** State shared by one `coerceDoc` run. */
+interface Ctx {
+  /** The element ids used so far in the whole doc: a missing or repeated id gets a fresh one. */
+  seen: Set<string>
+  drop: DropHandler
 }
 
 /**
@@ -68,12 +80,12 @@ function resolveData(registry: Registry, plugin: AnyPlugin, raw: unknown): { dat
   return { error: message }
 }
 
-function coerceMarks(raw: unknown, registry: Registry, validate: boolean): Mark[] {
+function coerceMarks(raw: unknown, registry: Registry, validate: boolean, ctx: Ctx): Mark[] {
   if (!Array.isArray(raw)) return []
   const out: Mark[] = []
   for (const m of raw) {
     if (!isObject(m) || typeof m.type !== 'string') {
-      warnDrop('mark', m, 'not a mark')
+      ctx.drop('mark', m, 'not a mark')
       continue
     }
     const registered = validate ? registry.mark(m.type) : undefined
@@ -82,17 +94,17 @@ function coerceMarks(raw: unknown, registry: Registry, validate: boolean): Mark[
       continue
     }
     const res = resolveData(registry, registered.plugin, m.data)
-    if ('error' in res) warnDrop(`"${m.type}" mark`, m, res.error)
+    if ('error' in res) ctx.drop(`"${m.type}" mark`, m, res.error)
     else out.push({ type: m.type, data: res.data })
   }
   return out
 }
 
-function coerceChildren(raw: unknown, registry: Registry, validate: boolean, seen: Set<string>): Node[] {
+function coerceChildren(raw: unknown, registry: Registry, validate: boolean, ctx: Ctx): Node[] {
   if (!Array.isArray(raw)) return []
   const out: Node[] = []
   for (const c of raw) {
-    const n = coerceNode(c, registry, validate, seen)
+    const n = coerceNode(c, registry, validate, ctx)
     if (n) out.push(n)
   }
   return out
@@ -105,21 +117,19 @@ function freshId(seen: Set<string>): string {
   return id
 }
 
-/**
- * `validate` is false below unknown elements: their subtree is only made structurally valid.
- * `seen` holds the element ids used so far in the whole doc: a missing or repeated id gets a fresh one.
- */
-function coerceNode(raw: unknown, registry: Registry, validate: boolean, seen: Set<string>): Node | null {
+/** `validate` is false below unknown elements: their subtree is only made structurally valid. */
+function coerceNode(raw: unknown, registry: Registry, validate: boolean, ctx: Ctx): Node | null {
+  const { seen } = ctx
   if (!isObject(raw)) {
-    warnDrop('node', raw, 'not an object')
+    ctx.drop('node', raw, 'not an object')
     return null
   }
   if (typeof raw.text === 'string') {
-    const text: TextNode = { text: raw.text, marks: coerceMarks(raw.marks, registry, validate) }
+    const text: TextNode = { text: raw.text, marks: coerceMarks(raw.marks, registry, validate, ctx) }
     return text
   }
   if (typeof raw.type !== 'string' || raw.type === '' || 'text' in raw) {
-    warnDrop('node', raw, 'neither a text nor an element')
+    ctx.drop('node', raw, 'neither a text nor an element')
     return null
   }
   const id = typeof raw.id === 'string' && raw.id !== '' && !seen.has(raw.id) ? raw.id : freshId(seen)
@@ -135,30 +145,33 @@ function coerceNode(raw: unknown, registry: Registry, validate: boolean, seen: S
       if (c !== undefined) out[k] = c
     }
     const el = { ...out, id, type: raw.type, data: cloneData(raw.data) } as ElementNode
-    if (Array.isArray(raw.children)) el.children = coerceChildren(raw.children, registry, false, seen)
+    if (Array.isArray(raw.children)) el.children = coerceChildren(raw.children, registry, false, ctx)
     return el
   }
 
   const res = resolveData(registry, registered.plugin, raw.data)
   if ('error' in res) {
-    warnDrop(`"${raw.type}" node`, raw, res.error)
+    ctx.drop(`"${raw.type}" node`, raw, res.error)
     return null
   }
   const el: ElementNode = { id, type: raw.type, data: res.data }
-  if (!registered.atom || Array.isArray(raw.children)) el.children = coerceChildren(raw.children, registry, true, seen)
+  // A known atom has no `children` (any given are dropped); other elements always get an array.
+  if (!registered.atom) el.children = coerceChildren(raw.children, registry, true, ctx)
   return el
 }
 
 /**
  * Coerces arbitrary input into a structurally valid `Doc`: fills missing id/data/marks/children,
- * gives repeated element ids a fresh id (the first occurrence keeps its id), validates data (repairing via `onInvalidData` or dropping the node with a warning) and keeps
+ * gives repeated element ids a fresh id (the first occurrence keeps its id), validates data (repairing via `onInvalidData` or dropping the node) and keeps
  * unknown types as given. Never throws and never mutates `raw`. Run `normalize` afterwards.
+ * Every dropped node or mark is reported to `onDrop`; by default, one `console.warn` each.
  */
-export function coerceDoc(raw: unknown, registry: Registry): Doc {
+export function coerceDoc(raw: unknown, registry: Registry, onDrop: DropHandler = warnDrop): Doc {
   try {
     if (!isObject(raw)) return { type: 'doc', children: [] }
+    const ctx: Ctx = { seen: new Set(), drop: onDrop }
     // Root-level texts/inlines are kept here; `normalize` wraps them into blocks.
-    return { type: 'doc', children: coerceChildren(raw.children, registry, true, new Set()) as ElementNode[] }
+    return { type: 'doc', children: coerceChildren(raw.children, registry, true, ctx) as ElementNode[] }
   } catch {
     return { type: 'doc', children: [] }
   }

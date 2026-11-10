@@ -18,6 +18,21 @@ describe('bold plugin', () => {
     expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p(txt('abcd')))))
   })
 
+  // What a toolbar's enabled state reads (the playground's Bold button uses `can().toggleBold()`).
+  it('can().toggleBold() does not depend on focus: true at the loaded caret of an unfocused editor', () => {
+    // A loaded doc with editable text always has a selection (its first caret when none is given).
+    const ed = setup(doc(p(txt('abcd'))))
+    expect(ed.state.selection).toEqual(sel([0, 0], 0))
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    ed.mount(root)
+    root.blur()
+    expect(document.activeElement).not.toBe(root)
+    expect(ed.can().toggleBold()).toBe(true)
+    ed.destroy()
+    root.remove()
+  })
+
   it('setBold and unsetBold', () => {
     const ed = setup(doc(p(txt('abcd'))), sel([0, 0], 1, [0, 0], 3))
     ed.commands.setBold()
@@ -89,5 +104,19 @@ describe('bold HTMLAttributes', () => {
     ed.setPluginOptions('bold', { HTMLAttributes: { class: 'c' } })
     expect(root.querySelector('strong')?.getAttribute('class')).toBe('c')
     expect(ed.getHTML()).toBe('<p>a<strong class="c">b</strong>c</p>')
+  })
+})
+
+describe('bold commands without a selection', () => {
+  it('report that they did nothing', () => {
+    const ed = setup(doc(p(txt('ab'))))
+    const tr = ed.createTransaction()
+    tr.setSelection(null)
+    ed.dispatch(tr)
+    expect(ed.state.selection).toBeNull()
+    expect(ed.can().toggleBold()).toBe(false)
+    expect(ed.commands.toggleBold()).toBe(false)
+    expect(ed.commands.setBold()).toBe(false)
+    expect(ed.commands.unsetBold()).toBe(false)
   })
 })

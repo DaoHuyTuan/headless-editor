@@ -8,6 +8,7 @@ import {
   isCollapsed,
   nextPath,
   parentPath,
+  pathEquals,
   pointEquals,
   previousPath,
   toRange,
@@ -19,6 +20,13 @@ describe('path helpers', () => {
     expect(comparePath([1], [0, 9])).toBe(1)
     expect(comparePath([0], [0, 1])).toBe(0)
     expect(comparePath([0, 1], [0, 1])).toBe(0)
+  })
+  it('pathEquals is exact equality (an ancestor is not equal, unlike comparePath)', () => {
+    expect(pathEquals([0, 1], [0, 1])).toBe(true)
+    expect(pathEquals([], [])).toBe(true)
+    expect(pathEquals([0], [0, 1])).toBe(false)
+    expect(pathEquals([0, 1], [0])).toBe(false)
+    expect(pathEquals([0, 1], [0, 2])).toBe(false)
   })
   it('ancestor / parent / next / previous', () => {
     expect(isAncestorPath([0], [0, 1])).toBe(true)

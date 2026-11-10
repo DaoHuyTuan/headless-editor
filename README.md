@@ -147,7 +147,7 @@ The document is a tree of elements and texts:
 
 | | |
 |---|---|
-| Read | `editor.getJSON()` (store this) or `editor.getHTML()` |
+| Read | `editor.getJSON()` (store this; a mutable copy) or `editor.getHTML()`. To autosave, `JSON.stringify(editor.state.doc)` needs no copy |
 | Load | `new Editor({ content })`, or `editor.setContent(jsonOrHtml)` |
 | Listen | `editor.on('update', …)`, or `onUpdate` in `useEditor` |
 
@@ -220,7 +220,7 @@ Add it to `plugins`, and `editor.commands.toggleItalic()` is typed automatically
 | `pnpm --filter playground e2e:chromium` | end-to-end tests in Chromium (Playwright) |
 | `pnpm --filter playground e2e:webkit` | the same in WebKit |
 
-The first e2e run needs browsers: `pnpm --filter playground exec playwright install`. The e2e suite starts its own dev server on port **5174**, which must be free. `pnpm e2e` runs Chromium, Firefox and WebKit together.
+The first e2e run needs browsers: `pnpm --filter playground exec playwright install chromium webkit`. The e2e suite starts its own dev server on port **5174** (or `E2E_PORT`), which must be free. `pnpm e2e` runs Chromium and WebKit together; Firefox is not part of the automated suite.
 
 ## Repository layout
 
@@ -244,7 +244,7 @@ docs/
 The targets are desktop Chrome, Firefox and Safari. Mobile is best-effort. The current state:
 - **Chromium:** fully covered by e2e.
 - **WebKit (Playwright):** passing. A few clipboard and IME tests are skipped, for reasons explained in `docs/superpowers/m4-cross-browser.md`.
-- **Firefox and real Safari on macOS:** not verified yet.
+- **Firefox and real Safari on macOS:** not covered by the automated suite; to be checked by hand before a release.
 
 ## Documentation
 
@@ -253,3 +253,4 @@ The targets are desktop Chrome, Firefox and Safari. Mobile is best-effort. The c
 - [docs/plugin-authoring.md](docs/plugin-authoring.md): guide to customization levels and writing a plugin.
 - `docs/superpowers/specs/2026-10-27-headless-editor-design.md`: design spec.
 - `docs/superpowers/m*-followups.md`: known gaps and planned work.
+- [CHANGELOG.md](CHANGELOG.md): behaviour changes.

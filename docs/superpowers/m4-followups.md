@@ -16,19 +16,19 @@ Longer-term direction (View interface extraction, incremental normalize/decorati
 - A composed command that runs `undo` then `insertText` on one tr folds the insert into the stacks (it joins the entry now on top of the undo stack) instead of recording it as its own undo step (safe; documented on `historyPlugin`).
 
 ## Normalize / clipboard
-- No multi-newline selection-mapping test for rule 11.
+- ✅ No multi-newline selection-mapping test for rule 11.
 - The rule 11 perf bound is machine-dependent (~3x margin).
 - ✅ Split pieces share data by reference (pre-existing).
 - A lone non-opaque block pasted over a node selection takes the placeholder type (heading becomes paragraph), per caret rules.
 - `nodeSelection` accepts inline atoms programmatically (the view never does).
-- Non-atom block node views cannot be node-selected (`nodeSelection` throws); no test.
+- ✅ Non-atom block node views cannot be node-selected (`nodeSelection` throws); no test.
 
 ## Playground
-- The Bold button is disabled with no selection or focus.
+- ✅ The Bold button is disabled with no selection or focus.
 
 ## Part 2 (WebKit)
 - Real Safari/macOS is untested: the WebKit results are Playwright's WebKit on Windows. Firefox still cannot launch here.
 - The 5 keyboard clipboard e2e tests are skipped on WebKit only (headless harness drops data from a `copy`/`cut` handler before the next paste, proven on a bare page). Whether real Safari does the same is unverified (medium). Synthetic copy/paste e2e covers the flows meanwhile.
-- Clipboard tests: html-only multi-block variants keep `text/plain` (could pass through the text fallback); there is no html-only marks variant.
+- ✅ Clipboard tests: html-only multi-block variants keep `text/plain` (could pass through the text fallback); there is no html-only marks variant.
 - `EditorView.hasFocus` is now public; it is marked `@internal` (a DOM selection inside the root also counts as focus). Consider hiding it behind an internal interface.
-- The WebKit delete fallback (keydown timer, used when no `beforeinput` fires) is cancelled by any dispatch between the keydown and the timer, not only by the matching `beforeinput`; harmless today, but keep in mind when adding async dispatchers.
+- ✅ The WebKit delete fallback (keydown timer, used when no `beforeinput` fires) is cancelled by any dispatch between the keydown and the timer, not only by the matching `beforeinput`; harmless today, but keep in mind when adding async dispatchers.

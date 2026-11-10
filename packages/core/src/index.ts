@@ -101,6 +101,7 @@ export type {
   EditorEvent,
   EditorEventName,
   OptionsEvent,
+  EditorListeners,
   EditorOptions,
   EditorPlugins,
   EditorStorage,
@@ -115,6 +116,7 @@ export { Renderer } from './view/renderer'
 export { domToModel, modelToDom, readDomSelection, writeDomSelection } from './view/dom-selection'
 export { EditorView } from './view/view'
 export type { Decoration, DecorationAttrs, InlineDecoration, WidgetDecoration } from './view/decorations'
+export { DECO_ATTR, WIDGET_ATTR } from './view/decorations'
 export { IGNORE_ATTR, isIgnoredTarget } from './view/ignore'
 export { FRAGMENT_MIME, parseFromClipboard, serializeForClipboard } from './content/clipboard'
 export type { CompositionTarget, InputRecord, ViewModule } from './view/view'

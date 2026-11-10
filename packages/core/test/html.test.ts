@@ -81,8 +81,13 @@ describe('serializeHTML', () => {
   })
 
   it('renders mark styles and escapes attribute values', () => {
+    const d = doc(p(txt('a', { type: 'color', data: { value: '"red" & <b>' } })))
+    expect(serialize(d)).toBe('<p><span style="background-color: &quot;red&quot; &amp; &lt;b&gt;;">a</span></p>')
+  })
+
+  it('drops a mark style declaration with an unterminated string (it would swallow the rest in CSS)', () => {
     const d = doc(p(txt('a', { type: 'color', data: { value: 'red"' } })))
-    expect(serialize(d)).toBe('<p><span style="background-color: red&quot;;">a</span></p>')
+    expect(serialize(d)).toBe('<p><span>a</span></p>')
   })
 
   it('passes plugin options and handles attrs (undefined skipped, numbers stringified)', () => {
@@ -260,5 +265,58 @@ describe('Editor HTML', () => {
     const ed = createTestEditor({ plugins: [testParagraph, heading], doc: doc(el('heading', { level: 1 }, txt('t'))) })
     ed.setPluginOptions('heading', { prefix: 'x' })
     expect(ed.getHTML()).toBe('<x1 data-x="1">t</x1>')
+  })
+})
+
+describe('HTML edge cases (Batch 4)', () => {
+  it('collapses whitespace across the texts inside an inline element (4.7)', () => {
+    expect(parse('<p>x<a href="u"> b <i> c</i></a></p>')).toEqual(
+      stripIds([p('x', el('link', { href: 'u' }, txt(' b '), txt('c', 'italic')))]),
+    )
+  })
+
+  it('treats a whitespace-only block like an empty one (4.9)', () => {
+    expect(parse('<div> </div>')).toEqual(parse('<div></div>'))
+    expect(parse('<div> </div>')).toEqual(stripIds([p('')]))
+  })
+
+  it('keeps the whitespace of <pre> content, edges included (4.9)', () => {
+    expect(parse('<pre>  a\n  b  </pre>')).toEqual(stripIds([p('  a\n  b  ')]))
+  })
+
+  it('applies mark styles on elements a node rule matches (4.8)', () => {
+    expect(parse('<p style="font-weight: bold">a</p>')).toEqual(stripIds([p(txt('a', 'bold'))]))
+    expect(parse('<p>x<a href="u" style="font-style: italic">b</a></p>')).toEqual(
+      stripIds([p('x', el('link', { href: 'u' }, txt('b', 'italic')))]),
+    )
+  })
+
+  it('parses very deep nesting without overflowing the stack (4.10)', () => {
+    const depth = 20_000
+    const html = `<p>${'<span>'.repeat(depth)}deep${'</span>'.repeat(depth)}</p>`
+    expect(parse(html)).toEqual(stripIds([p('deep')]))
+  })
+
+  it('serializes only the first content hole, like the renderer (4.11)', () => {
+    const twice = definePlugin({
+      name: 'twice',
+      node: { kind: 'block', content: 'inline' },
+      renderHTML: () => ['div', 0, ['span', 0]],
+    })
+    const r = new Registry([corePlugin, testParagraph, twice])
+    expect(serializeHTML(doc(el('twice', {}, txt('a'))), r, () => undefined)).toBe('<div>a<span></span></div>')
+  })
+
+  it('rejects a content hole inside a void tag, in the serializer and the renderer (4.9)', () => {
+    const voidHole = definePlugin({
+      name: 'voidHole',
+      node: { kind: 'block', content: 'inline' },
+      renderHTML: () => ['img', 0],
+    })
+    const r = new Registry([corePlugin, testParagraph, voidHole])
+    expect(() => serializeHTML(doc(el('voidHole', {}, txt('a'))), r, () => undefined)).toThrow(/void tag "img"/)
+    const ed = createTestEditor({ plugins: [testParagraph, voidHole], doc: doc(el('voidHole', {}, txt('a'))) })
+    const root = document.createElement('div')
+    expect(() => ed.mount(root)).toThrow(/void tag "img"/)
   })
 })

@@ -10,7 +10,7 @@ import { testBold, testParagraph } from './fixtures'
 const p = (...children: (Node | string)[]): ElementNode =>
   el('paragraph', ...children.map((c) => (typeof c === 'string' ? txt(c) : c)))
 const chip = definePlugin({ name: 'chip', node: { kind: 'inline', atom: true } })
-const c = (): ElementNode => ({ id: 'c', type: 'chip', data: {}, children: [] })
+const c = (): ElementNode => ({ id: 'c', type: 'chip', data: {} })
 
 const emDash: InputRule = {
   match: /^-- $/,
@@ -53,6 +53,17 @@ describe('input rules', () => {
     ed.commands.redo()
     ed.commands.redo()
     expect(text()).toEqual(stripIds(doc(p('— '))))
+  })
+
+  it('the character typed right after a rule is a step of its own after the rule step', () => {
+    const { ed, type, text } = setup()
+    type('-- x')
+    expect(text()).toEqual(stripIds(doc(p('— x'))))
+    // The rule ended the typing group: typing after it does not merge into the rule's step.
+    expect(ed.commands.undo()).toBe(true)
+    expect(text()).toEqual(stripIds(doc(p('— '))))
+    expect(ed.commands.undo()).toBe(true)
+    expect(text()).toEqual(stripIds(doc(p('-- '))))
   })
 
   it('matches against the block text from its start to the caret only', () => {
@@ -311,5 +322,34 @@ describe('input rules with several carets', () => {
     typeAt(ed, '-')
     expect(blockTexts(ed)).toEqual(['a-—'])
     expect(ed.state.selection).toEqual(createSelection([at([0, 0], 2), at([0, 0], 3)]))
+  })
+})
+
+describe('input rules: the match ends at the caret', () => {
+  it('a rule without $ matches the occurrence ending at the caret, not the leftmost one', () => {
+    const plain: InputRule = {
+      match: /-- /,
+      handler: (_ctx, _match, range, tr) => {
+        tr.insertText('— ', range)
+        return true
+      },
+    }
+    const { type, text } = setup(doc(p('x-- a')), sel([0, 0], 5), [plain])
+    type('-- ')
+    expect(text()).toEqual(stripIds(doc(p('x-- a— '))))
+  })
+
+  it('the handler gets the match with its index and groups', () => {
+    const seen: (string | number | undefined)[] = []
+    const rule: InputRule = {
+      match: /\*(\w+)\*/,
+      handler: (_ctx, match) => {
+        seen.push(match.index, match[0], match[1])
+        return false
+      },
+    }
+    const { type } = setup(doc(p('*a* b ')), sel([0, 0], 6), [rule])
+    type('*cd*')
+    expect(seen).toEqual([6, '*cd*', 'cd'])
   })
 })

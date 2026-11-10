@@ -1,25 +1,19 @@
 import { createContext, useContext, useEffect, useId, useReducer, type ComponentType, type MouseEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { AnyPlugin, Editor, NodeViewPropsOf } from '@hte/core'
-import { dataAttrs, resolveParts, usePluginState, type ViewCustomization } from '@hte/react'
+import { dataAttrs, resolveParts, useEditorState, usePluginState, type ViewCustomization } from '@hte/react'
 import { mention, type MentionState, type User } from './index'
 
 type AnyEditor = Editor<readonly AnyPlugin[]>
 /** The mention commands, reached on an editor typed with any plugin list (the plugin name is `mention`). */
 type MentionEditor = Editor<readonly [typeof mention]>
 
-/**
- * Users seen in suggestion results, per editor: the runtime data a mention view prefers over its
- * `label` snapshot (a renamed user shows the new name without a doc change). Latest result wins.
- */
-const userCaches = new WeakMap<object, Map<string, User>>()
-
-function remember(editor: AnyEditor, users: readonly User[]): Map<string, User> {
-  let cache = userCaches.get(editor)
-  if (!cache) userCaches.set(editor, (cache = new Map()))
-  // Idempotent (same users, same result), so running during render is safe.
-  for (const u of users) if (cache.get(u.id) !== u) cache.set(u.id, u)
-  return cache
+/** Same own keys with `Object.is`-equal values: a re-fetched, unchanged user. */
+function sameUser(a: User | undefined, b: User | undefined): boolean {
+  if (a === b) return true
+  if (!a || !b) return false
+  const keys = Object.keys(a)
+  return keys.length === Object.keys(b).length && keys.every((k) => Object.is(a[k as keyof User], b[k as keyof User]))
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -35,14 +29,18 @@ export interface MentionInfo {
 }
 
 /**
- * The live display data of a mention node view. Re-renders on mention plugin state changes, so a
- * user returned renamed by `fetchUsers` updates every view of that user.
+ * The live display data of a mention node view. Subscribes only to its own user among the users seen
+ * in suggestion results (`MentionStorage.user`): a user returned renamed by `fetchUsers` updates every
+ * view of that user, and other popup changes (opening, typing a query, other users' results, the
+ * highlighted item) do not re-render it. A result carrying an equal user (same own keys and values)
+ * keeps the previous `user` object and does not re-render either. `renderUser` is called on render
+ * only: an external store it reads is not subscribed.
  * @experimental Level 4 customization API; may change after M3 without a deprecation cycle.
  */
 export function useMention(props: NodeViewPropsOf<typeof mention>): MentionInfo {
-  const st = usePluginState(props.editor, mention)
   const { userId, label: snapshot } = props.node.data
-  const user = remember(props.editor, st.items).get(userId)
+  const storage = props.storage
+  const user = useEditorState(props.editor, () => storage?.user(userId), sameUser)
   const renderUser = props.options.renderUser
   let label = user?.label ?? snapshot
   if (typeof renderUser === 'function') {
@@ -150,7 +148,6 @@ export interface SuggestionApi {
  */
 export function useSuggestion(editor: AnyEditor): SuggestionApi {
   const st: MentionState = usePluginState(editor, mention)
-  remember(editor, st.items)
   const [, reposition] = useReducer((n: number) => n + 1, 0)
   const listId = useId()
   const optionId = (i: number) => `${listId}-option-${i}`

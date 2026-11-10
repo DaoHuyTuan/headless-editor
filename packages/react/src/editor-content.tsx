@@ -13,12 +13,14 @@ const noStore: PortalStore = {
   remove: () => {},
   subscribe: () => () => {},
   getSnapshot: () => NO_ENTRIES,
+  pendingOptions: new Map(),
 }
 
 /**
  * Renders the editor's root `<div>`; the editor mounts its view on it and owns its children. The
  * React node views (`useEditor`'s `nodeViews`) are rendered next to it as portals into the
  * containers the core creates inside the div; a non-atom view shows its content with `<NodeContent />`.
+ * A view rendered in the same commit as a `pluginOptions` change already gets the new options.
  */
 export function EditorContent({ editor, ...divProps }: EditorContentProps) {
   const ref = useRef<HTMLDivElement>(null)
@@ -35,8 +37,8 @@ export function EditorContent({ editor, ...divProps }: EditorContentProps) {
       <div {...divProps} ref={ref} />
       {entries.map(({ id, container, Component, props }) =>
         createPortal(
-          <NodeViewScope contentDOM={props.contentDOM} type={props.node.type}>
-            <Component {...props} />
+          <NodeViewScope contentDOM={props.contentDOM} type={props.node.type} dev={editor.dev}>
+            <Component {...props} options={store.pendingOptions.get(props.node.type) ?? props.options} />
           </NodeViewScope>,
           container,
           id,

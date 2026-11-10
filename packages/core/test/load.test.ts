@@ -23,7 +23,7 @@ const ctx = (plugin: AnyPlugin): PluginContext<any, any> => ({
 function load(r: Registry, raw: unknown): Doc {
   const tr = new Transaction({ doc: coerceDoc(raw, r), selection: null, storedMarks: null, pluginStates: new Map() }, r)
   normalize(tr, ctx)
-  return tr.doc
+  return tr.doc as Doc
 }
 
 let warn: MockInstance<typeof console.warn>
@@ -184,6 +184,33 @@ describe('load (coerceDoc + normalize)', () => {
       expect(d.children[0]).toEqual(widget)
       expect(warn).not.toHaveBeenCalled()
     })
+  })
+})
+
+describe('coerceDoc atoms', () => {
+  it('drops `children` on a known atom (block and inline): an atom has no children', () => {
+    const img = definePlugin({ name: 'img', node: { kind: 'block', atom: true } })
+    const chip = definePlugin({ name: 'chip', node: { kind: 'inline', atom: true } })
+    const reg = new Registry([testParagraph, img, chip])
+    const d = coerceDoc(
+      {
+        children: [
+          { id: 'i', type: 'img', children: [{ text: 'junk' }] },
+          { id: 'p', type: 'paragraph', children: [{ id: 'c', type: 'chip', children: [{ text: 'x' }] }] },
+        ],
+      },
+      reg,
+    )
+    expect(d.children[0]).toEqual({ id: 'i', type: 'img', data: {} })
+    expect('children' in d.children[0]!).toBe(false)
+    expect(d.children[1]!.children![0]).toEqual({ id: 'c', type: 'chip', data: {} })
+  })
+
+  it('keeps `children` below an unknown element as given (lossless), even on a registered atom type', () => {
+    const img = definePlugin({ name: 'img', node: { kind: 'block', atom: true } })
+    const inner = { id: 'i', type: 'img', data: {}, children: [{ text: 'k', marks: [] }] }
+    const d = coerceDoc({ children: [{ id: 'w', type: 'widget', data: {}, children: [inner] }] }, new Registry([testParagraph, img]))
+    expect(d.children[0]!.children![0]).toEqual(inner)
   })
 })
 

@@ -1,4 +1,4 @@
-import { createContext, useContext, type ChangeEvent, type ComponentType, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useMemo, type ChangeEvent, type ComponentType, type ReactNode } from 'react'
 import type { NodeViewPropsOf } from '@hte/core'
 import { NodeContent, dataAttrs, resolveParts, type ViewCustomization } from '@hte/react'
 import type { codeBlock } from './index'
@@ -28,27 +28,33 @@ export interface CodeBlockApi {
 /**
  * The language of a code block node view and a way to change it. Reads the node and options of the
  * current props (the core updates them on a data or options change; the plugin has no state).
+ * Memoized: the same api object while the language, `options.languages`, `options.languageLabel` and
+ * `updateData` stay the same (`setLanguage` changes only with `updateData`).
  * @experimental Level 4 customization API; may change after M3 without a deprecation cycle.
  */
 export function useCodeBlock(props: CodeBlockProps): CodeBlockApi {
   const raw = props.node.data.language
   const language = typeof raw === 'string' && raw !== '' ? raw : 'plaintext'
-  const configured = Array.isArray(props.options.languages) ? props.options.languages : []
-  const languages = configured.includes(language) ? configured : [...configured, language]
-  const setLanguage = (l: string) => props.updateData({ language: l })
-  return {
-    language,
-    languages,
-    setLanguage,
-    selectProps: {
-      'data-editor-ignore': '',
-      'aria-label': 'Language',
-      value: language,
-      onChange: (e) => {
-        setLanguage(e.target.value)
+  const configured = props.options.languages
+  const label = typeof props.options.languageLabel === 'string' ? props.options.languageLabel : 'Language'
+  const { updateData } = props
+  const setLanguage = useCallback((l: string) => updateData({ language: l }), [updateData])
+  return useMemo(() => {
+    const list = Array.isArray(configured) ? configured : []
+    return {
+      language,
+      languages: list.includes(language) ? list : [...list, language],
+      setLanguage,
+      selectProps: {
+        'data-editor-ignore': '',
+        'aria-label': label,
+        value: language,
+        onChange: (e) => {
+          setLanguage(e.target.value)
+        },
       },
-    },
-  }
+    }
+  }, [language, configured, label, setLanguage])
 }
 
 const CodeBlockContext = createContext<CodeBlockApi | null>(null)

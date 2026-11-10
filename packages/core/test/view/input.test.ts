@@ -1,9 +1,9 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it } from 'vitest'
-import { single } from '../../src/model/selection'
+import { createSelection, single } from '../../src/model/selection'
 import type { ElementNode, Selection } from '../../src/model/types'
 import { definePlugin, modelToDom, type AnyPlugin, type Editor } from '../../src/index'
-import { createTestEditor, doc, txt } from '../../src/testing/index'
+import { createTestEditor, doc, el, txt } from '../../src/testing/index'
 import { testBold, testParagraph } from '../fixtures'
 
 const p = (id: string, ...children: ReturnType<typeof txt>[]): ElementNode => ({ id, type: 'paragraph', data: {}, children })
@@ -116,6 +116,46 @@ describe('input module', () => {
     expect(keydown(root, { key: 'q', code: 'KeyQ' }).defaultPrevented).toBe(false)
   })
 
+  it('arrow keys, with or without modifiers, are left to the browser unless a keymap binds them', async () => {
+    const calls: string[] = []
+    const arrows = definePlugin({
+      name: 'arrows',
+      keymap: () => ({
+        'Mod-ArrowUp': () => (calls.push('Mod-ArrowUp'), true),
+        'Shift-Alt-ArrowLeft': () => (calls.push('Shift-Alt-ArrowLeft'), true),
+        'ArrowDown': () => (calls.push('ArrowDown'), false),
+      }),
+    })
+    const { editor, root } = setup('abc', caret([0, 0], 1), [testParagraph, arrows])
+    const before = editor.state
+    const free: KeyboardEventInit[] = [
+      { key: 'ArrowLeft' },
+      { key: 'ArrowRight', shiftKey: true },
+      { key: 'ArrowLeft', altKey: true },
+      { key: 'ArrowRight', ctrlKey: true },
+      { key: 'ArrowUp', metaKey: true },
+      { key: 'ArrowLeft', ctrlKey: true, shiftKey: true },
+      // Bound, but its command returns false: the browser still moves the caret.
+      { key: 'ArrowDown' },
+    ]
+    for (const init of free) expect(keydown(root, { code: init.key, ...init }).defaultPrevented, JSON.stringify(init)).toBe(false)
+    expect(keydown(root, { key: 'ArrowUp', code: 'ArrowUp', ctrlKey: true }).defaultPrevented).toBe(true)
+    expect(keydown(root, { key: 'ArrowLeft', code: 'ArrowLeft', shiftKey: true, altKey: true }).defaultPrevented).toBe(true)
+    expect(calls).toEqual(['ArrowDown', 'Mod-ArrowUp', 'Shift-Alt-ArrowLeft'])
+    await new Promise((r) => setTimeout(r, 0))
+    // No edit, no selection change from the keys themselves (the browser moves the DOM caret).
+    expect(editor.state).toBe(before)
+  })
+
+  it('a caret move by an arrow key is read from the DOM selection before the next input', () => {
+    const { editor, root } = setup('abc', caret([0, 0], 3))
+    keydown(root, { key: 'ArrowLeft', code: 'ArrowLeft' })
+    // The browser's default action, before its async selectionchange reaches the editor.
+    setDomCaret(editor, [0, 0], 2)
+    beforeInput(root, { inputType: 'insertText', data: 'X' })
+    expect(editor.getJSON().children[0]).toMatchObject({ children: [{ text: 'abXc' }] })
+  })
+
   it('plugin handleDOMEvents run first by priority; true stops the default handling', () => {
     const calls: string[] = []
     const low = definePlugin({
@@ -138,7 +178,8 @@ describe('input module', () => {
     expect(calls).toEqual(['high:high'])
     calls.length = 0
     const b = beforeInput(root, { inputType: 'insertText', data: 'z' })
-    expect(b.defaultPrevented).toBe(false)
+    // A claimed beforeinput is prevented, as a claimed keydown is: the DOM never drifts from the model.
+    expect(b.defaultPrevented).toBe(true)
     expect(editor.getJSON().children[0]).toMatchObject({ children: [{ text: 'ab' }] })
     expect(editor.view!.recentInput.at(-1)).toMatchObject({ inputType: 'insertText', data: 'z' })
     calls.length = 0
@@ -152,6 +193,60 @@ describe('input module', () => {
     editor.unmount()
     expect(beforeInput(root, { inputType: 'insertText', data: 'x' }).defaultPrevented).toBe(false)
     expect(editor.getJSON().children[0]).toMatchObject({ children: [{ text: 'ab' }] })
+  })
+})
+
+describe('input module: target ranges', () => {
+  type Pt = [number[], number]
+  /** Dispatches a beforeinput whose `getTargetRanges()` returns the given model span (as DOM positions). */
+  function targeted(editor: Editor, root: HTMLElement, init: InputEventInit, from: Pt, to: Pt): InputEvent {
+    const e = new InputEvent('beforeinput', { bubbles: true, cancelable: true, ...init })
+    const start = modelToDom(editor.view!.renderer, { path: from[0], offset: from[1] })
+    const end = modelToDom(editor.view!.renderer, { path: to[0], offset: to[1] })
+    const range = { startContainer: start.node, startOffset: start.offset, endContainer: end.node, endOffset: end.offset, collapsed: false }
+    Object.defineProperty(e, 'getTargetRanges', { value: () => [range] })
+    root.dispatchEvent(e)
+    return e
+  }
+  const text = (editor: Editor) =>
+    editor.getJSON().children.map((b) => ((b as ElementNode).children ?? []).map((c) => ('text' in c ? c.text : '')).join(''))
+
+  it('a deletion whose target is away from the caret deletes exactly that range (spellcheck, autocorrect)', () => {
+    const { editor, root } = setup('hello world', caret([0, 0], 11))
+    const e = targeted(editor, root, { inputType: 'deleteContentBackward' }, [[0, 0], 0], [[0, 0], 6])
+    expect(e.defaultPrevented).toBe(true)
+    expect(text(editor)).toEqual(['world'])
+    expect(editor.state.selection).toEqual(caret([0, 0], 0))
+  })
+
+  it('a word deletion away from the caret deletes its target, not the word before the caret', () => {
+    const { editor, root } = setup('hello world', caret([0, 0], 11))
+    targeted(editor, root, { inputType: 'deleteWordBackward' }, [[0, 0], 0], [[0, 0], 5])
+    expect(text(editor)).toEqual([' world'])
+  })
+
+  it('a deletion whose target touches the caret keeps the core unit logic', () => {
+    const { editor, root } = setup('hello world', caret([0, 0], 11))
+    targeted(editor, root, { inputType: 'deleteContentBackward' }, [[0, 0], 10], [[0, 0], 11])
+    expect(text(editor)).toEqual(['hello worl'])
+    expect(editor.state.selection).toEqual(caret([0, 0], 10))
+  })
+
+  it('a multi-caret Backspace whose target is the character before the main caret deletes at every caret', () => {
+    const at = (offset: number) => ({ anchor: { path: [0, 0], offset }, focus: { path: [0, 0], offset } })
+    const { editor, root } = setup('abcdef', createSelection([at(2), at(5)], 1))
+    targeted(editor, root, { inputType: 'deleteContentBackward' }, [[0, 0], 4], [[0, 0], 5])
+    expect(text(editor)).toEqual(['acdf'])
+    expect(editor.state.selection!.ranges).toHaveLength(2)
+  })
+
+  it('a target spanning the main range is passed as the main range itself (direction kept)', () => {
+    const seen: unknown[] = []
+    const spy = definePlugin({ name: 'spy', priority: 500, onBeforeInput: (intent) => (seen.push(intent.range), true) })
+    const backward = single({ anchor: { path: [0, 0], offset: 4 }, focus: { path: [0, 0], offset: 1 } })
+    const { editor, root } = setup('abcdef', backward, [testParagraph, spy])
+    targeted(editor, root, { inputType: 'insertText', data: 'x' }, [[0, 0], 1], [[0, 0], 4])
+    expect(seen).toEqual([{ anchor: { path: [0, 0], offset: 4 }, focus: { path: [0, 0], offset: 1 } }])
   })
 })
 
@@ -257,6 +352,60 @@ describe('input module: deletion-key fallback guards', () => {
     expect(textOf(editor)).toMatchObject({ children: [{ text: 'abcx' }] })
   })
 
+  it('no fallback when the selection was moved after the keydown (even with no doc change)', async () => {
+    const { editor, root } = setup('abc', caret([0, 0], 3))
+    keydown(root, { key: 'Backspace', code: 'Backspace' })
+    editor.dispatch(editor.createTransaction().setSelection(caret([0, 0], 1)))
+    await tick()
+    expect(textOf(editor)).toMatchObject({ children: [{ text: 'abc' }] })
+  })
+
+  it('an unrelated dispatch that leaves the selection alone does not cancel the fallback (plugin timer)', async () => {
+    const { editor, root } = setup('abc', caret([0, 0], 3))
+    keydown(root, { key: 'Backspace', code: 'Backspace' })
+    // A state-only tr (no op), as a plugin timer dispatches.
+    editor.dispatch(editor.createTransaction().setMeta('origin', 'timer'))
+    await tick()
+    expect(textOf(editor)).toMatchObject({ children: [{ text: 'ab' }] })
+  })
+
+  function setupTwo() {
+    const editor = createTestEditor({
+      plugins: [testParagraph],
+      doc: doc(p('p1', txt('abc')), p('p2', txt('xyz'))),
+      selection: caret([1, 0], 3),
+    })
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    editor.mount(root)
+    editor.view!.focus()
+    return { editor, root }
+  }
+
+  it('a doc change in another block does not cancel the fallback (an upload)', async () => {
+    const { editor, root } = setupTwo()
+    keydown(root, { key: 'Backspace', code: 'Backspace' })
+    const tr = editor.createTransaction()
+    tr.apply({ type: 'insert_text', path: [0, 0], offset: 0, text: 'Q' })
+    editor.dispatch(tr)
+    await tick()
+    expect(editor.getJSON().children).toMatchObject([{ children: [{ text: 'Qabc' }] }, { children: [{ text: 'xy' }] }])
+  })
+
+  it('no fallback after an edit in the caret block that leaves the selection as it was (another handler acted)', async () => {
+    const { editor, root } = setupTwo()
+    keydown(root, { key: 'Backspace', code: 'Backspace' })
+    const tr = editor.createTransaction()
+    tr.apply({ type: 'remove_text', path: [1, 0], offset: 0, text: 'x' })
+    tr.setSelection(caret([1, 0], 2))
+    editor.dispatch(tr)
+    // Back at the keydown's selection: only the block tells that its text changed.
+    editor.dispatch(editor.createTransaction().apply({ type: 'insert_text', path: [1, 0], offset: 0, text: 'x' }))
+    expect(editor.state.selection).toEqual(caret([1, 0], 3))
+    await tick()
+    expect(editor.getJSON().children).toMatchObject([{ children: [{ text: 'abc' }] }, { children: [{ text: 'xyz' }] }])
+  })
+
   it('no fallback for a paste after the keydown (even one that changes nothing)', async () => {
     const { editor, root } = setup('abc', caret([0, 0], 3))
     keydown(root, { key: 'Backspace', code: 'Backspace' })
@@ -298,11 +447,26 @@ describe('input module: deletion-key fallback guards', () => {
     expect(textOf(editor)).toMatchObject({ children: [{ text: 'abc' }] })
   })
 
-  it('a beforeinput on an ignored target still cancels the fallback', async () => {
-    const { editor, root } = setup('abc', caret([0, 0], 3))
-    const ignored = document.createElement('span')
-    ignored.setAttribute('data-editor-ignore', '')
-    root.appendChild(ignored)
+  it('a beforeinput on an ignored target (in a node view) still cancels the fallback', async () => {
+    const image = definePlugin({ name: 'image', node: { kind: 'block', atom: true } })
+    const editor = createTestEditor({
+      plugins: [testParagraph, boldWithKeymap, image],
+      doc: doc(p('p1', txt('abc')), el('image', { src: 'a.png' })),
+      selection: caret([0, 0], 3),
+      nodeViews: {
+        image: (container) => {
+          const ignored = document.createElement('span')
+          ignored.setAttribute('data-editor-ignore', '')
+          container.append(ignored)
+          return { update: () => {}, destroy: () => {} }
+        },
+      },
+    })
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    editor.mount(root)
+    editor.view!.focus()
+    const ignored = root.querySelector('[data-editor-ignore]')!
     keydown(root, { key: 'Backspace', code: 'Backspace' })
     ignored.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, cancelable: true, inputType: 'deleteContentBackward' }))
     await tick()

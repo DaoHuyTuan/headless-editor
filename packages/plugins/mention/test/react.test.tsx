@@ -7,7 +7,13 @@ import { doc, el, sel, txt } from '@hte/core/testing'
 import { paragraph } from '@hte/paragraph'
 import { EditorContent, useEditor } from '@hte/react'
 import { mention, type MentionState, type User } from '../src/index'
-import { MentionSuggestion, MentionView, type MentionSuggestionProps, type MentionViewProps } from '../src/react'
+import {
+  MentionSuggestion,
+  MentionView,
+  useMention,
+  type MentionSuggestionProps,
+  type MentionViewProps,
+} from '../src/react'
 
 interface Request {
   query: string
@@ -111,6 +117,38 @@ describe('MentionView', () => {
       t.editor().commands.closeSuggestion()
     })
     expect(t.mentionEl().textContent).toBe('@Annie!')
+    expect(errors).not.toHaveBeenCalled()
+  })
+
+  it('a chip re-renders only when its own user changes, not on every popup change', async () => {
+    let renders = 0
+    const Counting: View = (p) => {
+      renders++
+      return <span data-hte-mention="">@{useMention(p).label}</span>
+    }
+    const t = setup({ view: Counting })
+    // Typing changes the doc around the chip, not the chip itself.
+    t.type('@')
+    renders = 0
+    t.type('b')
+    await t.resolve([bob, { id: 'u9', label: 'Zed' }])
+    act(() => {
+      t.editor().commands.moveSuggestion(1)
+    })
+    t.type('o')
+    await t.resolve([bob])
+    expect(renders).toBe(0)
+    expect(t.popup()).not.toBeNull()
+    // Its user arriving in the results does re-render it.
+    t.type('x')
+    await t.resolve([{ id: 'u1', label: 'Annie' }])
+    expect(renders).toBeGreaterThan(0)
+    expect(t.mentionEl().textContent).toBe('@Annie')
+    // An equal user object in a later result does not.
+    renders = 0
+    t.type('y')
+    await t.resolve([{ id: 'u1', label: 'Annie' }])
+    expect(renders).toBe(0)
     expect(errors).not.toHaveBeenCalled()
   })
 

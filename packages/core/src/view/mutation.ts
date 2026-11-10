@@ -26,12 +26,13 @@ function movesContentDOM(view: EditorView, record: MutationRecord): boolean {
 }
 
 /**
- * What to do with a record that is neither the renderer's own nor the IME's: `'ignore'` when its
- * target is no longer inside the root, inside a
- * `data-editor-ignore` element, inside a decoration widget (its content belongs to whoever rendered
- * it), only moving a node view's `contentDOM`, or inside a node view (outside its `contentDOM`) unless
- * its plugin's `ignoreMutation` returns false (then the id of the node view to rebuild); `'revert'`
- * anywhere else (inside a `contentDOM` included).
+ * What to do with a record that is not the renderer's own:
+ * - `'ignore'` when its target is no longer inside the root, is the IME's change inside the
+ *   composing leaf, is inside a `data-editor-ignore` element or a decoration widget (its content
+ *   belongs to whoever rendered it), or the record only moves a node view's `contentDOM`;
+ * - inside a node view (outside its `contentDOM`): `'ignore'` unless its plugin's `ignoreMutation`
+ *   returns false, then `{ rebuild: id }`, the node view to rebuild;
+ * - `'revert'` anywhere else, inside a `contentDOM` included.
  */
 function classify(view: EditorView, record: MutationRecord): 'ignore' | 'revert' | { rebuild: string } {
   // A target no longer inside the root was detached later in the same batch (e.g. a node view's
@@ -49,11 +50,12 @@ function classify(view: EditorView, record: MutationRecord): 'ignore' | 'revert'
 }
 
 /**
- * Safety net for DOM changes the input pipeline did not prevent: any mutation that is neither the
- * renderer's own nor the IME's inside the composing leaf is reverted by re-rendering the doc from
- * the model (the renderer patches only what differs) and restoring the DOM selection. Node views
- * own their containers: changes there are ignored unless their plugin asks for a revert, which
- * rebuilds the node view; `data-editor-ignore` subtrees are always ignored.
+ * Safety net for DOM changes the input pipeline did not prevent. A mutation that `classify` does not
+ * ignore is reverted: the doc is re-rendered from the model (the renderer patches only what differs)
+ * and the DOM selection is shown again. Node views own their containers: a change there is ignored
+ * unless the plugin's `ignoreMutation` returns false, which rebuilds that node view (a new container
+ * and instance). Records queued by the renderer's own patches are dropped after each render. A
+ * `contentDOM` a node view places after the render is checked, and the selection shown in it.
  */
 export const attachMutation: ViewModule = (view) => {
   const Observer = view.root.ownerDocument.defaultView?.MutationObserver ?? globalThis.MutationObserver
@@ -74,8 +76,12 @@ export const attachMutation: ViewModule = (view) => {
       revert = true
       if (action !== 'revert') view.renderer.invalidateNodeView(action.rebuild)
     }
-    // The update shows the selection; otherwise a newly placed contentDOM can now show it.
-    if (revert) view.update(view.editor.state)
+    // The update shows the selection; otherwise a newly placed contentDOM can now show it. The
+    // changed DOM can be under nodes the model did not change: the render checks every element.
+    if (revert) {
+      view.renderer.checkAll()
+      view.update(view.editor.state)
+    }
     else if (placed) view.refreshSelection()
   })
   observer.observe(view.root, {

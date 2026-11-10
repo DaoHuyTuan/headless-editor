@@ -1,6 +1,6 @@
 import { editableTextEntries, type NodeTypes } from '../model/editable'
 import { cloneJson, deepEqualJson, getNode, isText, sameMarkSet, textEntries } from '../model/node'
-import { comparePoint, nextPath, parentPath } from '../model/path'
+import { comparePoint, nextPath, parentPath, pathEquals } from '../model/path'
 import { single } from '../model/selection'
 import type { Data, DeepReadonly, Doc, Json, Mark, Path, Point, Range, SelectionRange, TextNode } from '../model/types'
 import type { Registry } from '../plugin/registry'
@@ -17,10 +17,6 @@ import type { Transaction } from './transaction'
 
 /** The parts of a state the mark queries read (an `EditorState` or a transaction's current view). */
 export type MarkStateView = Pick<EditorState, 'doc' | 'selection' | 'storedMarks'>
-
-function pathEquals(a: Path, b: Path): boolean {
-  return a.length === b.length && a.every((v, i) => v === b[i])
-}
 
 function isCollapsedRange(r: Range): boolean {
   return comparePoint(r.start, r.end) === 0
@@ -53,9 +49,10 @@ function marksAtPoint(doc: DeepReadonly<Doc>, point: Point): Mark[] {
   if (point.offset === 0 && index > 0) {
     const parent = parentPath(point.path)
     const prev = getNode(doc, [...parent, index - 1])
-    if (isText(prev)) return prev.marks
+    if (isText(prev)) return prev.marks as Mark[]
   }
-  return node.marks
+  // The doc's own marks (read, or copied by the callers that store them).
+  return node.marks as Mark[]
 }
 
 /**
@@ -100,7 +97,7 @@ function coveredTexts(doc: DeepReadonly<Doc>, range: Range, types?: NodeTypes): 
   for (const [node, path] of entries) {
     const from = pathEquals(path, range.start.path) ? range.start.offset : 0
     const to = pathEquals(path, range.end.path) ? range.end.offset : node.text.length
-    if (to > from) out.push({ node, path, from, to })
+    if (to > from) out.push({ node: node as TextNode, path, from, to })
   }
   return out
 }

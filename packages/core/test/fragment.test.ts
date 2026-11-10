@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { definePlugin } from '../src/plugin/define'
 import type { DeepReadonly, Doc, ElementNode, Node, Range, Selection } from '../src/model/types'
 import { getFragment, isElement, nodeEntries, nodeSelection, type Fragment } from '../src/index'
-import { createTestEditor, doc, el, sel, stripIds, txt } from '../src/testing/index'
+import { atomEl, createTestEditor, doc, el, sel, stripIds, txt } from '../src/testing/index'
 import { testBold, testParagraph } from './fixtures'
 
 const heading = definePlugin({ name: 'heading', node: { kind: 'block' } })
@@ -151,7 +151,7 @@ describe('insertFragment / insertContent', () => {
       selection: sel([0, 0], 1),
     })
     ed.commands.insertContent([txt('X'), el('mention', txt('@m'))])
-    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p('aX', el('mention', txt('@m')), 'b'))))
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p('aX', atomEl('mention'), 'b'))))
     // Right after the atom: the start of the text following it.
     expect(ed.state.selection).toEqual(sel([0, 2], 0))
   })
@@ -240,6 +240,23 @@ describe('insertFragment of existing content under unknown elements', () => {
     const frag = getFragment(content, range([1], 0, [1, 0, 0], 1))
     expect(() => ed.dispatch((() => { const tr = ed.createTransaction(); tr.insertFragment(frag); return tr })())).not.toThrow()
     expect(JSON.stringify(ed.getJSON())).toContain('"bad"')
+  })
+
+  it('copies and inserts an unknown subtree unchanged (data, nested elements, marks)', async () => {
+    const { z } = await import('zod')
+    const strict = definePlugin({ name: 'strict', node: { kind: 'block' }, data: z.object({ n: z.number().optional() }) })
+    const unknown = el('unknownThing', { k: [1, { x: 'y' }] }, el('strict', { n: 'bad' } as never, txt('y', 'bold')), el('other', txt('z')))
+    const content = doc(p('a'), unknown, p('b'))
+    const ed = createTestEditor({ plugins: [testParagraph, testBold, strict], doc: content, selection: sel([2, 0], 1) })
+    const loaded = ed.state.doc.children[1]!
+    expect(stripIds(loaded as ElementNode)).toEqual(stripIds(unknown))
+    const frag = getFragment(ed.state.doc, range([0, 0], 1, [2, 0], 0))
+    expect(stripIds(frag)).toEqual(stripIds([p(''), unknown, p('')]))
+    const tr = ed.createTransaction()
+    tr.insertFragment([unknown])
+    ed.dispatch(tr)
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p('a'), unknown, p('b'), unknown, p(''))))
+    expect(new Set(elementIds(ed.state.doc)).size).toBe(elementIds(ed.state.doc).length)
   })
 })
 

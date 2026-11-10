@@ -49,7 +49,8 @@ export interface InputIntent {
 /**
  * A rule run after the core inserts text from an `insertText` intent (not composition, not paste).
  * `match` is tested against the text of the caret's block from the start of its text run (an inline
- * atom ends a run) to the caret; anchor it with `$` (a match not ending at the caret is ignored).
+ * atom ends a run; inline elements such as links do not) to the caret, anchored there: only a match
+ * that ends at the caret counts, with or without a trailing `$` (the leftmost such match).
  * `range` covers the matched text. Returning true applies the changes made on `tr`, dispatched as
  * their own history step (so one undo reverts the rule and keeps the typed text), and stops the
  * remaining rules; returning false discards `tr`.
@@ -161,8 +162,9 @@ export interface NodeViewInstance<D = Data, O = unknown, T = unknown, S = unknow
 /**
  * Renders a node into `container` (created by the renderer: `<div>` for a block, `<span>` for an
  * inline node; `contenteditable="false"` for an atom). Called once per element id; the container is
- * never rebuilt for a data change. Elements inside it marked `data-editor-ignore` are fully left to
- * the view. A non-atom node's view gets `props.contentDOM` and places it in its DOM (synchronously or
+ * never rebuilt for a data change. Elements inside it (outside `contentDOM`) marked
+ * `data-editor-ignore` are fully left to the view (events, mutations, focus and selection); the
+ * attribute has no effect anywhere else in the root. A non-atom node's view gets `props.contentDOM` and places it in its DOM (synchronously or
  * later, e.g. on a React commit). The elements on the path from the container down to `contentDOM`
  * must stay editable (no `contenteditable` attribute): a `contenteditable="false"` ancestor would make
  * `contentDOM` a separate editing host that the caret, selection extension and select-all do not
@@ -227,6 +229,10 @@ export interface PluginSpec<
    * For an event inside a node view of this plugin's type (outside its `contentDOM`, whose events
    * are editor content): true makes the editor ignore it (no
    * handling, no `preventDefault`). Events inside `data-editor-ignore` are ignored without asking.
+   *
+   * For a focusable control (an input, a textarea, a button), mark the element `data-editor-ignore`
+   * instead of using this hook: that also leaves its mutations, focus and selection to it, which
+   * `stopEvent` does not (the editor would still take the selection back from it).
    */
   stopEvent?: (event: Event, node: ElementNode, ctx: PluginContext<O, S, C, T>) => boolean
   /**
@@ -234,6 +240,11 @@ export interface PluginSpec<
    * mutations are reverted from the model like any content; moving `contentDOM` itself is ignored): false has it reverted (the node
    * view is rebuilt). Without this hook such mutations are ignored; inside `data-editor-ignore` they
    * always are.
+   *
+   * Return false only for changes the view did not make itself. A rebuilt view that renders
+   * asynchronously (e.g. a React portal commit) mutates its new container after the rebuild; if the
+   * hook returns false for those mutations too, each one rebuilds the view again, which renders
+   * again: an endless loop. Recognize the view's own rendering (return true for it).
    */
   ignoreMutation?: (record: MutationRecord, node: ElementNode, ctx: PluginContext<O, S, C, T>) => boolean
   /**
@@ -268,7 +279,8 @@ export interface PluginSpec<
   /**
    * Called once at the end of the editor constructor, after every plugin's storage exists (no DOM).
    * When one throws, the constructor destroys the editor (every `destroy` hook runs) before rethrowing.
-   * Must be side-effect-free under StrictMode's double invoke (React builds a throwaway editor).
+   * Keep it side-effect-free: an app may build an editor it never mounts or keeps (the React
+   * adapter builds one per mount, but a render React discards before committing can still build one).
    */
   onCreate?: (ctx: PluginContext<O, S, C, T>) => void
   /**

@@ -638,8 +638,7 @@
       "node": {
        "id": "n2",
        "type": "atom",
-       "data": {},
-       "children": []
+       "data": {}
       }
      },
      {
@@ -3287,8 +3286,7 @@
       {
        "id": "n2",
        "type": "chip",
-       "data": {},
-       "children": []
+       "data": {}
       },
       {
        "text": "— ",
@@ -3720,8 +3718,7 @@
       "node": {
        "id": "n2",
        "type": "atom",
-       "data": {},
-       "children": []
+       "data": {}
       }
      },
      {

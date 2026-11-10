@@ -3,7 +3,7 @@ import { createId } from '../model/id'
 import { cloneJson, deepEqualJson, getNode, isElement, isText, nodeEntries } from '../model/node'
 import { comparePoint, parentPath, toRange } from '../model/path'
 import { isNodeRange } from '../model/selection'
-import type { DeepReadonly, Doc, ElementNode, Json, Node, Path, Point, Range, SelectionRange, TextNode } from '../model/types'
+import type { Data, DeepReadonly, Doc, ElementNode, Json, Mark, Node, Path, Point, Range, SelectionRange, TextNode } from '../model/types'
 import {
   blockPathOf,
   deleteRangeStep,
@@ -67,7 +67,7 @@ function sliceNode(node: Node, from: Edge, to: Edge): Node {
  */
 export function getFragment(doc: DeepReadonly<Doc>, range: Range, node?: Path): Fragment {
   // A node selection copies the selected node whole (pass the node range's `node`).
-  if (node) return [sliceNode(getNode(doc, node), null, null)]
+  if (node) return [sliceNode(getNode(doc, node) as Node, null, null)]
   const { start, end } = ordered(range)
   if (comparePoint(start, end) === 0) return []
   let depth = 0
@@ -140,7 +140,7 @@ function insertInline(tr: Transaction, point: Point, nodes: Node[], after = fals
   const atEnd = point.offset > 0 && point.offset === node.text.length
   if (point.offset > 0) {
     if (!atEnd) {
-      tr.apply({ type: 'split_node', path: point.path, position: point.offset, properties: { marks: node.marks } })
+      tr.apply({ type: 'split_node', path: point.path, position: point.offset, properties: { marks: node.marks as Mark[] } })
     }
     index++
   }
@@ -164,11 +164,47 @@ function textStartAt(tr: Transaction, at: Path): Point {
   return { path: at, offset: 0 }
 }
 
-/** The ids of every element in the doc. */
+/** Per transaction: the ids of `tr.doc` as of `tr.ops[0 .. seen)` (see `docIds`). */
+const idCache = new WeakMap<Transaction, { ids: Set<string>; seen: number }>()
+
+/** Adds (or deletes) the id of every element in `node`'s subtree. */
+function eachId(node: DeepReadonly<Node>, fn: (id: string) => void): void {
+  if (isText(node as Node)) return
+  const el = node as ElementNode
+  fn(el.id)
+  el.children?.forEach((c) => eachId(c, fn))
+}
+
+/**
+ * The ids of every element in `tr.doc`. Scanned once per transaction, then kept up to date from the
+ * ops applied since (inserted and removed subtrees, split and merged elements), so a paste at many
+ * ranges does not rescan the doc per range. Callers may add to the set (ids about to be inserted):
+ * the insert op adds them anyway; a rejected insert leaves its ids in, which only makes later fresh
+ * ids on that (rejected) transaction more cautious.
+ */
 function docIds(tr: Transaction): Set<string> {
-  const used = new Set<string>()
-  for (const [n] of nodeEntries(tr.doc)) if (isElement(n)) used.add(n.id)
-  return used
+  let cached = idCache.get(tr)
+  if (!cached) {
+    const ids = new Set<string>()
+    for (const [n] of nodeEntries(tr.doc)) if (isElement(n)) ids.add(n.id)
+    idCache.set(tr, (cached = { ids, seen: tr.ops.length }))
+    return ids
+  }
+  const { ids } = cached
+  for (let i = cached.seen; i < tr.ops.length; i++) {
+    const op = tr.ops[i]!
+    if (op.type === 'insert_node') eachId(op.node, (id) => ids.add(id))
+    else if (op.type === 'remove_node') eachId(op.node, (id) => ids.delete(id))
+    else if (op.type === 'split_node' || op.type === 'merge_node') {
+      const id = (op.properties as Partial<ElementNode>).id
+      if (typeof id === 'string') {
+        if (op.type === 'split_node') ids.add(id)
+        else ids.delete(id)
+      }
+    }
+  }
+  cached.seen = tr.ops.length
+  return ids
 }
 
 function caret(point: Point): SelectionRange {
@@ -377,7 +413,7 @@ function insertFragmentStep(tr: Transaction, fragment: Fragment, sel: SelectionR
     // (`insertBlocks`); otherwise its content is inline content at the caret.
     const target = getNode(tr.doc, blockPathOf(tr, point.path))
     const own = first as ElementNode
-    if (!(isEmptyBlock(target) && isElement(target) && (target.type !== own.type || !deepEqualJson(target.data, own.data))))
+    if (!(isEmptyBlock(target) && isElement(target) && (target.type !== own.type || !deepEqualJson(target.data as Data, own.data))))
       return { out: caret(insertInline(tr, point, own.children ?? [])) }
   }
   return { out: caret(insertBlocks(tr, point, nodes, used)) }

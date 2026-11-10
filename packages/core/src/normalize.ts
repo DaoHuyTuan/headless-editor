@@ -19,6 +19,7 @@ const MAX_CORE_FIXES_PER_PASS = 1_000_000
  * plugin's `normalize` hook on every node entry. Passes repeat until one adds no operations.
  */
 export function normalize(tr: Transaction, getContext: (plugin: AnyPlugin) => PluginContext<any, any>): void {
+  assertDefaultBlockData(tr.registry)
   const options: OptionsLookup = (plugin) => getContext(plugin).options
   for (let pass = 0; ; pass++) {
     if (pass >= MAX_PASSES) throw new Error('Normalization did not converge')
@@ -30,6 +31,27 @@ export function normalize(tr: Transaction, getContext: (plugin: AnyPlugin) => Pl
     runPluginHooks(tr, getContext)
     if (tr.ops.length === before) return
   }
+}
+
+/** Registries whose default block accepts empty data. */
+const defaultBlockChecked = new WeakSet<Registry>()
+
+/**
+ * Throws when the default block's data schema rejects `{}`. Core creates default blocks with empty
+ * data (normalize rules 1 and 2, splits, paste); the insert stores the schema's output for `{}`, so
+ * fields with a default get it. A required field without one would make those inserts reject (and
+ * rule 1 never converge), so it is a setup error: the editor constructor normalizes, hence throws.
+ */
+function assertDefaultBlockData(registry: Registry): void {
+  if (defaultBlockChecked.has(registry)) return
+  const result = registry.validateData(registry.defaultBlock, {})
+  if (!result.ok) {
+    throw new Error(
+      `The default block "${registry.defaultBlock}" cannot be created with empty data (${result.message}). ` +
+        'Give every field of its data schema a default, or make it optional.',
+    )
+  }
+  defaultBlockChecked.add(registry)
 }
 
 function runPluginHooks(tr: Transaction, getContext: (plugin: AnyPlugin) => PluginContext<any, any>): void {
@@ -51,7 +73,7 @@ function runPluginHooks(tr: Transaction, getContext: (plugin: AnyPlugin) => Plug
       const path = paths[i]
       if (!path) break
       const start = tr.ops.length
-      plugin.spec.normalize!([getNode(tr.doc, path), path], tr, getContext(plugin))
+      plugin.spec.normalize!([getNode(tr.doc, path) as Node, path], tr, getContext(plugin))
       for (let o = start; o < tr.ops.length; o++) {
         for (let j = i; j < paths.length; j++) {
           const pj = paths[j]

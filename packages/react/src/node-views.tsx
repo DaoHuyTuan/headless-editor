@@ -5,6 +5,10 @@ import type { AnyPlugin, Data, Editor, NodeViewFactory, NodeViewProps } from '@h
  * A React component rendered as a node view (a non-atom one shows its content with
  * `<NodeContent />`). Type it from the plugin with `ComponentType<NodeViewPropsOf<typeof plugin>>`
  * to get typed `storage` and `state`.
+ *
+ * `props.state` is read when accessed, but a change of plugin state alone does not re-render the
+ * view: what it rendered stays stale until its data, `selected` or options change. Render
+ * plugin state from `usePluginState(props.editor, plugin)` instead.
  */
 export type ReactNodeView<D = Data, O = unknown, T = unknown, S = unknown> = ComponentType<NodeViewProps<D, O, T, S>>
 
@@ -29,6 +33,13 @@ export interface PortalStore {
   remove(id: string): void
   subscribe(onChange: () => void): () => void
   getSnapshot(): readonly PortalEntry[]
+  /**
+   * Options of node plugins (keyed by plugin name, which is the node type) that `useEditor` received
+   * in the render being committed but has not applied to the editor yet (it does in an effect).
+   * `EditorContent` renders the views with these in place of `props.options`, so no render shows the
+   * old options; `useEditor` replaces the map on every render and drops an entry once applied.
+   */
+  pendingOptions: Map<string, Readonly<Record<string, unknown>>>
 }
 
 export function createPortalStore(): PortalStore {
@@ -53,6 +64,7 @@ export function createPortalStore(): PortalStore {
       return () => listeners.delete(onChange)
     },
     getSnapshot: () => entries,
+    pendingOptions: new Map(),
   }
 }
 

@@ -4,7 +4,7 @@ import { MentionSuggestion, MentionView, type MentionViewProps } from '@hte/ment
 import { EditorContent, useEditor } from '@hte/react'
 import { CodePanel } from './CodePanel'
 import { plugins } from './editor'
-import { fakeUpload } from './fake-upload'
+import { fakeUpload, onUploadError, revokeFakeUploads } from './fake-upload'
 import { fetchUsers } from './fake-users'
 import { ImageViewKindContext, PlaygroundImageView } from './image-views'
 import { Sidebar } from './Sidebar'
@@ -15,7 +15,7 @@ import { useStory } from './use-story'
 // Module-level: the same identities on every render, so `useEditor` never re-applies the options
 // (an inline object would re-render every node view of the type).
 const nodeViews = { image: PlaygroundImageView, mention: PlaygroundMentionView, codeBlock: CodeBlockView }
-const pluginOptions = { image: { upload: fakeUpload }, mention: { fetchUsers } }
+const pluginOptions = { image: { upload: fakeUpload, onUploadError }, mention: { fetchUsers } }
 const suggestionClassNames = {
   popup: 'z-10 mt-0.5 min-w-35 rounded border border-neutral-300 bg-white shadow-md',
   list: 'm-0 list-none py-1 pl-0',
@@ -41,6 +41,9 @@ export function App() {
   useEffect(() => {
     if (import.meta.env.DEV) window.editor = editor
   }, [editor])
+
+  // The fake uploads' URLs stay valid while this editor (its doc and history) may show them.
+  useEffect(() => () => revokeFakeUploads(), [editor])
 
   // `useEditor` already got the first story's content; later switches replace it.
   const applied = useRef(story)

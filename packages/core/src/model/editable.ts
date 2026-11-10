@@ -1,7 +1,7 @@
 import { comparePath, comparePoint } from './path'
 import { createSelection, isNodeRange, mainRange, selectionEquals, single } from './selection'
 import { getNode, isText, type ReadableRoot } from './node'
-import type { Doc, ElementNode, Node, Path, Point, Range, Selection, SelectionRange, TextNode } from './types'
+import type { DeepReadonly, Doc, ElementNode, Node, Path, Point, Range, Selection, SelectionRange, TextNode } from './types'
 
 /** What the editable-text helpers need from a `Registry`. */
 export interface NodeTypes {
@@ -43,7 +43,7 @@ export function* editableTextEntries(root: ReadableRoot, types: NodeTypes, range
 /** Whether `point` is a valid caret position in an editable text of `doc`. */
 export function isEditablePoint(doc: ReadableRoot, types: NodeTypes, point: Point): boolean {
   if (point.path.length === 0 || !Number.isInteger(point.offset) || point.offset < 0) return false
-  let node: Node
+  let node: DeepReadonly<Node>
   try {
     node = getNode(doc, point.path)
   } catch {
@@ -64,7 +64,7 @@ export function isNodeSelection(sel: Selection | null | undefined): boolean {
 /** Whether `path` addresses an opaque element (atom or unknown type) of `doc`. */
 export function isOpaqueAt(doc: ReadableRoot, types: NodeTypes, path: Path): boolean {
   if (path.length === 0) return false
-  let node: Node
+  let node: DeepReadonly<Node>
   try {
     node = getNode(doc, path)
   } catch {

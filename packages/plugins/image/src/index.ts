@@ -20,9 +20,15 @@ import {
   rewriteHistoryData,
   single,
   clearHistory,
+  comparePoint,
   getNode,
+  isNodeSelection,
+  mainRange,
+  toRange,
   type Command,
   type Data,
+  type DeepReadonly,
+  type Doc,
   type Node,
   type Operation,
   type Path,
@@ -30,8 +36,9 @@ import {
   type HTMLAttributes,
   type PluginContext,
   type SelectionRange,
+  type Transaction,
 } from '@hte/core'
-import { safeSrc } from './src-policy'
+import { isBlobSrc, safeSrc } from './src-policy'
 
 export { safeSrc } from './src-policy'
 
@@ -71,6 +78,24 @@ export interface ImageStorage {
    * still showing the preview (history's stored copies are rewritten too); on failure the image and
    * its copies are removed outside history (or, when one is no longer in the doc, history is cleared
    * so undo / redo cannot restore the dead preview) and `onUploadError` is called.
+   *
+   * A copy of a pending preview (a paste, or a `src` set to the preview's URL with `setNodeData`) is
+   * pending too and settles with it.
+   *
+   * Blob URL lifetime: a preview's blob URL is revoked as soon as its upload has settled (succeeded
+   * or failed) and neither the doc nor the undo / redo history holds it any more. On success every
+   * copy in the doc and in history is rewritten to the uploaded URL, and on failure every copy is
+   * removed and the history entries that could bring one back are dropped or cleared, so it is
+   * usually revoked right when the upload settles. A history entry can still hold it after that (an
+   * undoable `src` change the user made while it was pending): it is then revoked once history lets
+   * go of that entry (it is checked after every transaction). Whatever is left is revoked on destroy.
+   *
+   * Pasting a `blob:` image (see `transformPasted`): a pending preview of this editor is kept, one
+   * this editor already uploaded becomes the uploaded URL, and one whose upload failed is dropped. A
+   * `blob:` src this editor does not own (a copy from another editor or page, whose owner revokes
+   * it) is kept only when an image in the doc already shows it, and dropped otherwise: the image is
+   * left out of the pasted content, so no dead preview is inserted.
+   *
    * Throws when `options.upload` is not set or `URL.createObjectURL` is unavailable.
    */
   upload(files: File[]): void
@@ -87,7 +112,7 @@ type Ctx = PluginContext<ImageOptions, ImageState>
 /** Per-editor bookkeeping that is not document state. */
 interface Runtime {
   destroyed: boolean
-  /** Every blob URL created for a preview; revoked on destroy (history may still hold them until then). */
+  /** Every blob URL created for a preview and not revoked yet (see `ImageStorage.upload`). */
   blobs: Set<string>
   /** `whenIdle` resolvers still waiting. */
   waiters: Set<() => void>
@@ -97,13 +122,21 @@ interface Runtime {
    * history (e.g. a pasted copy that was deleted or undone).
    */
   holders: Map<string, Set<string>>
+  /** Per settled preview blob, the uploaded URL, or null when the upload failed (for later pastes of a copy). */
+  settled: Map<string, string | null>
+  /** Settled preview blobs not revoked yet: the doc or history may still hold them. */
+  lingering: Set<string>
 }
 
 const runtimes = new WeakMap<Editor, Runtime>()
 
 function runtimeOf(editor: Editor): Runtime {
   let rt = runtimes.get(editor)
-  if (!rt) runtimes.set(editor, (rt = { destroyed: false, blobs: new Set(), waiters: new Set(), holders: new Map() }))
+  if (!rt)
+    runtimes.set(
+      editor,
+      (rt = { destroyed: false, blobs: new Set(), waiters: new Set(), holders: new Map(), settled: new Map(), lingering: new Set() }),
+    )
   return rt
 }
 
@@ -113,19 +146,107 @@ function pendingOf(ctx: Ctx): ReadonlySet<string> {
   return ctx.getState()?.pending ?? new Set()
 }
 
-/** Records the image elements `tr` inserted that show a pending preview (copies of an uploading image). */
-function trackCopies(ctx: Ctx, rt: Runtime, ops: readonly Operation[]): void {
-  if (rt.holders.size === 0) return
-  const note = (node: Node) => {
-    if (!isElement(node) || node.type !== ctx.name) return
-    const src = node.data.src
-    if (typeof src === 'string') rt.holders.get(src)?.add(node.id)
+/** Ids of the `type` elements in `doc` whose `src` is in `srcs`. */
+function showing(doc: DeepReadonly<Doc>, type: string, srcs: { has(src: string): boolean }): string[] {
+  const ids: string[] = []
+  for (const [node] of nodeEntries(doc))
+    if (isElement(node) && node.type === type && typeof node.data.src === 'string' && srcs.has(node.data.src)) ids.push(node.id)
+  return ids
+}
+
+/** `node` and every node inside it. */
+function* selfAndDescendants(node: Node): Generator<Node> {
+  yield node
+  if (isElement(node)) for (const [n] of nodeEntries(node)) yield n as Node
+}
+
+/** Whether one of `ops` gives an element a pending preview's src (an insert, or a `set_node_data`). */
+function copiesPending(rt: Runtime, ops: readonly Operation[]): boolean {
+  if (rt.holders.size === 0) return false
+  const pending = (data: Data) => typeof data.src === 'string' && rt.holders.has(data.src)
+  return ops.some(
+    (op) =>
+      (op.type === 'set_node_data' && pending(op.data)) ||
+      (op.type === 'insert_node' && [...selfAndDescendants(op.node)].some((n) => isElement(n) && pending(n.data))),
+  )
+}
+
+/**
+ * Records the image elements `ops` gave a pending preview's src (copies of an uploading image): the
+ * inserted ones (also when the same tr removed them again), and the ones now showing it in `doc`.
+ */
+function trackCopies(ctx: Ctx, rt: Runtime, ops: readonly Operation[], doc: DeepReadonly<Doc>): void {
+  if (!copiesPending(rt, ops)) return
+  for (const blob of rt.holders.keys()) {
+    const holders = rt.holders.get(blob)!
+    for (const op of ops)
+      if (op.type === 'insert_node')
+        for (const n of selfAndDescendants(op.node)) if (isElement(n) && n.type === ctx.name && n.data.src === blob) holders.add(n.id)
+    for (const id of showing(doc, ctx.name, new Set([blob]))) holders.add(id)
   }
-  for (const op of ops) {
-    if (op.type !== 'insert_node') continue
-    note(op.node)
-    if (isElement(op.node)) for (const [n] of nodeEntries(op.node)) note(n)
+}
+
+/** Every string in `value` (walked deeply) that is in `wanted`. */
+function heldStrings(value: unknown, wanted: ReadonlySet<string>, out: Set<string>, seen = new Set<object>()): void {
+  if (typeof value === 'string') {
+    if (wanted.has(value)) out.add(value)
+    return
   }
+  if (typeof value !== 'object' || value === null || seen.has(value) || out.size === wanted.size) return
+  seen.add(value)
+  for (const v of value instanceof Map || value instanceof Set ? value.values() : Object.values(value)) heldStrings(v, wanted, out, seen)
+}
+
+/**
+ * Revokes each settled preview blob that neither the doc nor the history state holds any more. The
+ * history state is searched as plain data (whatever its shape), so a stored op that could bring the
+ * preview back keeps it alive.
+ */
+function sweep(editor: Editor, rt: Runtime): void {
+  if (rt.lingering.size === 0 || rt.destroyed) return
+  const held = new Set<string>()
+  heldStrings(editor.state.doc, rt.lingering, held)
+  heldStrings(editor.getPluginState('history'), rt.lingering, held)
+  for (const blob of [...rt.lingering]) {
+    if (held.has(blob)) continue
+    rt.lingering.delete(blob)
+    rt.blobs.delete(blob)
+    if (typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(blob)
+  }
+}
+
+/** What a pasted image's `src` becomes (see `ImageStorage.upload`): itself, the uploaded URL, or null to drop the image. */
+function pastedSrc(ctx: Ctx, rt: Runtime, src: string): string | null {
+  if (!isBlobSrc(src) || rt.holders.has(src)) return src
+  const uploaded = rt.settled.get(src)
+  if (uploaded !== undefined) return uploaded
+  return showing(ctx.editor.state.doc, ctx.name, new Set([src])).length > 0 ? src : null
+}
+
+/** `nodes` with every pasted image's src mapped by `pastedSrc` (images it drops left out); the same array when nothing changed. */
+function mapPasted(ctx: Ctx, rt: Runtime, nodes: readonly Node[]): Node[] {
+  let changed = false
+  const out: Node[] = []
+  for (const node of nodes) {
+    let next: Node | null = node
+    if (isElement(node) && node.type === ctx.name && typeof node.data.src === 'string') {
+      const src = pastedSrc(ctx, rt, node.data.src)
+      next = src === null ? null : src === node.data.src ? node : { ...node, data: { ...node.data, src } }
+    } else if (isElement(node) && node.children) {
+      const children = mapPasted(ctx, rt, node.children)
+      if (children !== node.children) next = { ...node, children }
+    }
+    if (next !== node) changed = true
+    if (next) out.push(next)
+  }
+  return changed ? out : (nodes as Node[])
+}
+
+/** Whether `a` and `b` cover the same span. */
+function sameSpan(a: SelectionRange, b: SelectionRange): boolean {
+  const x = toRange(a)
+  const y = toRange(b)
+  return comparePoint(x.start, y.start) === 0 && comparePoint(x.end, y.end) === 0
 }
 
 function dispatchMeta(editor: Editor, meta: ImageUploadMeta): void {
@@ -243,27 +364,31 @@ function uploadFiles(ctx: Ctx, files: readonly File[], at?: SelectionRange | nul
     const blob = URL.createObjectURL(file)
     const tr = editor.createTransaction()
     tr.meta.origin = 'command'
-    tr.setMeta('imageUpload', { start: id } satisfies ImageUploadMeta)
     if (i === 0 && at) tr.setSelection(single(at))
     tr.insertBlockNode({ id, type: ctx.name, data: { src: blob, alt: '' } })
+    // Every preview the insert made (with several ranges the copies got fresh ids), pending in the
+    // same state that first shows them.
+    const started = showing(tr.doc, ctx.name, new Set([blob]))
+    tr.setMeta('imageUpload', { start: started } satisfies ImageUploadMeta)
     // Empty blocks the insert created (for the caret after the preview), to remove with it on failure.
     const added = tr.ops.flatMap((op) =>
       op.type === 'insert_node' && isElement(op.node) && op.node.type !== ctx.name && isEmptyBlock(op.node) ? [op.node.id] : [],
     )
     if (tr.rejected === null && tr.docChanged) editor.dispatch(tr)
-    // Every preview this file made: with several ranges the copies got fresh ids (all show the one
-    // blob), and all of them are tracked as holders of this upload.
-    const holders = new Set<string>()
-    for (const [node] of nodeEntries(editor.state.doc))
-      if (isElement(node) && node.type === ctx.name && node.data.src === blob) holders.add(node.id)
+    // Every preview this file made, as committed (a follow-up tr may have changed them): all of them
+    // are tracked as holders of this upload.
+    const holders = new Set(showing(editor.state.doc, ctx.name, new Set([blob])))
+    const unstarted = [...holders].filter((h) => !started.includes(h))
     // Not inserted (no selection, rejected or filtered out): nothing to upload into.
     if (holders.size === 0) {
+      const stale = started.filter((h) => pendingOf(ctx).has(h))
+      if (stale.length > 0) dispatchMeta(editor, { end: stale })
       URL.revokeObjectURL(blob)
       continue
     }
     rt.blobs.add(blob)
     rt.holders.set(blob, holders)
-    if (holders.size > 1) dispatchMeta(editor, { start: [...holders].filter((h) => h !== id) })
+    if (unstarted.length > 0) dispatchMeta(editor, { start: unstarted })
 
     let request: Promise<string>
     try {
@@ -276,7 +401,10 @@ function uploadFiles(ctx: Ctx, files: readonly File[], at?: SelectionRange | nul
         (url) => {
           if (rt.destroyed) return
           rt.holders.delete(blob)
-          if (typeof url !== 'string' || safeSrc(url) === null)
+          const ok = typeof url === 'string' && safeSrc(url) !== null
+          rt.settled.set(blob, ok ? url : null)
+          rt.lingering.add(blob)
+          if (!ok)
             onFailed(
               ctx,
               holders,
@@ -289,13 +417,19 @@ function uploadFiles(ctx: Ctx, files: readonly File[], at?: SelectionRange | nul
         },
         (error: unknown) => {
           rt.holders.delete(blob)
-          if (!rt.destroyed) onFailed(ctx, holders, blob, file, error, added)
+          if (rt.destroyed) return
+          rt.settled.set(blob, null)
+          rt.lingering.add(blob)
+          onFailed(ctx, holders, blob, file, error, added)
         },
       )
       // A throw while applying a successful upload is reported, not treated as an upload failure.
       .catch(report)
       .finally(() => {
-        if (!rt.destroyed) dispatchMeta(editor, { end: [...holders] })
+        if (rt.destroyed) return
+        dispatchMeta(editor, { end: [...new Set([...holders, ...started])] })
+        // Usually revoked right here: the settle rewrote or removed every copy (see `ImageStorage.upload`).
+        sweep(editor, rt)
       })
       .catch(report)
   }
@@ -314,12 +448,19 @@ export const image = definePlugin({
   options: { upload: undefined as unknown as ImageOptions['upload'], onUploadError: undefined, HTMLAttributes: {} } as ImageOptions,
   state: {
     init: (): ImageState => ({ pending: new Set<string>() }),
-    apply: (tr, prev: ImageState): ImageState => {
+    // Pending: the ids an `imageUpload` meta starts, until one ends them, plus every copy a tr makes
+    // of a pending preview (a paste, or `setNodeData` with its src), which its upload's end covers.
+    // `ctx` typed structurally: a contextually typed one would stop `storage` from inferring.
+    apply: (tr: Transaction, prev: ImageState, ctx: { editor: Editor; name: string }): ImageState => {
       const meta = tr.meta.imageUpload as ImageUploadMeta | undefined
-      if (typeof meta !== 'object' || meta === null) return prev
-      const pending = new Set(prev.pending)
-      for (const id of typeof meta.start === 'string' ? [meta.start] : (meta.start ?? [])) pending.add(id)
-      for (const id of typeof meta.end === 'string' ? [meta.end] : (meta.end ?? [])) pending.delete(id)
+      const rt = runtimeOf(ctx.editor)
+      const copies = copiesPending(rt, tr.ops) ? showing(tr.doc, ctx.name, rt.holders).filter((id) => !prev.pending.has(id)) : []
+      if ((typeof meta !== 'object' || meta === null) && copies.length === 0) return prev
+      const pending = new Set([...prev.pending, ...copies])
+      if (typeof meta === 'object' && meta !== null) {
+        for (const id of typeof meta.start === 'string' ? [meta.start] : (meta.start ?? [])) pending.add(id)
+        for (const id of typeof meta.end === 'string' ? [meta.end] : (meta.end ?? [])) pending.delete(id)
+      }
       return { pending }
     },
   },
@@ -330,8 +471,11 @@ export const image = definePlugin({
         const src = safeSrc(el.getAttribute('src') ?? '')
         if (!src) return false
         const data: Data = { src, alt: el.getAttribute('alt') ?? '' }
-        const width = el.getAttribute('width')
-        if (width && /^\d+$/.test(width.trim()) && Number(width) > 0) data.width = Number(width)
+        // Only a plain positive safe integer becomes `width` (what the schema accepts); anything else
+        // (units, exponents, zero, beyond `Number.MAX_SAFE_INTEGER`) is ignored and the image kept.
+        const width = el.getAttribute('width')?.trim()
+        const n = width && /^\d+$/.test(width) ? Number(width) : 0
+        if (Number.isSafeInteger(n) && n > 0) data.width = n
         return data
       },
     },
@@ -359,7 +503,10 @@ export const image = definePlugin({
   }),
   storage: (ctx): ImageStorage => {
     const rt = runtimeOf(ctx.editor)
-    ctx.editor.on('transaction', ({ tr }) => trackCopies(ctx, rt, tr.ops))
+    ctx.editor.on('transaction', ({ tr }) => {
+      trackCopies(ctx, rt, tr.ops, ctx.editor.state.doc)
+      sweep(ctx.editor, rt)
+    })
     return {
       upload: (files) => uploadFiles(ctx, files),
       isUploading: () => !rt.destroyed && pendingOf(ctx).size > 0,
@@ -386,11 +533,18 @@ export const image = definePlugin({
     const files = Array.from(intent.dataTransfer?.files ?? [])
     // Without an upload function there is nowhere to put the files: let the default insert the rest.
     if (!files.some(isImageFile) || typeof ctx.options.upload !== 'function') return false
-    // A drop goes to its drop point, even while a node is selected (it never replaces that node).
+    const sel = ctx.editor.state.selection
+    // A drop goes to its drop point, even while a node is selected (it never replaces that node). A
+    // paste targeted at a range that is not the main one goes only there (the selection collapses
+    // to it), like the core's targeted paste; otherwise a paste goes to every range.
     if (intent.inputType === 'insertFromDrop' && intent.range) uploadFiles(ctx, files, intent.range)
+    else if (sel && intent.range && sel.ranges.length > 1 && !isNodeSelection(sel) && !sameSpan(intent.range, mainRange(sel)))
+      uploadFiles(ctx, files, intent.range)
     else ctx.storage.upload(files)
     return true
   },
+  // A pasted / dropped `blob:` image keeps its src only while it is live (see `ImageStorage.upload`).
+  transformPasted: (fragment, ctx) => mapPasted(ctx, runtimeOf(ctx.editor), fragment),
   destroy: (ctx) => {
     const rt = runtimeOf(ctx.editor)
     rt.destroyed = true

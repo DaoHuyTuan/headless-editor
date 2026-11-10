@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createSelection, definePlugin, serializeForClipboard, type Doc, type ElementNode, type Node, type Transaction } from '@hte/core'
 import { createTestEditor, doc, el, sel, stripIds, txt } from '@hte/core/testing'
 import { paragraph } from '@hte/paragraph'
@@ -19,9 +19,19 @@ const ann: User = { id: 'u1', label: 'Ann' }
 const bob: User = { id: 'u2', label: 'Bob' }
 const joe: User = { id: 'u3', label: 'Joe' }
 
+/** Every test asserts no `console.error`; one that expects some reads and clears `errors` itself. */
+let errors: ReturnType<typeof vi.spyOn>
+beforeEach(() => {
+  errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+})
 afterEach(() => {
   document.getSelection()?.removeAllRanges()
   document.body.replaceChildren()
+  // Read after the cleanup (which may log too), and restored before asserting, so a failure here
+  // never leaves the spy on for the next test.
+  const calls = [...errors.mock.calls]
+  vi.restoreAllMocks()
+  expect(calls).toEqual([])
 })
 
 function setup(content: Doc = doc(p(txt(''))), opts: Partial<Parameters<typeof mention.configure>[0]> = {}, extra: (typeof code)[] = []) {
@@ -101,6 +111,34 @@ describe('mention suggestion: opening and fetching', () => {
     type('@a #b')
     expect(state()).toMatchObject({ open: true, query: 'b' })
   })
+
+  // The limits documented on `trigger` (multi-character triggers are loosely supported).
+  describe('a multi-character trigger', () => {
+    it('opens once the whole trigger is typed, not on its first character', () => {
+      const { state, type } = setup(undefined, { trigger: '::' })
+      type(':')
+      expect(state().open).toBe(false)
+      type(':jo')
+      expect(state()).toMatchObject({ open: true, query: 'jo' })
+      expect(state().range).toEqual({ start: { path: [0, 0], offset: 0 }, end: { path: [0, 0], offset: 4 } })
+    })
+
+    it('the nearest occurrence before the caret decides: a repeated trigger character opens nothing', () => {
+      const { state, type } = setup(undefined, { trigger: '::' })
+      type(':::jo')
+      expect(state().open).toBe(false)
+    })
+
+    it('accepting replaces the whole trigger and query', async () => {
+      const { editor, type, last } = setup(undefined, { trigger: '::' })
+      type('::a')
+      last().resolve([ann])
+      await flush()
+      expect(editor.commands.acceptSuggestion()).toBe(true)
+      const kids = blockKids(editor.getJSON())
+      expect(kids.map((n) => ('text' in n ? n.text : (n as ElementNode).type))).toEqual(['', 'mention', ' '])
+    })
+  })
 })
 
 describe('mention suggestion: keyboard', () => {
@@ -178,7 +216,9 @@ describe('mention suggestion: keyboard', () => {
     expect(state().open).toBe(true)
   })
 
-  it('once the current query resolved with no results, ↑ ↓ Enter are released: Enter splits, the popup stays open', async () => {
+  // The released keydown alone changes nothing (no keydown binding here); the split comes with the
+  // insertParagraph intent (next test), which closes the popup.
+  it('once the current query resolved with no results, ↑ ↓ Enter keydowns are released (not prevented)', async () => {
     const { state, type, key, last } = setup()
     type('@zz')
     expect(state().pending).toBe(true)
@@ -194,13 +234,29 @@ describe('mention suggestion: keyboard', () => {
     expect(state().open).toBe(false)
   })
 
-  it('an insertParagraph intent with zero resolved results splits the block', async () => {
-    const { editor, root, type, last } = setup()
+  it('an insertParagraph intent with zero resolved results splits the block, which closes the popup', async () => {
+    const { editor, root, state, type, last } = setup()
     type('@zz')
     last().resolve([])
     await flush()
     root.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, cancelable: true, inputType: 'insertParagraph' }))
     expect(stripIds(editor.getJSON())).toEqual(stripIds(doc(p(txt('@zz')), p(txt('')))))
+    // The split moved the caret out of the trigger: the popup closed, and that trigger stays closed.
+    expect(state().open).toBe(false)
+    const back = editor.createTransaction()
+    back.setSelection(sel([0, 0], 3))
+    editor.dispatch(back)
+    expect(state().open).toBe(false)
+  })
+
+  it('a query typed in decomposed (NFD) Vietnamese is passed to fetchUsers as typed', () => {
+    const { state, type, fetchUsers } = setup()
+    const query = 'Nguyễn'.normalize('NFD')
+    expect(query.length).toBeGreaterThan('Nguyễn'.length)
+    type(`@${query}`)
+    expect(state()).toMatchObject({ open: true, query })
+    expect(state().range).toEqual({ start: { path: [0, 0], offset: 0 }, end: { path: [0, 0], offset: query.length + 1 } })
+    expect(fetchUsers).toHaveBeenLastCalledWith(query)
   })
 
   it('a new query after zero results captures the keys again until its own results arrive', async () => {
@@ -342,6 +398,74 @@ describe('mention suggestion: races (Review Focus 2)', () => {
     expect(state().open).toBe(true)
   })
 
+  describe('hopping between triggers with the same query', () => {
+    /** Two `@jo` triggers: A ends at offset 3, B at offset 9. */
+    function twoTriggers() {
+      const ctx = setup(doc(p(txt('@jo x @jo'))))
+      const caret = (offset: number) => {
+        const tr = ctx.editor.createTransaction()
+        tr.setSelection(sel([0, 0], offset))
+        ctx.editor.dispatch(tr)
+      }
+      return { ...ctx, caret }
+    }
+
+    it('an Esc-dismissed trigger stays closed after the caret visits another one', () => {
+      const { state, key, caret } = twoTriggers()
+      caret(3)
+      expect(state()).toMatchObject({ open: true, query: 'jo' })
+      key('Escape')
+      caret(9)
+      expect(state()).toMatchObject({ open: true, query: 'jo' })
+      expect(state().range!.start).toEqual({ path: [0, 0], offset: 6 })
+      caret(3)
+      expect(state().open).toBe(false)
+    })
+
+    it('the caret hopping straight from an open trigger to another one dismisses the first', () => {
+      const { state, caret } = twoTriggers()
+      caret(3)
+      caret(9)
+      expect(state()).toMatchObject({ open: true, query: 'jo' })
+      caret(3)
+      expect(state().open).toBe(false)
+    })
+
+    it('every dismissed trigger stays closed, not only the last one', () => {
+      const { state, key, caret } = twoTriggers()
+      caret(3)
+      key('Escape')
+      caret(9)
+      key('Escape')
+      caret(3)
+      expect(state().open).toBe(false)
+      caret(9)
+      expect(state().open).toBe(false)
+    })
+
+    it("a dismissal belongs to its trigger: it is not reused for another trigger's same query", () => {
+      const { state, key, caret } = twoTriggers()
+      caret(9)
+      key('Escape')
+      caret(3)
+      expect(state()).toMatchObject({ open: true, query: 'jo' })
+      expect(state().range!.start).toEqual({ path: [0, 0], offset: 0 })
+    })
+
+    it("another trigger is a new popup: the first one's items and index are not reused", async () => {
+      const { state, key, caret, last, fetchUsers } = twoTriggers()
+      caret(3)
+      last().resolve([joe, bob])
+      await flush()
+      key('ArrowDown')
+      expect(state().index).toBe(1)
+      const calls = fetchUsers.mock.calls.length
+      caret(9)
+      expect(state()).toMatchObject({ open: true, query: 'jo', items: [], index: 0, pending: true })
+      expect(fetchUsers).toHaveBeenCalledTimes(calls + 1)
+    })
+  })
+
   it('blur closes the popup; unmount closes it too', () => {
     const { editor, root, state, type } = setup()
     type('@jo')
@@ -451,6 +575,46 @@ describe('mention commands', () => {
     expect(state()).toMatchObject({ open: true, index: 0 })
     expect(editor.commands.moveSuggestion(-1)).toBe(true)
     expect(state().index).toBe(1)
+  })
+})
+
+describe('mention storage: users seen in results', () => {
+  it('storage.user returns the latest result for an id, written before views see the results', async () => {
+    const { editor, type, last } = setup()
+    const storage = () => editor.storage.mention
+    expect(storage().user('u1')).toBeUndefined()
+    let seen: User | undefined
+    editor.on('transaction', ({ tr }) => {
+      if ((tr.meta.mention as { type?: string } | undefined)?.type === 'results') seen = storage().user('u1')
+    })
+    type('@a')
+    const annie = { id: 'u1', label: 'Annie' }
+    last().resolve([ann, bob])
+    await flush()
+    expect(seen).toBe(ann)
+    expect(storage().user('u2')).toBe(bob)
+    type('n')
+    last().resolve([annie])
+    await flush()
+    expect(storage().user('u1')).toBe(annie)
+    // Closing keeps what was seen.
+    editor.commands.closeSuggestion()
+    expect(storage().user('u1')).toBe(annie)
+  })
+
+  it('stale or post-close results are not recorded', async () => {
+    const { editor, type, key, last } = setup()
+    type('@a')
+    const stale = last()
+    type('n')
+    stale.resolve([ann])
+    await flush()
+    expect(editor.storage.mention.user('u1')).toBeUndefined()
+    const current = last()
+    key('Escape')
+    current.resolve([bob])
+    await flush()
+    expect(editor.storage.mention.user('u2')).toBeUndefined()
   })
 })
 
@@ -614,5 +778,26 @@ describe('mention with several ranges', () => {
     expect(editor.commands.insertMention(ann)).toBe(true)
     expect(labels(editor.getJSON(), 0)).toEqual(['a', '[Ann]', ' b'])
     expect(labels(editor.getJSON(), 1)).toEqual(['c', '[Ann]', ' d'])
+  })
+})
+
+describe('mention suggestion: triggers next to links (6.10 follow-up)', () => {
+  const link = definePlugin({ name: 'link', node: { kind: 'inline' } }) as unknown as typeof code
+  const caretAt = (editor: ReturnType<typeof setup>['editor'], path: number[], offset: number) => {
+    const tr = editor.createTransaction()
+    tr.setSelection(sel(path, offset))
+    editor.dispatch(tr)
+  }
+
+  it('an @ inside a link glued to the word before it is no trigger', () => {
+    const { editor, state } = setup(doc(p(txt('abc'), el('link', {}, txt('@x')), txt(''))), {}, [link])
+    caretAt(editor, [0, 1, 0], 2)
+    expect(state().open).toBe(false)
+  })
+
+  it('a trigger before a link reads the query across it', () => {
+    const { editor, state } = setup(doc(p(txt('hi @'), el('link', {}, txt('jo')), txt(''))), {}, [link])
+    caretAt(editor, [0, 1, 0], 2)
+    expect(state()).toMatchObject({ open: true, query: 'jo' })
   })
 })

@@ -1,16 +1,25 @@
 import type { EditorView } from './view'
 
-/** Marks a subtree (typically inside a node view) that the editor leaves entirely to the page. */
+/**
+ * Marks a subtree of a node view's own DOM (a control: an input, a select, a resize handle) that the
+ * editor leaves entirely to the page. Honoured only inside a current node view's container, outside
+ * its `contentDOM`; anywhere else in the root (editor content, widgets) it has no effect.
+ */
 export const IGNORE_ATTR = 'data-editor-ignore'
 
 /**
- * Whether `node` is inside (or is) an element with `data-editor-ignore`, below the root. A node
- * view's `contentDOM` is editor content: what is inside it is not ignored because of an ancestor of it.
+ * Whether `node` is inside (or is) an element with `data-editor-ignore` that belongs to a current
+ * node view's own DOM (inside its container, outside its `contentDOM`). A node view's `contentDOM`
+ * is editor content: what is inside it is not ignored because of an ancestor of it, and neither is
+ * anything outside node views.
  */
 export function isInIgnoredElement(view: EditorView, node: globalThis.Node | null): boolean {
   let cur: globalThis.Node | null = node
   while (cur && cur !== view.root) {
-    if (cur.nodeType === 1 && (cur as Element).hasAttribute(IGNORE_ATTR)) return true
+    if (cur.nodeType === 1 && (cur as Element).hasAttribute(IGNORE_ATTR)) {
+      // The closest node view around it, unless a contentDOM comes first (then it is content).
+      return view.renderer.nodeViewAround(cur) !== null
+    }
     if (view.renderer.isContentDOM(cur)) return false
     cur = cur.parentNode
   }
@@ -19,7 +28,7 @@ export function isInIgnoredElement(view: EditorView, node: globalThis.Node | nul
 
 /**
  * Whether the editor must leave an event at `target` alone (no handling, no `preventDefault`): the
- * target is inside a `data-editor-ignore` element within the root, or inside a node view whose
+ * target is inside a `data-editor-ignore` element of a node view's own DOM, or inside a node view whose
  * plugin's `stopEvent` claims `event`. Other events inside node views, and every event inside a
  * node view's `contentDOM`, are handled as usual.
  */

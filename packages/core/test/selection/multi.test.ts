@@ -55,6 +55,28 @@ describe('createSelection', () => {
     expect(sel.main).toBe(0)
   })
 
+  it('a non-main node range still wins: it is kept exactly, alone, as main (3.16)', () => {
+    const node: SelectionRange = { anchor: p(2, [0, 0]), focus: p(0, [2, 0]), node: [1] }
+    expect(createSelection([caret(1), range(3, 5, [3, 0]), node], 1)).toEqual({ ranges: [node], main: 0 })
+    // With two node ranges, the main one is kept.
+    const other: SelectionRange = { anchor: p(0, [4, 0]), focus: p(0, [4, 0]), node: [3] }
+    expect(createSelection([node, other], 1)).toEqual({ ranges: [other], main: 0 })
+    expect(createSelection([node, other], 0)).toEqual({ ranges: [node], main: 0 })
+  })
+
+  it('merges ranges that overlap or touch across blocks (3.16)', () => {
+    const across = (a: number, aPath: number[], f: number, fPath: number[]): SelectionRange => ({
+      anchor: p(a, aPath),
+      focus: p(f, fPath),
+    })
+    // Overlapping: [0,0]:2 → [1,0]:3 and [1,0]:1 → [2,0]:4 (backward, holding main).
+    const sel = createSelection([across(2, [0, 0], 3, [1, 0]), across(4, [2, 0], 1, [1, 0]), caret(0, [3, 0])], 1)
+    expect(sel).toEqual({ ranges: [across(4, [2, 0], 2, [0, 0]), caret(0, [3, 0])], main: 0 })
+    // Touching at a point in another block, and a caret at the shared point.
+    const touch = createSelection([across(1, [0, 0], 2, [1, 0]), caret(2, [1, 0]), across(2, [1, 0], 0, [2, 0])], 2)
+    expect(touch).toEqual({ ranges: [across(1, [0, 0], 0, [2, 0])], main: 0 })
+  })
+
   it('keeps anchor/focus direction of a backward range when not merged', () => {
     const sel = createSelection([range(5, 2), caret(8)], 0)
     expect(sel.ranges[0]).toEqual(range(5, 2))

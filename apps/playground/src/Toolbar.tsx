@@ -10,7 +10,12 @@ const BUTTON =
 const FONT_SIZES = ['12px', '16px', '24px', '32px'] as const
 
 const isBold = (_: unknown, editor: PlaygroundEditor) => editor.isActive('bold')
-/** Whether Bold would apply: `can()` runs the filters, so it is false inside a code block. */
+/**
+ * Whether Bold would apply: `can()` runs the filters, so it is false inside a code block. It never
+ * reads the focus, and a loaded editor with editable text always has a selection (its first caret
+ * when none is given), so the button is enabled before the editor is focused and after it blurs (it acts on the kept
+ * selection, as `mousedown` is prevented).
+ */
 const canBold = (_: unknown, editor: PlaygroundEditor) => editor.can().toggleBold()
 const inCodeBlock = (_: unknown, editor: PlaygroundEditor) => editor.isActive('codeBlock')
 /** The size of the fontSize mark covering the selection, or `''` when there is none (or it is mixed). */

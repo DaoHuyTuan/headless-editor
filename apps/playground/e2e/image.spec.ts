@@ -91,7 +91,8 @@ async function caret(page: Page, path: number[], offset: number): Promise<void> 
   )
 }
 
-const editorImg = (page: Page) => page.locator('[data-testid=editor] img')
+/** The `<img>` of the image node views (by their stable marker, not any `<img>` in the editor). */
+const editorImg = (page: Page) => page.locator('[data-testid=editor] [data-hte-image] img')
 
 test.describe('inserting', () => {
   test('the file input inserts an image that is uploaded; undo and redo keep the uploaded src', async ({ page }) => {
@@ -115,6 +116,32 @@ test.describe('inserting', () => {
     await page.getByTestId('undo').click()
     expect(await types(page)).toEqual(['paragraph'])
     await expect(editorImg(page)).toHaveCount(0)
+    expect(await getText(page)).toBe('text')
+
+    await page.getByTestId('redo').click()
+    expect(await types(page)).toEqual(['paragraph', 'image', 'paragraph'])
+    expect(await srcOf(page)).toMatch(/#uploaded$/)
+    await expect(editorImg(page)).toHaveAttribute('src', /#uploaded$/)
+  })
+
+  test('undo while the upload is pending removes the preview; redo after it settles shows the uploaded src', async ({ page }) => {
+    trackErrors(page)
+    await openPlayground(page)
+    await focusEnd(page)
+    await page.keyboard.type('text')
+    await page.getByTestId('image-file').setInputFiles({ name: 'pixel.png', mimeType: 'image/png', buffer: png() })
+    await expect(editorImg(page)).toHaveCount(1)
+    // Still the blob preview: the fake upload takes 300 ms.
+    expect(await srcOf(page)).toMatch(/^blob:/)
+    expect(await page.evaluate(() => window.editor.storage.image.isUploading())).toBe(true)
+
+    await page.getByTestId('undo').click()
+    await expect(editorImg(page)).toHaveCount(0)
+    expect(await types(page)).toEqual(['paragraph'])
+
+    // The upload settles while the image is undone: history gets the uploaded URL, the doc is unchanged.
+    await page.evaluate(() => window.editor.storage.image.whenIdle())
+    expect(await types(page)).toEqual(['paragraph'])
     expect(await getText(page)).toBe('text')
 
     await page.getByTestId('redo').click()
@@ -272,7 +299,7 @@ test.describe('the image scenario', () => {
 
   test('dragging the resize handle by +40px increases the width', async ({ page }) => {
     const start = (await editorImg(page).boundingBox())!.width
-    const handle = page.locator('[data-testid=editor] .image-resize')
+    const handle = page.locator('[data-testid=editor] [data-hte-image] [role=separator]')
     const box = (await handle.boundingBox())!
     const x = box.x + box.width / 2
     const y = box.y + box.height / 2

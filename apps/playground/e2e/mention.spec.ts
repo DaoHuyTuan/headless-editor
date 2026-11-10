@@ -53,6 +53,20 @@ test('type @an, ArrowDown, Enter inserts the second match; the caret is after th
   await expect(popup(page)).toHaveCount(0)
 })
 
+test('the popup sits right below the trigger, aligned with its left edge', async ({ page }) => {
+  await openPlayground(page)
+  await focusEnd(page)
+  await page.keyboard.type('Hi @an')
+  await expect(options(page)).toHaveText(['Anna', 'Andrew'])
+  // The open trigger range is decorated (`hte-mention-query`): its box is the trigger's.
+  const trigger = (await page.locator('[data-testid=editor] .hte-mention-query').boundingBox())!
+  const box = (await popup(page).boundingBox())!
+  expect(Math.abs(box.x - trigger.x)).toBeLessThanOrEqual(2)
+  // Below the trigger's line box (the playground adds a 2px top margin), never over it.
+  expect(box.y).toBeGreaterThanOrEqual(trigger.y + trigger.height - 1)
+  expect(box.y - (trigger.y + trigger.height)).toBeLessThanOrEqual(8)
+})
+
 test('Esc closes the popup; Enter then splits the block normally', async ({ page }) => {
   await openPlayground(page)
   await focusEnd(page)

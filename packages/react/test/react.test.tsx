@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { StrictMode, useState, type ReactNode } from 'react'
+import { StrictMode, useLayoutEffect, useState, type ReactNode } from 'react'
 import { act, cleanup, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { definePlugin, Editor, textEntries, type EditorEventName } from '@hte/core'
@@ -214,6 +214,163 @@ describe('useEditor + EditorContent', () => {
   })
 })
 
+describe('useEditor onUpdate during the first commit', () => {
+  /** Counts the doc-changing commits as the core sees them (a plugin hook, attached at creation). */
+  let commits: number
+  const counter = definePlugin({ name: 'counter', onUpdate: () => void commits++ })
+  beforeEach(() => {
+    commits = 0
+  })
+
+  function Dispatcher({ editor, text }: { editor: Editor<any>; text: string }) {
+    useLayoutEffect(() => {
+      editor.commands.insertText(text)
+    }, [editor, text])
+    return null
+  }
+
+  for (const strict of [false, true]) {
+    const wrap = (node: ReactNode) => (strict ? <StrictMode>{node}</StrictMode> : node)
+
+    it(`reaches onUpdate once per dispatch from a child's layout effect${strict ? ' (StrictMode)' : ''}`, () => {
+      const calls: string[] = []
+      let editor!: Editor<any>
+      function App() {
+        editor = useEditor({
+          plugins: [paragraph, counter],
+          content: content(),
+          onUpdate: ({ editor: ed }) => calls.push(docText(ed)),
+        })
+        return (
+          <>
+            <EditorContent editor={editor} />
+            <Dispatcher editor={editor} text="x" />
+          </>
+        )
+      }
+      render(wrap(<App />))
+      expect(commits).toBe(strict ? 2 : 1)
+      expect(calls).toHaveLength(commits)
+      expect(calls.at(-1)).toBe(docText(editor))
+    })
+
+    it(`reaches onUpdate once per dispatch from a plugin's onMount${strict ? ' (StrictMode)' : ''}`, () => {
+      vi.useFakeTimers()
+      const mounting = definePlugin({
+        name: 'mounting',
+        onMount: (ctx) => {
+          ctx.editor.commands.insertText('m')
+        },
+      })
+      let calls = 0
+      function App() {
+        const editor = useEditor({
+          plugins: [paragraph, counter, mounting],
+          content: content(),
+          onUpdate: () => void calls++,
+        })
+        return <EditorContent editor={editor} />
+      }
+      render(wrap(<App />))
+      act(() => {
+        vi.runAllTimers()
+      })
+      expect(commits).toBe(strict ? 2 : 1)
+      expect(calls).toBe(commits)
+    })
+
+    it(`reaches onUpdate once per dispatch from a plugin's onCreate${strict ? ' (StrictMode)' : ''}`, () => {
+      const creating = definePlugin({
+        name: 'creating',
+        onCreate: (ctx) => {
+          ctx.editor.commands.insertText('x')
+        },
+      })
+      const calls: string[] = []
+      let editor!: Editor<any>
+      function App() {
+        editor = useEditor({
+          plugins: [paragraph, counter, creating],
+          content: content(),
+          onUpdate: ({ editor: ed }) => calls.push(docText(ed)),
+        })
+        return <EditorContent editor={editor} />
+      }
+      render(wrap(<App />))
+      expect(commits).toBe(1)
+      expect(calls).toEqual([docText(editor)])
+      // One editor was built, and its onCreate ran once.
+      expect(countX(docText(editor))).toBe(1)
+    })
+
+    it(`keeps a user's update listener next to onUpdate${strict ? ' (StrictMode)' : ''}`, () => {
+      const order: string[] = []
+      let editor!: Editor<any>
+      function App() {
+        editor = useEditor({
+          plugins: [paragraph],
+          content: content(),
+          listeners: { update: () => void order.push('listener') },
+          onUpdate: () => void order.push('onUpdate'),
+        })
+        return <EditorContent editor={editor} />
+      }
+      render(wrap(<App />))
+      act(() => {
+        editor.commands.insertText('x')
+      })
+      expect(order).toEqual(['listener', 'onUpdate'])
+    })
+
+    it(`constructs one editor${strict ? ' under StrictMode' : ''}`, () => {
+      vi.useFakeTimers()
+      let creates = 0
+      let destroys = 0
+      const lifecycle = definePlugin({
+        name: 'lifecycle',
+        onCreate: () => void creates++,
+        destroy: () => void destroys++,
+      })
+      function App() {
+        const editor = useEditor({ plugins: [paragraph, lifecycle], content: content() })
+        return <EditorContent editor={editor} />
+      }
+      const { unmount } = render(wrap(<App />))
+      act(() => {
+        vi.runAllTimers()
+      })
+      expect(creates).toBe(1)
+      expect(destroys).toBe(0)
+      unmount()
+      act(() => {
+        vi.runAllTimers()
+      })
+      expect(destroys).toBe(1)
+    })
+
+    it(`a child's layout effect dispatch reaches the onUpdate of the same render${strict ? ' (StrictMode)' : ''}`, () => {
+      const calls: string[] = []
+      let setTag!: (t: string) => void
+      function App() {
+        const [tag, set] = useState('a')
+        setTag = set
+        const editor = useEditor({ plugins: [paragraph, counter], content: content(), onUpdate: () => calls.push(tag) })
+        return (
+          <>
+            <EditorContent editor={editor} />
+            <Dispatcher editor={editor} text={tag} />
+          </>
+        )
+      }
+      render(wrap(<App />))
+      calls.length = 0
+      act(() => setTag('b'))
+      expect(calls.length).toBeGreaterThan(0)
+      expect(calls.every((t) => t === 'b')).toBe(true)
+    })
+  }
+})
+
 describe('useEditorState', () => {
   it('re-renders when the selected value changes', () => {
     let editor!: TestEditor
@@ -321,6 +478,71 @@ describe('useEditorState', () => {
     expect(editor.getJSON().children[0]).toMatchObject({ children: [{ text: 'a' }, { text: 'bc' }, { text: 'd' }] })
     expect(getByTestId('bold').textContent).toBe('false')
     select(sel([0, 1], 0, [0, 1], 2))
+    expect(getByTestId('bold').textContent).toBe('true')
+  })
+})
+
+describe('useEditorState under StrictMode', () => {
+  const strict = (node: ReactNode) => render(<StrictMode>{node}</StrictMode>)
+
+  it('does not re-render when the selected value is unchanged', () => {
+    let editor!: TestEditor
+    let renders = 0
+    function BlockCount({ editor: ed }: { editor: TestEditor }) {
+      const count = useEditorState(ed, (s) => s.doc.children.length)
+      renders++
+      return <span data-testid="count">{count}</span>
+    }
+    const { getByTestId } = strict(<Harness onEditor={(e) => (editor = e)}>{(e) => <BlockCount editor={e} />}</Harness>)
+    const before = renders
+    act(() => {
+      editor.commands.insertText('x')
+    })
+    act(() => {
+      editor.commands.toggleBold()
+    })
+    expect(renders).toBe(before)
+    expect(getByTestId('count').textContent).toBe('1')
+  })
+
+  it('supports a custom isEqual', () => {
+    let editor!: TestEditor
+    let renders = 0
+    function Text({ editor: ed }: { editor: TestEditor }) {
+      const value = useEditorState(
+        ed,
+        (s) => ({ len: JSON.stringify(s.doc).length }),
+        () => true,
+      )
+      renders++
+      return <span>{value.len}</span>
+    }
+    strict(<Harness onEditor={(e) => (editor = e)}>{(e) => <Text editor={e} />}</Harness>)
+    const before = renders
+    act(() => {
+      editor.commands.insertText('x')
+    })
+    expect(renders).toBe(before)
+  })
+
+  it('re-renders on a selection-only transaction that changes isActive', () => {
+    let editor!: TestEditor
+    function BoldState({ editor: ed }: { editor: TestEditor }) {
+      const active = useEditorState(ed, (_, e) => e.isActive('bold'))
+      return <span data-testid="bold">{String(active)}</span>
+    }
+    const { getByTestId } = strict(<Harness onEditor={(e) => (editor = e)}>{(e) => <BoldState editor={e} />}</Harness>)
+    act(() => {
+      editor.commands.toggleBold()
+    })
+    expect(getByTestId('bold').textContent).toBe('true')
+    act(() => {
+      editor.dispatch(editor.createTransaction().setSelection(sel([0, 0], 0, [0, 0], 1)))
+    })
+    expect(getByTestId('bold').textContent).toBe('false')
+    act(() => {
+      editor.dispatch(editor.createTransaction().setSelection(sel([0, 1], 0, [0, 1], 2)))
+    })
     expect(getByTestId('bold').textContent).toBe('true')
   })
 })

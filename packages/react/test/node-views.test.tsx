@@ -18,8 +18,11 @@ type AtomData = { title: string }
 
 /** Ids of the mounted view components (per mount effect), to check StrictMode keeps one per node. */
 let live: Map<string, number>
+/** `options.label` of every render of `AtomView`, in order. */
+let renderedLabels: string[]
 
 const AtomView: ReactNodeView<AtomData, { label: string }> = ({ node, selected, options, updateData }) => {
+  renderedLabels.push(options.label)
   useEffect(() => {
     live.set(node.id, (live.get(node.id) ?? 0) + 1)
     return () => {
@@ -59,6 +62,7 @@ let errors: ReturnType<typeof vi.spyOn>
 
 beforeEach(() => {
   live = new Map()
+  renderedLabels = []
   errors = vi.spyOn(console, 'error')
 })
 
@@ -167,6 +171,30 @@ describe('React node views', () => {
     expect(errors).not.toHaveBeenCalled()
   })
 
+  it('no render after a pluginOptions change sees the old options', () => {
+    let editor!: TestEditor
+    const { getByTestId, rerender } = render(
+      <StrictMode>
+        <Harness onEditor={(e) => (editor = e)} label="one" />
+      </StrictMode>,
+    )
+    expect(renderedLabels.at(-1)).toBe('one')
+    renderedLabels = []
+    rerender(
+      <StrictMode>
+        <Harness onEditor={(e) => (editor = e)} label="two" />
+      </StrictMode>,
+    )
+    expect(renderedLabels.length).toBeGreaterThan(0)
+    expect(renderedLabels.every((l) => l === 'two')).toBe(true)
+    expect(getByTestId('content').querySelector('.label')!.textContent).toBe('two')
+
+    // Once applied, a direct setPluginOptions call is not masked by the value the hook last saw.
+    act(() => editor.setPluginOptions('atom', { label: 'three' }))
+    expect(getByTestId('content').querySelector('.label')!.textContent).toBe('three')
+    expect(errors).not.toHaveBeenCalled()
+  })
+
   it('StrictMode does not double-mount node views: exactly one instance per id', () => {
     let editor!: TestEditor
     const { getByTestId } = render(
@@ -196,6 +224,92 @@ describe('React node views', () => {
     vi.useRealTimers()
     expect([...live.values()].reduce((a, b) => a + b, 0)).toBe(0)
     expect(errors).not.toHaveBeenCalled()
+  })
+
+  for (const strict of [false, true]) {
+    it(`a dispatch from a node view's useEffect is applied and re-renders the view${strict ? ' (StrictMode)' : ''}`, () => {
+      let effects = 0
+      const Effectful: ReactNodeView<AtomData> = ({ node, updateData }) => {
+        useEffect(() => {
+          effects++
+          if (node.data.title !== 'from effect') updateData({ title: 'from effect' })
+        }, [node.data.title, updateData])
+        return <span className="atom-view title">{node.data.title}</span>
+      }
+      let editor!: TestEditor
+      function App() {
+        editor = useEditor({
+          plugins,
+          content: doc(el('paragraph', txt('ab')), el('atom', { title: 'hello' })),
+          nodeViews: { atom: Effectful },
+        })
+        return <EditorContent editor={editor} data-testid="content" />
+      }
+      const { getByTestId } = render(strict ? <StrictMode><App /></StrictMode> : <App />)
+      expect((editor.state.doc.children[1] as unknown as { data: AtomData }).data.title).toBe('from effect')
+      expect(getByTestId('content').querySelector('.title')!.textContent).toBe('from effect')
+      // Mount, plus the re-run after the change (and StrictMode's extra mount run).
+      expect(effects).toBe(strict ? 3 : 2)
+      expect(views(getByTestId('content'))).toHaveLength(1)
+      expect(errors).not.toHaveBeenCalled()
+    })
+  }
+
+  it('EditorContent given a different editor unmounts the old one and shows the new one with its views', () => {
+    vi.useFakeTimers()
+    const make = (title: string) =>
+      function Owner({ onEditor }: { onEditor: (e: TestEditor) => void }) {
+        const editor = useEditor({
+          plugins,
+          content: doc(el('paragraph', txt('ab')), el('atom', { title })),
+          nodeViews: { atom: AtomView },
+        })
+        onEditor(editor)
+        return null
+      }
+    const First = make('first')
+    const Second = make('second')
+    let a!: TestEditor
+    let b!: TestEditor
+    // The owners render before `Show`, so both editors exist when it reads them.
+    const Show = ({ use }: { use: 'a' | 'b' }) => <EditorContent editor={use === 'a' ? a : b} data-testid="content" />
+    function App({ use }: { use: 'a' | 'b' }) {
+      return (
+        <>
+          <First onEditor={(e) => (a = e)} />
+          <Second onEditor={(e) => (b = e)} />
+          <Show use={use} />
+        </>
+      )
+    }
+    const { getByTestId, rerender } = render(
+      <StrictMode>
+        <App use="a" />
+      </StrictMode>,
+    )
+    const root = getByTestId('content')
+    expect(a.view?.root).toBe(root)
+    expect(root.querySelector('.title')!.textContent).toBe('first')
+
+    rerender(
+      <StrictMode>
+        <App use="b" />
+      </StrictMode>,
+    )
+    expect(getByTestId('content')).toBe(root)
+    expect(a.view).toBeNull()
+    expect(b.view?.root).toBe(root)
+    expect(views(root)).toHaveLength(1)
+    expect(root.querySelector('.title')!.textContent).toBe('second')
+    // The old editor's views were destroyed with its view: only `b`'s component is mounted.
+    expect([...live.values()].reduce((x, y) => x + y, 0)).toBe(1)
+    act(() => {
+      b.commands.insertText('x')
+    })
+    expect(a.view).toBeNull()
+    expect(root.textContent).toContain('x')
+    expect(errors).not.toHaveBeenCalled()
+    vi.useRealTimers()
   })
 })
 

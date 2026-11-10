@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { mainRange, single } from '../../src/model/selection'
 import type { ElementNode, Node, Point, Selection } from '../../src/model/types'
 import type { Decoration } from '../../src/index'
-import { domToModel, modelToDom } from '../../src/index'
+import { DECO_ATTR, WIDGET_ATTR, domToModel, modelToDom } from '../../src/index'
 import { createTestEditor, doc, txt } from '../../src/testing/index'
 import { testBold, testParagraph } from '../fixtures'
 import { definePlugin } from '../../src/plugin/define'
@@ -164,6 +164,50 @@ describe('widget decorations', () => {
     expect(leaf.querySelector('.w')).toBeNull()
     redecorate(view, [widget(pt([0, 0], 0), 'k1')])
     expect(made).toBe(2)
+  })
+
+  it('a same-key widget keeps its element even when its render would build another one', () => {
+    made = 0
+    const { view } = mount([p('p1', txt('abcd'))], [widget(pt([0, 0], 2), 'k1', 'old')])
+    const w = view.renderer.leafAt([0, 0])!.querySelector('.w')
+    redecorate(view, [widget(pt([0, 0], 1), 'k1', 'new')])
+    const leaf = view.renderer.leafAt([0, 0])!
+    expect(leaf.querySelector('.w')).toBe(w)
+    expect(leaf.textContent).toBe('aoldbcd')
+    expect(made).toBe(1)
+    // A new key gets a new element.
+    redecorate(view, [widget(pt([0, 0], 1), 'k2', 'new')])
+    expect(view.renderer.leafAt([0, 0])!.textContent).toBe('anewbcd')
+    expect(made).toBe(2)
+  })
+
+  it('the attribute names are exported from the core index and match the rendered DOM', () => {
+    expect(WIDGET_ATTR).toBe('data-hte-widget')
+    expect(DECO_ATTR).toBe('data-hte-deco')
+    const { view } = mount(
+      [p('p1', txt('abcd'))],
+      [widget(pt([0, 0], 2), 'k1'), inline(pt([0, 0], 0), pt([0, 0], 1), { class: 'x' })],
+    )
+    const leaf = view.renderer.leafAt([0, 0])!
+    expect(leaf.querySelector(`[${WIDGET_ATTR}]`)!.className).toBe('w')
+    expect(leaf.querySelector(`[${DECO_ATTR}]`)!.textContent).toBe('a')
+  })
+
+  it('a caret at a widget is shown next to it, outside it, and read back at the same point', () => {
+    const { editor, view } = mount([p('p1', txt('abcd'))], [widget(pt([0, 0], 2), 'k1')], caret([0, 0], 2))
+    view.focus()
+    const leaf = view.renderer.leafAt([0, 0])!
+    const w = leaf.querySelector('.w')!
+    const domSel = document.getSelection()!
+    expect(leaf.contains(domSel.anchorNode)).toBe(true)
+    expect(w.contains(domSel.anchorNode)).toBe(false)
+    expect(domToModel(view.renderer, domSel.anchorNode!, domSel.anchorOffset)).toEqual(pt([0, 0], 2))
+    // Either side of the widget is the same model point; typing there goes between the texts.
+    expect(domToModel(view.renderer, leaf, Array.from(leaf.childNodes).indexOf(w))).toEqual(pt([0, 0], 2))
+    expect(domToModel(view.renderer, leaf, Array.from(leaf.childNodes).indexOf(w) + 1)).toEqual(pt([0, 0], 2))
+    editor.commands.insertText('X')
+    expect(editor.getJSON().children[0]).toMatchObject({ children: [{ text: 'abXcd' }] })
+    expect(mainRange(editor.state.selection!).anchor).toEqual(pt([0, 0], 3))
   })
 
   it('renders in an empty text before its break', () => {

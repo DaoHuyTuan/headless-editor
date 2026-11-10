@@ -1,16 +1,18 @@
 import { sanitizeFragment } from './content/sanitize'
 import type { Editor } from './editor'
-import { isNodeSelection } from './model/editable'
+import { isNodeSelection, nearestEditablePoint } from './model/editable'
+import { createId } from './model/id'
 import { mainRange, single } from './model/selection'
 import { comparePoint, toRange } from './model/path'
-import type { Data, Path, Selection, SelectionRange } from './model/types'
+import { cloneJson } from './model/node'
+import type { Data, Json, Path, Selection, SelectionRange } from './model/types'
 import { definePlugin } from './plugin/define'
 import type { Command, InputIntent } from './plugin/types'
 import { insertFragment, type Fragment } from './transaction/fragment'
 import { addMark, removeMark, toggleMark } from './transaction/marks'
-import { FRAGMENT_MIME, parseFromClipboard } from './content/clipboard'
+import { FRAGMENT_MIME, parseFromClipboard, parseRichClipboard } from './content/clipboard'
 import type { Transaction } from './transaction/transaction'
-import { deleteBackward, deleteForward, insertText, selectAll, splitBlock, type DeleteUnit } from './transaction/text'
+import { deleteBackward, deleteForward, deleteRange, insertText, selectAll, splitBlock, type DeleteUnit } from './transaction/text'
 
 /**
  * The text an insert intent carries: `data`, else the plain text in `dataTransfer` (Chromium sends
@@ -61,6 +63,26 @@ function collapseTo(tr: Transaction, range: SelectionRange): void {
   tr.setSelection(single(range)).setStoredMarks(marks)
 }
 
+/**
+ * A deletion intent whose target is away from the main range (spellcheck or autocorrect deleting
+ * elsewhere): the selection collapses to that target and exactly it is deleted. Returns null when the
+ * core's own unit logic applies instead: no target, a collapsed one, one touching or containing the main
+ * range (on desktop the target is the character next to the caret; the core then deletes by its own
+ * units at every range), or a node selection (the model selection is authoritative).
+ */
+function deleteRemoteTarget(tr: Transaction, intent: InputIntent): boolean | null {
+  const sel = tr.selection
+  const range = intent.range
+  if (!sel || !range || isNodeSelection(sel)) return null
+  const target = toRange(range)
+  if (comparePoint(target.start, target.end) === 0) return null
+  const main = toRange(mainRange(sel))
+  const touches = comparePoint(target.start, main.end) <= 0 && comparePoint(target.end, main.start) >= 0
+  if (touches) return null
+  collapseTo(tr, range)
+  return deleteRange(tr)
+}
+
 /** Transfer input types the core inserts itself, and the origin of their tr. */
 const PASTE_INPUT: Record<string, 'paste' | 'input'> = { insertFromPaste: 'paste', insertFromDrop: 'input' }
 
@@ -103,7 +125,14 @@ function insertTransfer(intent: InputIntent, editor: Editor): boolean {
   // elsewhere) then sees every caret's own context. With one range the selection is the target
   // (`info.at` as it always was).
   if (sel && !isNodeSelection(sel) && !at && sel.ranges.length > 1 && intent.inputType === 'insertFromPaste') {
-    const fragments = sel.ranges.map((range) => parseFromClipboard(editor, data, { at: range }))
+    // The json / html flavor is parsed once (it does not depend on the range); each range then gets its
+    // own copy through `transformPasted`. Plain text is read per range: its marks are the range's.
+    const rich = parseRichClipboard(editor, data)
+    const fragments = sel.ranges.map((range) =>
+      rich.length > 0
+        ? editor.transformPasted(cloneJson(rich as unknown as Json) as unknown as Fragment, range)
+        : parseFromClipboard(editor, data, { at: range }),
+    )
     if (fragments.every((f) => f.length === 0)) return true
     const tr = editor.createTransaction()
     tr.meta.origin = PASTE_INPUT[intent.inputType]!
@@ -125,20 +154,38 @@ function insertTransfer(intent: InputIntent, editor: Editor): boolean {
   // drop with no point: to the main range). A paste at the selection goes to every range.
   if (sel && (sel.ranges.length > 1 || isNodeSelection(sel)) && (at || intent.inputType === 'insertFromDrop'))
     collapseTo(tr, at ?? mainRange(sel))
+  if (!sel && !at) caretAtDocEnd(tr)
   if (insertFragment(tr, fragment, at ?? undefined) && tr.ops.length > 0) editor.dispatch(tr)
   return true
+}
+
+/**
+ * Puts a caret at the end of the doc's last editable text, for a paste with no model selection
+ * (nothing to paste into otherwise, and the browser's paste is already prevented); with no editable
+ * text at all, into a new empty default block appended at the end.
+ */
+function caretAtDocEnd(tr: Transaction): void {
+  const count = tr.doc.children.length
+  let point = nearestEditablePoint(tr.doc, tr.registry, [count])
+  if (!point) {
+    tr.insertNode([count], { id: createId(), type: tr.registry.defaultBlock, data: {}, children: [{ text: '', marks: [] }] })
+    point = { path: [count, 0], offset: 0 }
+  }
+  tr.setSelection(single({ anchor: point, focus: point }))
 }
 
 /** Default `beforeinput` handling: inputType → edit on the tr. Returning false leaves the intent unhandled. */
 const INPUT_ACTIONS: Record<string, (tr: Transaction, intent: InputIntent) => boolean> = {
   insertText: insertIntentText,
   insertReplacementText: insertIntentText,
-  deleteContentBackward: (tr) => deleteBackward(tr, 'character'),
-  deleteWordBackward: (tr) => deleteBackward(tr, 'word'),
-  deleteSoftLineBackward: (tr) => deleteBackward(tr, 'line'),
-  deleteHardLineBackward: (tr) => deleteBackward(tr, 'line'),
-  deleteContentForward: (tr) => deleteForward(tr, 'character'),
-  deleteWordForward: (tr) => deleteForward(tr, 'word'),
+  deleteContentBackward: (tr, intent) => deleteRemoteTarget(tr, intent) ?? deleteBackward(tr, 'character'),
+  deleteWordBackward: (tr, intent) => deleteRemoteTarget(tr, intent) ?? deleteBackward(tr, 'word'),
+  deleteSoftLineBackward: (tr, intent) => deleteRemoteTarget(tr, intent) ?? deleteBackward(tr, 'line'),
+  deleteHardLineBackward: (tr, intent) => deleteRemoteTarget(tr, intent) ?? deleteBackward(tr, 'line'),
+  deleteContentForward: (tr, intent) => deleteRemoteTarget(tr, intent) ?? deleteForward(tr, 'character'),
+  deleteWordForward: (tr, intent) => deleteRemoteTarget(tr, intent) ?? deleteForward(tr, 'word'),
+  deleteSoftLineForward: (tr, intent) => deleteRemoteTarget(tr, intent) ?? deleteForward(tr, 'line'),
+  deleteHardLineForward: (tr, intent) => deleteRemoteTarget(tr, intent) ?? deleteForward(tr, 'line'),
   insertParagraph: (tr) => splitBlock(tr),
   insertLineBreak: (tr) => splitBlock(tr),
 }

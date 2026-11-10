@@ -11314,8 +11314,7 @@
        "type": "chip",
        "data": {
         "label": "q"
-       },
-       "children": []
+       }
       }
      },
      {
@@ -11371,8 +11370,7 @@
        "type": "chip",
        "data": {
         "label": "q"
-       },
-       "children": []
+       }
       },
       {
        "text": "d",

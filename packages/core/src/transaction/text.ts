@@ -1,9 +1,9 @@
 import { createId } from '../model/id'
 import { editableTextEntries, isNodeSelection, isOpaque, nodeSelection } from '../model/editable'
 import { getNode, isElement, isText, sameMarkSet } from '../model/node'
-import { comparePath, comparePoint, isAncestorPath, nextPath, parentPath, pointEquals, toRange } from '../model/path'
+import { comparePath, comparePoint, isAncestorPath, nextPath, parentPath, pathEquals, pointEquals, toRange } from '../model/path'
 import { isNodeRange, rangeEquals, single } from '../model/selection'
-import type { ElementNode, Mark, Node, Path, Point, Range, Selection, SelectionRange, TextNode } from '../model/types'
+import type { DeepReadonly, ElementNode, Mark, Node, Path, Point, Range, Selection, SelectionRange, TextNode } from '../model/types'
 import { marksAtTr, marksOfRange } from './marks'
 import { currentRange, flagSwallowed, forEachRange, inForEachRange, mapSince, setCurrentRange } from './ranges'
 import type { Transaction } from './transaction'
@@ -17,10 +17,6 @@ import type { Transaction } from './transaction'
  */
 
 export type DeleteUnit = 'character' | 'word' | 'line'
-
-function pathEquals(a: Path, b: Path): boolean {
-  return a.length === b.length && a.every((v, i) => v === b[i])
-}
 
 /** Orders the points: callers may pass a backward selection or an unordered range. */
 function asRange(at: SelectionRange | Range): Range {
@@ -126,7 +122,8 @@ export function runStep(
 function textAt(tr: Transaction, path: Path): TextNode {
   const n = getNode(tr.doc, path)
   if (!isText(n)) throw new Error(`Expected a text node at [${path}]`)
-  return n
+  // The doc's own node, typed as op payloads are (ops never mutate it).
+  return n as TextNode
 }
 
 /** Path of the nearest block-level element containing `path` (unknown element types count as blocks). */
@@ -168,7 +165,7 @@ export function insertionMarks(tr: Transaction, point: Point): Mark[] {
  * inside inline content (the parent `parentType` is an inline element or a `content: 'inline'` block).
  * It counts as one character of its inline content: no caret goes inside, edits remove it whole.
  */
-export function isInlineOpaque(tr: Transaction, el: ElementNode, parentType: string): boolean {
+export function isInlineOpaque(tr: Transaction, el: DeepReadonly<ElementNode>, parentType: string): boolean {
   const spec = tr.registry.node(el.type)
   if (spec) return spec.kind === 'inline' && spec.atom === true
   const parent = tr.registry.node(parentType)
@@ -178,7 +175,7 @@ export function isInlineOpaque(tr: Transaction, el: ElementNode, parentType: str
 /** The inline opaque elements whose paths lie strictly between `start` and `end` (text paths), in document order. */
 function inlineOpaqueBetween(tr: Transaction, start: Point, end: Point): Path[] {
   const out: Path[] = []
-  const walk = (nodes: Node[], base: Path, parentType: string) => {
+  const walk = (nodes: readonly DeepReadonly<Node>[], base: Path, parentType: string) => {
     for (let i = 0; i < nodes.length; i++) {
       const n = nodes[i]!
       const path = [...base, i]
@@ -255,7 +252,7 @@ function outOfInlineOpaque(tr: Transaction, point: Point, side: 'before' | 'afte
   return point
 }
 
-function getNodeOrNull(tr: Transaction, path: Path): Node | null {
+function getNodeOrNull(tr: Transaction, path: Path): DeepReadonly<Node> | null {
   try {
     return getNode(tr.doc, path)
   } catch {
@@ -571,9 +568,27 @@ function segments(text: string, granularity: 'grapheme' | 'word'): Intl.SegmentD
   return [...s.segment(text)]
 }
 
+/**
+ * Characters segmented on each side of the caret: Backspace/Delete look at a window, not the whole
+ * block (whose text can be very long). A cluster or word reaching the window's edge falls back to
+ * the whole text, so the result is always the one segmenting the whole text gives.
+ */
+const SEGMENT_WINDOW = 256
+
 /** Block offset the deletion extends to from `offset`, in the given direction. */
 function targetOffset(text: string, offset: number, unit: DeleteUnit, backward: boolean): number {
   if (unit === 'line') return backward ? 0 : text.length
+  const from = Math.max(0, offset - SEGMENT_WINDOW)
+  const to = Math.min(text.length, offset + SEGMENT_WINDOW)
+  if (from === 0 && to === text.length) return targetIn(text, offset, unit, backward)
+  const target = from + targetIn(text.slice(from, to), offset - from, unit, backward)
+  // At a window edge that is not the text's: the cluster or word may go on past it.
+  const atCut = (backward && target === from && from > 0) || (!backward && target === to && to < text.length)
+  return atCut ? targetIn(text, offset, unit, backward) : target
+}
+
+/** `targetOffset` within `text` (segmented whole). */
+function targetIn(text: string, offset: number, unit: Exclude<DeleteUnit, 'line'>, backward: boolean): number {
   const segs = segments(text, unit === 'character' ? 'grapheme' : 'word')
   if (backward) {
     let target = offset
@@ -633,12 +648,12 @@ export interface Run extends BlockText {
 export function runAt(tr: Transaction, blockPath: Path, point: Point): Run {
   const runs: Run[] = []
   let current: Run = { texts: [], text: '', before: null, after: null }
-  const walk = (nodes: Node[], base: Path, parentType: string) => {
+  const walk = (nodes: readonly DeepReadonly<Node>[], base: Path, parentType: string) => {
     for (let i = 0; i < nodes.length; i++) {
       const n = nodes[i]!
       const path = [...base, i]
       if (isText(n)) {
-        current.texts.push([n, path])
+        current.texts.push([n as TextNode, path])
         current.text += n.text
       } else if (isInlineOpaque(tr, n, parentType)) {
         current.after = path
@@ -686,7 +701,10 @@ function deleteDirectionStep(
   const point = range.anchor
   const blockPath = blockPathOf(tr, point.path)
   // Characters and words stay within the run: an inline atom next to the caret is removed whole
-  // (its neighbour texts keep the caret: the range is mapped through the removal).
+  // (its neighbour texts keep the caret: the range is mapped through the removal). A word deletion
+  // removes it too, alone: an atom is one unit with no word inside to stop at (it is not selected
+  // first like a block atom, which only Backspace/Delete at a block edge reaches), and the words
+  // beyond it are left for the next press, as browsers treat an inline image.
   if (unit !== 'line') {
     const run = runAt(tr, blockPath, point)
     const runOffset = toBlockOffset(run, point)

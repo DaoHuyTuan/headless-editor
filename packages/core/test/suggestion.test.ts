@@ -10,9 +10,14 @@ const p = (...children: (Node | string)[]): ElementNode =>
 const chip = definePlugin({ name: 'chip', node: { kind: 'inline', atom: true } })
 const code = definePlugin({ name: 'code', node: { kind: 'block', content: 'text' } })
 const c = (): ElementNode => ({ id: 'c', type: 'chip', data: {}, children: [] })
+const link = definePlugin({ name: 'link', node: { kind: 'inline' } })
+const a = (...children: string[]): ElementNode => el('link', ...children.map((t) => txt(t)))
 
+function editor(content: Doc, selection: Selection) {
+  return createTestEditor({ plugins: [testParagraph, testBold, chip, code, link], doc: content, selection })
+}
 function state(content: Doc, selection: Selection) {
-  return createTestEditor({ plugins: [testParagraph, testBold, chip, code], doc: content, selection }).state
+  return editor(content, selection).state
 }
 
 describe('findTrigger', () => {
@@ -63,5 +68,46 @@ describe('findTrigger', () => {
 
   it('null without a selection or with the caret before the trigger', () => {
     expect(findTrigger(state(doc(p('hi @jo')), sel([0, 0], 2)), { char: '@' })).toBeNull()
+  })
+})
+
+describe("findTrigger with the registry (the input rules' run)", () => {
+  const find = (content: Doc, selection: Selection, char = '@') => {
+    const ed = editor(content, selection)
+    return findTrigger(ed.state, { char, registry: ed.registry })
+  }
+
+  it('a trigger glued to text before a link is not at a line start', () => {
+    expect(find(doc(p('abc', a('@x'))), sel([0, 1, 0], 2))).toBeNull()
+  })
+
+  it('a trigger first in a link after a space is found, its range starting in the link', () => {
+    expect(find(doc(p('abc ', a('@x'))), sel([0, 1, 0], 2))).toEqual({
+      range: { start: { path: [0, 1, 0], offset: 0 }, end: { path: [0, 1, 0], offset: 2 } },
+      query: 'x',
+    })
+  })
+
+  it('the query runs into a link, as the text before the caret of an input rule does', () => {
+    expect(find(doc(p('hi @', a('jo'))), sel([0, 1, 0], 2))).toEqual({
+      range: { start: { path: [0, 0], offset: 3 }, end: { path: [0, 1, 0], offset: 2 } },
+      query: 'jo',
+    })
+  })
+
+  it('a link first in its block is at a line start', () => {
+    expect(find(doc(p(a('@x'))), sel([0, 0, 0], 2))?.query).toBe('x')
+  })
+
+  it('still stops at an inline atom', () => {
+    expect(find(doc(p('@a', c(), 'b')), sel([0, 2], 1))).toBeNull()
+    expect(find(doc(p('x', c(), '@b')), sel([0, 2], 2))).toBeNull()
+    expect(find(doc(p('x', c(), ' @b')), sel([0, 2], 3))?.query).toBe('b')
+  })
+
+  it('same results as without the registry in a plain paragraph and a code block', () => {
+    expect(find(doc(p('hi @jo')), sel([0, 0], 6))?.query).toBe('jo')
+    expect(find(doc(p('mail@x')), sel([0, 0], 6))).toBeNull()
+    expect(find(doc(el('code', txt('x\n@ab'))), sel([0, 0], 5))?.query).toBe('ab')
   })
 })

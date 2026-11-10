@@ -1,15 +1,24 @@
 import { isNodeSelection } from './model/editable'
 import { getNode, isText } from './model/node'
-import { parentPath, pointEquals } from './model/path'
+import { comparePath, parentPath, pointEquals } from './model/path'
 import { mainRange } from './model/selection'
 import type { Node, Path, Point, Range } from './model/types'
+import type { Registry } from './plugin/registry'
 import type { EditorState } from './state'
+import { blockPathOf, runAt, toBlockOffset, type Run } from './transaction/text'
+import { Transaction } from './transaction/transaction'
 
 export interface FindTriggerOptions {
   /** The trigger, e.g. `'@'`. */
   char: string
   /** Whether the query may contain spaces. Default false: a space between trigger and caret means no match. A newline always does. */
   allowSpaces?: boolean
+  /**
+   * The editor's registry (`editor.registry`). With it, the text searched is the one input rules
+   * match against (`textBeforeCaret`): the caret's run in its block, across inline elements such as
+   * links. Without it, only the sibling texts of the caret's text node are searched (see `findTrigger`).
+   */
+  registry?: Registry
 }
 
 export interface TriggerMatch {
@@ -22,13 +31,39 @@ export interface TriggerMatch {
 const isSpace = (ch: string) => /\s/.test(ch)
 
 /**
- * Finds `char` before a collapsed caret within the caret's text run: the adjacent sibling texts of
- * its text node (any sibling element, e.g. an inline atom, ends the run). The trigger must be at the
- * start of a line (the run starts its parent's content, or a `\n` precedes it) or right after
- * whitespace. The nearest trigger before the caret decides: when it is not at such a position, null.
- * Model text only; the trigger is found in any block (plugins decide where it applies).
+ * The text before `caret` that input rules and `findTrigger` (with a registry) see: the text of the
+ * caret's run (the block's texts, model text only, across inline elements such as links; an inline
+ * atom or an unknown inline element ends a run) from its start to the caret. Null when the caret is
+ * in no block or no run.
+ * @internal
  */
-export function findTrigger(state: EditorState, { char, allowSpaces = false }: FindTriggerOptions): TriggerMatch | null {
+export function textBeforeCaret(tr: Transaction, caret: Point): { run: Run; text: string } | null {
+  try {
+    const run = runAt(tr, blockPathOf(tr, caret.path), caret)
+    return { run, text: run.text.slice(0, toBlockOffset(run, caret)) }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Finds `char` before a collapsed caret (the main range; the other ranges are ignored on purpose).
+ *
+ * The text searched: with `registry`, the caret's run as input rules see it (`textBeforeCaret`): the
+ * block's texts across inline elements such as links, up to an inline atom. Without it (kept for
+ * callers that have no registry), only the adjacent sibling texts of the caret's text node (any
+ * sibling element ends the run, and the start of an inline element's content counts as a line start:
+ * pass the registry to avoid that false positive).
+ *
+ * The trigger must be at the start of a line (the run starts its block's content, or a `\n` precedes
+ * it) or right after whitespace. The nearest trigger before the caret decides: when it is not at such
+ * a position, null. The range starts in the text holding the trigger. Model text only; the trigger
+ * is found in any block (plugins decide where it applies).
+ */
+export function findTrigger(
+  state: EditorState,
+  { char, allowSpaces = false, registry }: FindTriggerOptions,
+): TriggerMatch | null {
   const sel = state.selection
   if (!char || !sel || isNodeSelection(sel)) return null
   const range = mainRange(sel)
@@ -45,18 +80,33 @@ export function findTrigger(state: EditorState, { char, allowSpaces = false }: F
   const index = caret.path[caret.path.length - 1]!
   const node = siblings[index]
   if (!node || !isText(node) || caret.offset > node.text.length) return null
-  let first = index
-  while (first > 0 && isText(siblings[first - 1]!)) first--
 
-  const base = parentPath(caret.path)
-  const parts: { path: Path; text: string }[] = []
-  for (let i = first; i < index; i++) parts.push({ path: [...base, i], text: (siblings[i] as { text: string }).text })
-  parts.push({ path: caret.path, text: node.text.slice(0, caret.offset) })
+  let parts: { path: Path; text: string }[]
+  let runStartsLine: boolean
+  if (registry) {
+    const found = textBeforeCaret(new Transaction(state, registry), caret)
+    if (!found) return null
+    parts = []
+    for (const [t, path] of found.run.texts) {
+      const atCaret = comparePath(path, caret.path) === 0
+      parts.push({ path, text: atCaret ? t.text.slice(0, caret.offset) : t.text })
+      if (atCaret) break
+    }
+    runStartsLine = found.run.before === null
+  } else {
+    let first = index
+    while (first > 0 && isText(siblings[first - 1]!)) first--
+    const base = parentPath(caret.path)
+    parts = []
+    for (let i = first; i < index; i++) parts.push({ path: [...base, i], text: (siblings[i] as { text: string }).text })
+    parts.push({ path: caret.path, text: node.text.slice(0, caret.offset) })
+    runStartsLine = first === 0
+  }
   const before = parts.map((p) => p.text).join('')
 
   for (let i = before.length - char.length; i >= 0; i--) {
     if (before.startsWith(char, i)) {
-      const atLineStart = i === 0 ? first === 0 : isSpace(before[i - 1]!)
+      const atLineStart = i === 0 ? runStartsLine : isSpace(before[i - 1]!)
       if (!atLineStart) return null
       return { range: { start: pointAt(parts, i), end: caret }, query: before.slice(i + char.length) }
     }

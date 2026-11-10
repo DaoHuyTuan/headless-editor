@@ -151,7 +151,7 @@ There is no settings layer yet. The document view's settings are unknown, while 
 4. **Precedence:** plugin options, then editor settings, then shared defaults.
 5. **Where it will live:** the model layer, next to the plugin registry. Plugins read it through `ctx.settings`; `editor.setSettings(partial)` emits an event, as `setPluginOptions` does. It must not depend on the DOM, so the code view can use it.
 
-Likely candidates once the mechanism exists: i18n strings (for example the hard-coded `aria-label="Language"` in the code block), `editable`/`readOnly`, the allowed URL schemes now inside image's `safeSrc`, history `groupDelay`, and the `data-hte-*` prefix.
+Likely candidates once the mechanism exists: i18n strings (for example the code block's `languageLabel` option, default `"Language"`), `editable`/`readOnly`, the allowed URL schemes now inside image's `safeSrc`, history `groupDelay`, and the `data-hte-*` prefix.
 
 ## 7. Open questions
 

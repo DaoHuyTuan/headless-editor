@@ -310,3 +310,114 @@ describe('composition and newline splitting (normalize rule 11)', () => {
     expect(editor.getHTML()).toBe('<p>ax</p><p>yb</p>')
   })
 })
+
+describe('composition in a zero-width leaf (5.15)', () => {
+  const chip = definePlugin({ name: 'chip', node: { kind: 'inline', atom: true } })
+
+  it('drops only the placeholder, keeping a real U+200B the IME wrote', () => {
+    const chipNode: ElementNode = { id: 'c1', type: 'chip', data: {} }
+    const editor = createTestEditor({
+      plugins: [testParagraph, chip],
+      doc: doc(p('p1', txt('x'), chipNode, txt(''))),
+      selection: caret([0, 2], 0),
+    })
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    editor.mount(root)
+    const view = editor.view!
+    view.focus()
+    expect(view.renderer.leafAt([0, 2])!.hasAttribute('data-hte-zw')).toBe(true)
+    fire(root, 'compositionstart')
+    // The placeholder, then the composed text with a genuine zero-width space in it.
+    imeWrite(view, [0, 2], '\u200ba\u200bb')
+    fire(root, 'compositionend')
+    expect((editor.state.doc.children[0]!.children![2] as TextNode).text).toBe('a\u200bb')
+  })
+})
+
+describe('zero-width leaves', () => {
+  const chip = definePlugin({ name: 'chip', node: { kind: 'inline', atom: true } })
+  const chipNode = (id: string): ElementNode => ({ id, type: 'chip', data: {} })
+
+  function mountChips(children: Node[], selection: Selection) {
+    const editor = createTestEditor({ plugins: [testParagraph, chip], doc: doc(p('p1', ...children)), selection })
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    editor.mount(root)
+    editor.view!.focus()
+    return { editor, root, view: editor.view! }
+  }
+  const textAt = (editor: ReturnType<typeof mountChips>['editor'], i: number) =>
+    ((editor.state.doc.children[0] as ElementNode).children![i] as TextNode).text
+
+  it('typing into a zero-width leaf inserts the text without the placeholder and shows it as a plain leaf', () => {
+    const { editor, root, view } = mountChips([txt('x'), chipNode('c1'), txt('')], caret([0, 2], 0))
+    expect(view.renderer.leafAt([0, 2])!.hasAttribute('data-hte-zw')).toBe(true)
+    root.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, cancelable: true, inputType: 'insertText', data: 'a' }))
+    expect(textAt(editor, 2)).toBe('a')
+    expect(editor.state.selection).toEqual(caret([0, 2], 1))
+    const leaf = view.renderer.leafAt([0, 2])!
+    expect(leaf.hasAttribute('data-hte-zw')).toBe(false)
+    expect(leaf.textContent).toBe('a')
+  })
+
+  it('a DOM caret in a zero-width leaf, on either side of its placeholder, is offset 0', () => {
+    const { editor, root, view } = mountChips([txt('x'), chipNode('c1'), txt('')], caret([0, 0], 1))
+    const leaf = view.renderer.leafAt([0, 2])!
+    const text = leaf.ownerDocument.createTreeWalker(leaf, 4).nextNode() as Text
+    expect(text.data).toBe('\u200b')
+    // The browser left the caret after the placeholder: typing still goes to offset 0.
+    document.getSelection()!.setBaseAndExtent(text, 1, text, 1)
+    root.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, cancelable: true, inputType: 'insertText', data: 'a' }))
+    expect(textAt(editor, 2)).toBe('a')
+    expect(textAt(editor, 0)).toBe('x')
+  })
+
+  it('IME before a chip: a composition in the leading zero-width leaf commits there, the chip stays', () => {
+    const { editor, root, view } = mountChips([txt(''), chipNode('c1'), txt('y')], caret([0, 0], 0))
+    expect(view.renderer.leafAt([0, 0])!.hasAttribute('data-hte-zw')).toBe(true)
+    fire(root, 'compositionstart')
+    expect(view.composition?.leaf).toBe(view.renderer.leafAt([0, 0]))
+    imeWrite(view, [0, 0], '\u200b\u00ea')
+    fire(root, 'compositionend')
+    expect(textAt(editor, 0)).toBe('\u00ea')
+    expect((editor.state.doc.children[0] as ElementNode).children![1]).toMatchObject({ type: 'chip' })
+    expect(textAt(editor, 2)).toBe('y')
+    expect(editor.state.selection).toEqual(caret([0, 0], 1))
+    expect(view.renderer.leafAt([0, 0])!.hasAttribute('data-hte-zw')).toBe(false)
+    expect(view.renderer.leafAt([0, 0])!.textContent).toBe('\u00ea')
+  })
+
+  it('IME in the text before a chip leaves the zero-width leaf after it alone', () => {
+    const { editor, root, view } = mountChips([txt('ab'), chipNode('c1'), txt('')], caret([0, 0], 2))
+    const zw = view.renderer.leafAt([0, 2])!
+    fire(root, 'compositionstart')
+    imeWrite(view, [0, 0], 'ab\u00ea')
+    fire(root, 'compositionend')
+    expect(textAt(editor, 0)).toBe('ab\u00ea')
+    expect(textAt(editor, 2)).toBe('')
+    expect(view.renderer.leafAt([0, 2])).toBe(zw)
+    expect(zw.hasAttribute('data-hte-zw')).toBe(true)
+  })
+
+  it('removing the last chip turns the zero-width leaves into one empty leaf with a <br>', () => {
+    const { editor, view } = mountChips([txt(''), chipNode('c1'), txt('')], caret([0, 2], 0))
+    expect(view.renderer.leafAt([0, 0])!.hasAttribute('data-hte-zw')).toBe(true)
+    expect(view.renderer.leafAt([0, 2])!.hasAttribute('data-hte-zw')).toBe(true)
+    editor.dispatch(editor.createTransaction().removeNode([0, 1]))
+    expect((editor.state.doc.children[0] as ElementNode).children).toEqual([expect.objectContaining({ text: '' })])
+    const leaf = view.renderer.leafAt([0, 0])!
+    expect(leaf.hasAttribute('data-hte-zw')).toBe(false)
+    expect(leaf.innerHTML).toBe('<br data-hte-break="">')
+    expect(leaf.textContent).not.toContain('\u200b')
+    expect(view.renderer.leafAt([0, 1])).toBeNull()
+  })
+
+  it('a Backspace that removes the last chip leaves the caret in the <br> leaf', () => {
+    const { editor, root, view } = mountChips([txt(''), chipNode('c1'), txt('')], caret([0, 2], 0))
+    root.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, cancelable: true, inputType: 'deleteContentBackward' }))
+    expect((editor.state.doc.children[0] as ElementNode).children).toEqual([expect.objectContaining({ text: '' })])
+    expect(editor.state.selection).toEqual(caret([0, 0], 0))
+    expect(view.renderer.leafAt([0, 0])!.innerHTML).toBe('<br data-hte-break="">')
+  })
+})

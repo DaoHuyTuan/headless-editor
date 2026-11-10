@@ -71,6 +71,8 @@ test('Mod+b then typing makes the new text bold', async ({ page }) => {
 })
 
 test('Mod+z undoes and Shift+Mod+z redoes', async ({ page }) => {
+  // One undo step for the whole word, however slowly the keys arrive (grouping is not under test here).
+  await page.evaluate(() => window.editor.setPluginOptions('history', { groupDelay: 60_000 }))
   await page.keyboard.type('Hello')
   await page.keyboard.press('ControlOrMeta+z')
   expect(await getText(page)).toBe('')

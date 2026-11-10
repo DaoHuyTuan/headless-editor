@@ -148,6 +148,29 @@ describe('domToModel', () => {
     expect(domToModel(ctx.renderer, ctx.renderer.elementAt([0])!, 0)).toEqual({ path: [1, 0], offset: 0 })
   })
 
+  it('maps positions in a non-editable block to the boundary before it, or after it past its middle (5.7)', () => {
+    const figure = definePlugin({
+      name: 'figure',
+      node: { kind: 'block', atom: true },
+      renderHTML: () => ['figure', { contenteditable: 'false' }, ['span', 'A'], ['span', 'B']],
+    })
+    const editor = createTestEditor({ plugins: [testParagraph, figure] })
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    const renderer = new Renderer(root, editor)
+    renderer.render(doc(p('p1', 'ab'), node('f', 'figure'), p('p2', 'cd')))
+    const fig = renderer.elementAt([1])!
+    const [a, b] = Array.from(fig.querySelectorAll('span')).map((s) => s.firstChild!)
+    const before = { path: [0, 0], offset: 2 }
+    const after = { path: [2, 0], offset: 0 }
+    expect(domToModel(renderer, fig, 0)).toEqual(before)
+    expect(domToModel(renderer, fig, 1)).toEqual(before)
+    expect(domToModel(renderer, fig, 2)).toEqual(after)
+    expect(domToModel(renderer, a!, 1)).toEqual(before)
+    expect(domToModel(renderer, b!, 0)).toEqual(before)
+    expect(domToModel(renderer, b!, 1)).toEqual(after)
+  })
+
   it('returns null when the doc has no leaves', () => {
     ctx.renderer.render(doc(node('u', 'mystery')))
     expect(domToModel(ctx.renderer, ctx.root, 0)).toBeNull()
@@ -194,6 +217,40 @@ describe('read/writeDomSelection', () => {
     const spy = vi.spyOn(domSel(), 'setBaseAndExtent')
     writeDomSelection(ctx.renderer, sel, domSel())
     expect(spy).not.toHaveBeenCalled()
+  })
+
+  it('moves a collapsed DOM caret parked at a block element child index into the leaf (5.14)', () => {
+    ctx.renderer.render(doc(p('p1', txt('a'), txt('b', 'bold'))))
+    const para = ctx.renderer.elementAt([0])!
+    domSel().collapse(para, 1)
+    const sel: Selection = single({ anchor: { path: [0, 1], offset: 0 }, focus: { path: [0, 1], offset: 0 } })
+    expect(readDomSelection(ctx.renderer, domSel())).toEqual(sel)
+    writeDomSelection(ctx.renderer, sel, domSel())
+    expect(ctx.renderer.leafAt([0, 1])!.contains(domSel().anchorNode)).toBe(true)
+    expect(readDomSelection(ctx.renderer, domSel())).toEqual(sel)
+  })
+
+  it('moves a collapsed DOM caret in a static spec text into the leaf it maps to (5.7)', () => {
+    ctx.renderer.render(doc(p('p0', 'x'), node('c', 'callout', p('p1', 'ab'))))
+    const footerText = ctx.renderer.elementAt([1])!.querySelector('footer')!.firstChild!
+    domSel().collapse(footerText, 1)
+    const sel: Selection = single({ anchor: { path: [1, 0, 0], offset: 2 }, focus: { path: [1, 0, 0], offset: 2 } })
+    expect(readDomSelection(ctx.renderer, domSel())).toEqual(sel)
+    writeDomSelection(ctx.renderer, sel, domSel())
+    expect(ctx.renderer.leafAt([1, 0, 0])!.contains(domSel().anchorNode)).toBe(true)
+  })
+
+  it('keeps a non-collapsed DOM selection ending at a block boundary that maps to the model (mid-drag)', () => {
+    ctx.renderer.render(doc(p('p1', 'ab'), p('p2', 'cd')))
+    const leaf = textIn(ctx.renderer.leafAt([0, 0])!)
+    const para2 = ctx.renderer.elementAt([1])!
+    domSel().setBaseAndExtent(leaf, 1, para2, 0)
+    const sel: Selection = single({ anchor: { path: [0, 0], offset: 1 }, focus: { path: [1, 0], offset: 0 } })
+    expect(readDomSelection(ctx.renderer, domSel())).toEqual(sel)
+    const spy = vi.spyOn(domSel(), 'setBaseAndExtent')
+    writeDomSelection(ctx.renderer, sel, domSel())
+    expect(spy).not.toHaveBeenCalled()
+    spy.mockRestore()
   })
 
   it('maps the caret after a trailing newline to the end of the text, before the trailing break', () => {
@@ -300,7 +357,7 @@ describe('inline atoms: DOM <-> model mapping', () => {
     for (const path of [[0, 0], [0, 2]]) {
       const leaf = renderer.leafAt(path)!
       expect(leaf.querySelector('br')).toBeNull()
-      expect(leaf.textContent).toBe('​')
+      expect(leaf.textContent).toBe('\u200b')
     }
   })
 
@@ -322,6 +379,16 @@ describe('inline atoms: DOM <-> model mapping', () => {
     const { renderer } = setupChip(txt('a'), node('c1', 'chip'), txt(''))
     const t = textIn(renderer.leafAt([0, 2])!)
     expect(domToModel(renderer, t, 1)).toEqual({ path: [0, 2], offset: 0 })
+  })
+
+  it('counts only the placeholder of a zero-width leaf as not text, not a real U+200B typed beside it (5.15)', () => {
+    const { renderer } = setupChip(txt('a'), node('c1', 'chip'), txt(''))
+    const t = textIn(renderer.leafAt([0, 2])!)
+    // The user typed a real zero-width space next to the placeholder before the next render.
+    t.data = '\u200b\u200b'
+    expect(domToModel(renderer, t, 2)).toEqual({ path: [0, 2], offset: 1 })
+    expect(domToModel(renderer, t, 1)).toEqual({ path: [0, 2], offset: 0 })
+    expect(modelToDom(renderer, { path: [0, 2], offset: 1 })).toEqual({ node: t, offset: 2 })
   })
 
   it('maps positions inside the chip to the boundary before it, or after it past its middle', () => {

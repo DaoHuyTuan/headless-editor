@@ -6,10 +6,10 @@ import { serializeHTML } from './html/serialize'
 import { runInputRules } from './input-rules'
 import { coerceDoc } from './load'
 import { firstEditableCaret, isEditableRange, rehomeRanges } from './model/editable'
-import { deepEqualJson, getNode, isElement } from './model/node'
+import { cloneJson, deepEqualJson, getNode, isElement } from './model/node'
 import { comparePoint } from './model/path'
 import { mainRange, selectionEquals } from './model/selection'
-import type { Data, Doc, ElementNode, Point, Selection, SelectionRange } from './model/types'
+import type { Data, DeepReadonly, Doc, ElementNode, Json, Point, Selection, SelectionRange } from './model/types'
 import { normalize } from './normalize'
 import { Registry } from './plugin/registry'
 import type {
@@ -45,6 +45,21 @@ export interface EditorOptions<P extends readonly AnyPlugin[] = readonly AnyPlug
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   nodeViews?: Record<string, NodeViewFactory<any, any, any, any>>
+  /**
+   * Event listeners registered at the start of construction, before any plugin hook runs: unlike
+   * `on`, they also see what plugins' `onCreate` hooks dispatch (or set with `setPluginOptions`).
+   * Afterwards they behave like listeners added with `on` (registered first, so called first), and
+   * `destroy()` removes them. There is no unsubscribe: use `on` for a listener that may go earlier.
+   */
+  listeners?: EditorListeners
+}
+
+/** `EditorOptions.listeners`: one listener per event. */
+export interface EditorListeners {
+  transaction?: (e: EditorEvent) => void
+  update?: (e: EditorEvent) => void
+  selectionUpdate?: (e: EditorEvent) => void
+  options?: (e: OptionsEvent) => void
 }
 
 export type EditorEventName = 'transaction' | 'update' | 'selectionUpdate'
@@ -104,7 +119,8 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
   private _view: EditorView | null = null
 
   private _state: EditorState
-  private readonly dev: boolean
+  /** The `dev` option (default false): bugs throw instead of being dropped, and dev-only warnings are on. */
+  readonly dev: boolean
   private readonly platform: Platform
   private readonly pluginOptions = new Map<string, Record<string, unknown>>()
   private readonly contexts = new Map<string, PluginContext<any, any, any, any>>()
@@ -123,6 +139,10 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
   constructor(options: EditorOptions<P>) {
     this.dev = options.dev ?? false
     this.platform = options.platform ?? detectPlatform()
+    // Before any plugin code runs, so `onCreate` dispatches are reported.
+    for (const [event, fn] of Object.entries(options.listeners ?? {})) {
+      if (fn) this.on(event as EditorEventName, fn as (e: EditorEvent) => void)
+    }
     const plugins: AnyPlugin[] = [corePlugin, ...(options.history === false ? [] : [historyPlugin]), ...options.plugins]
     this.registry = new Registry(plugins)
     for (const [type, factory] of Object.entries(options.nodeViews ?? {})) {
@@ -351,12 +371,20 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     throwFirst(this.runHooks((plugin, ctx) => plugin.spec.onBlur?.(ctx, event)))
   }
 
-  /** Every plugin's `decorations` for `state`, by priority (what the view draws on its next render). */
+  /**
+   * Every plugin's `decorations` for `state`, by priority (what the view draws on its next render).
+   * A hook that throws is reported with `console.error` and contributes nothing: the view still renders.
+   */
   getDecorations(state: EditorState): Decoration[] {
     const out: Decoration[] = []
     for (const plugin of this.registry.plugins) {
       const hook = plugin.spec.decorations
-      if (hook) out.push(...hook(state, this.getContext(plugin)))
+      if (!hook) continue
+      try {
+        out.push(...hook(state, this.getContext(plugin)))
+      } catch (error) {
+        console.error(`[hte] The decorations hook of "${plugin.name}" threw; its decorations are skipped:`, error)
+      }
     }
     return out
   }
@@ -365,12 +393,21 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
    * Runs each plugin's `transformPasted` on `fragment`, by priority, with `at`: where the fragment
    * will be inserted (a drop's drop point, or one range of a multi-range paste, which calls this once
    * per range); omitted or null, at the selection (read `at ?? mainRange(state.selection)`).
+   *
+   * A transform that throws is skipped (the fragment goes on as it was before it) and its error is
+   * reported with `console.error`: by then the browser's paste is already prevented, so a throw must
+   * not lose the paste. The other transforms still run.
    */
   transformPasted(fragment: Fragment, at: SelectionRange | null = null): Fragment {
     const info = { at }
     for (const plugin of this.registry.plugins) {
       const transform = plugin.spec.transformPasted
-      if (transform) fragment = transform(fragment, this.getContext(plugin), info)
+      if (!transform) continue
+      try {
+        fragment = transform(fragment, this.getContext(plugin), info)
+      } catch (error) {
+        console.error(`@hte/core: transformPasted of plugin "${plugin.name}" threw; it was skipped`, error)
+      }
     }
     return fragment
   }
@@ -393,9 +430,13 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     }
   }
 
-  /** A deep copy of the document: changing it never affects the editor. */
+  /**
+   * A deep copy of the document: changing it never affects the editor. It costs O(doc); to serialize
+   * (autosave), `JSON.stringify(editor.state.doc)` needs no copy: the state's doc is never mutated.
+   */
   getJSON(): Doc {
-    return structuredClone(this._state.doc) as Doc
+    // A plain JSON walk: several times faster than `structuredClone` on the doc's small objects.
+    return cloneJson(this._state.doc as unknown as Json) as unknown as Doc
   }
 
   /** Serializes the document with the plugins' current options (no DOM needed). */
@@ -423,7 +464,7 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
       const block = this.blockAt(start.path)
       if (!block || block.type !== type) return false
       if (!data) return true
-      return Object.entries(data).every(([k, v]) => v === undefined || (k in block.data && deepEqualJson(block.data[k]!, v)))
+      return Object.entries(data).every(([k, v]) => v === undefined || (k in block.data && deepEqualJson(block.data[k] as Json, v)))
     })
   }
 
@@ -455,7 +496,10 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     this._view = new EditorView(this as unknown as Editor, el)
   }
 
-  /** Viewport coordinates of `point` in the mounted view (left, top, bottom), or null when unmounted or not rendered. */
+  /**
+   * Viewport coordinates of `point` in the mounted view (left, top, bottom), or null when unmounted,
+   * not rendered, not placed in the root yet, or not laid out (see `EditorView.coordsAt`).
+   */
   coordsAt(point: Point): { left: number; top: number; bottom: number } | null {
     return this._view?.coordsAt(point) ?? null
   }
@@ -663,7 +707,7 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
   }
 
   /** The nearest block-level element on `path` (unknown element types count as blocks). */
-  private blockAt(path: number[]): ElementNode | null {
+  private blockAt(path: number[]): DeepReadonly<ElementNode> | null {
     for (let depth = path.length - 1; depth >= 1; depth--) {
       const node = getNode(this._state.doc, path.slice(0, depth))
       if (isElement(node) && this.registry.node(node.type)?.kind !== 'inline') return node
