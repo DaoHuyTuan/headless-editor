@@ -1,0 +1,42 @@
+name: Release
+
+# Publishes every @penline/* package whose version is not on npm yet. Run it by hand (Actions >
+# Release > Run workflow) or push a tag such as v0.2.0 after bumping the versions.
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  # npm provenance: the registry records that the packages were built here, from this commit.
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: npm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test --retry=2
+      - run: pnpm build
+      # Versions already on npm are skipped, so a re-run after a partial failure only publishes the rest.
+      - name: Publish to npm
+        run: pnpm -r --filter "./packages/**" publish --no-git-checks
+        env:
+          # A granular access token with publish rights on @penline (Settings > Secrets > NPM_TOKEN).
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: 'true'

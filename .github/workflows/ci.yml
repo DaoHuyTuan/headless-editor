@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A newer push to the same branch or PR cancels the run still going.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Typecheck, unit tests, type tests, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      # The pnpm version comes from `packageManager` in package.json.
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      # A few tests are timing-bound: CI runners are slower and shared, so a failing test is retried
+      # (it must still pass; no assertion is relaxed).
+      - run: pnpm test --retry=2
+      - run: pnpm exec vitest --typecheck.only run
+      - run: pnpm build
+
+  e2e:
+    name: e2e (Chromium + WebKit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Install the Playwright browsers
+        run: pnpm --filter playground exec playwright install --with-deps chromium webkit
+      # CI=true (set by GitHub): two retries, no reused dev server, `test.only` fails the run.
+      - run: pnpm --filter playground e2e
+      - name: Upload the Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: apps/playground/playwright-report
+          retention-days: 7
