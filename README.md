@@ -1,5 +1,7 @@
 # penline
 
+[![CI](https://github.com/DaoHuyTuan/headless-editor/actions/workflows/ci.yml/badge.svg)](https://github.com/DaoHuyTuan/headless-editor/actions/workflows/ci.yml)
+
 A headless rich-text editor with its own editing engine. It is not built on ProseMirror.
 
 ```sh
@@ -227,6 +229,12 @@ Add it to `plugins`, and `editor.commands.toggleItalic()` is typed automatically
 | `pnpm --filter playground e2e:webkit` | the same in WebKit |
 
 The first e2e run needs browsers: `pnpm --filter playground exec playwright install chromium webkit`. The e2e suite starts its own dev server on port **5174** (or `E2E_PORT`), which must be free. `pnpm e2e` runs Chromium and WebKit together; Firefox is not part of the automated suite.
+
+### CI and releases
+
+- **CI** (`.github/workflows/ci.yml`) runs on every pull request and every push to `main`: typecheck, unit tests (a failing test is retried twice: a few are timing-bound), type tests, the package build, and e2e in Chromium and WebKit. A failed e2e run uploads the Playwright report.
+- **Release** (`.github/workflows/release.yml`) publishes every `@penline/*` package whose version is not on npm yet, with npm provenance. Run it by hand (Actions > Release > Run workflow) or push a `v*` tag after bumping the versions. It needs a repository secret `NPM_TOKEN`: an npm granular access token with read and write access to the `@penline` packages (and "bypass 2FA" for publishing). Restrict it further with the `npm` environment in the repository settings (for example, required reviewers).
+- Publishing by hand still works: `npm login`, then `pnpm release` (with `--otp=<code>` when 2FA is on).
 
 ## Repository layout
 
