@@ -36,7 +36,7 @@ Items that cannot be acted on here (other machines, decisions, rulings already r
 | 1.12 | ✅ Commands that dispatch internally become stale. | m1 | doc | P3 | fixed |
 | 1.13 | ✅ Lifecycle docs: unmount fires no `onBlur`, mount on a focused root fires no `onFocus`; `editor.view` is null during `onMount`; `onCreate` must be side-effect-free under StrictMode. | m3 | doc | P3 | fixed |
 | 1.14 | ✅ The result of `onInvalidData` is not validated again. | m1 | bug | P2 | fixed |
-| 1.15 | Readonly typing gaps: `getNode`, `nodeEntries`, `textEntries` return mutable types; `tr.doc` is typed mutable. Deferred: a breaking type change across the core; do it with the API review before publishing. | m1 | api | P3 | open |
+| 1.15 | ✅ Readonly typing gaps: `getNode`, `nodeEntries`, `textEntries` return mutable types; `tr.doc` is typed mutable. Deferred: a breaking type change across the core; do it with the API review before publishing. Decided 2026-11-09: done before v1. All four return `DeepReadonly`; `isText` / `isElement` are generic over read-only and mutable nodes. Internally, the doc's own objects are cast only where they become op payloads (ops never mutate them). `getJSON()` stays a mutable copy (8.1, decided the same day). | m1 | api | P3 | fixed |
 | 1.16 | ✅ `PluginOverrides` types `state.apply` / `mark.render` as `any` in `extend`. By design: an override may change the data and state types (commented in `PluginOverrides`). Closed. | m3 | api | P3 | fixed |
 | 1.17 | ✅ `Transaction.setSelection` accepts a `node` path that isn't opaque (now throws in dev mode). Kept: `nodeSelection` of an inline atom, which `MentionView`'s `data-selected` relies on. | m2, m4 | bug | P2 | fixed |
 
@@ -165,7 +165,7 @@ Items that cannot be acted on here (other machines, decisions, rulings already r
 | # | Item | Src | Kind | Pri | Status |
 |---|---|---|---|---|---|
 | 9.1 | ✅ `reuseExistingServer` should be `!process.env.CI`; clearer failure or configurable port when the e2e port is taken. Port from `E2E_PORT` (default 5174, invalid values throw); server reuse is opt-in (`E2E_REUSE_SERVER=1`, never on CI) rather than `!CI`, since worktrees share the port. | m1, m3 | tool | P3 | fixed |
-| 9.2 | Plain `pnpm --filter playground e2e` runs Firefox, which fails here; decide whether the default script should be Chromium + WebKit. | m4 | tool | P3 | open |
+| 9.2 | ✅ Plain `pnpm --filter playground e2e` runs Firefox, which fails here; decide whether the default script should be Chromium + WebKit. Decided 2026-11-09: Firefox dropped from the e2e suite (config and script); the default `e2e` runs Chromium and WebKit. Firefox stays a product target, checked by hand before a release. | m4 | tool | P3 | fixed |
 | 9.3 | ✅ Duplicate `samePath` helpers; `image.test.ts` prettier nit; `mergeAttrs` JSDoc splice. One `pathEquals` in model/path (selection, marks, text use it); `mergeAttrs` JSDoc rewritten; `image.test.ts` nit fixed. Left: `pathEq` in ops/rebase.ts, `samePath` in view/{dom-selection,renderer,view}.ts. | m2, m3 | doc | P3 | fixed |
 | 9.4 | ✅ Playground: `fakeUpload` never revokes its URLs and sets no `onUploadError`; the Bold button is disabled with no selection or focus. `fakeUpload` URLs revoked on destroy, `onUploadError` set. The Bold button: stale (enabled whenever a selection exists, focus not needed; pinned by a test). | m2, m4 | bug | P3 | fixed |
 | 9.5 | ✅ Docs: `createTestEditor` re-ids content and swaps the global id generator; normalize rule 10 changes `getJSON()` output (empty text siblings around inline elements): changelog note. `createTestEditor` JSDoc; new root `CHANGELOG.md` (linked from the README). | m1, m3 | doc | P3 | documented |
@@ -174,7 +174,7 @@ Items that cannot be acted on here (other machines, decisions, rulings already r
 ---
 
 ## Closed as noted (no action in v1)
-- **Needs another machine:** Firefox is unverified (cannot launch here); real Safari/macOS untested, including `insertFromComposition` and keyboard clipboard; real OS IME typing (Vietnamese Telex, Japanese) not checked by a human. Keep as a release checklist item.
+- **Needs another machine:** Firefox is not in the e2e suite (9.2) and is unverified (it cannot launch here): check it by hand before a release; real Safari/macOS untested, including `insertFromComposition` and keyboard clipboard; real OS IME typing (Vietnamese Telex, Japanese) not checked by a human. Keep as a release checklist item.
 - **Port 5174 held by `wslrelay.exe`:** environment, handled by the CLAUDE.md workaround.
 - **Decisions, not defects:** whether the level 3–4 APIs (`parts`, hooks) leave `@experimental`; no generic cross-plugin hook interception; no internal drag-move; "distribute" paste of N lines into N carets belongs to the code view; no UI for secondary ranges yet (a feature, tracked separately as "multi-cursor UI").
 - **Rulings already recorded:** part keys are camelCase; the docs-examples type test lives in the image package; `bindCommands` returns false on a dropped tr; secondary view roots carry `data-hte-<plugin>-<view>`.

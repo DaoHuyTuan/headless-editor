@@ -15,6 +15,9 @@ Behaviour changes an integrator may notice.
 - `mergeAttrs` normalizes a `style` from `extra` even when the base has none. It drops CSS comments, and drops a declaration whose string or parenthesis is never closed, so the declarations merged after it survive. A style left with no declarations is omitted. A mark style value with an unclosed quote is no longer serialized.
 - In `renderHTML`, a content hole (`0`) inside a void tag throws. Only the first hole gets the content, in the view and in `getHTML()` alike.
 
+### Types
+- The doc is read-only through every accessor: `getNode`, `getParent`, `nodeEntries`, `textEntries` return `DeepReadonly` nodes, and `tr.doc` is `DeepReadonly<Doc>` (as `editor.state.doc` already was). Change the doc through a transaction. `isText` / `isElement` narrow read-only and mutable nodes alike.
+
 ### Editor and view
 - New `EditorOptions.listeners`: `transaction`, `update`, `selectionUpdate` and `options` listeners registered before any plugin hook, so they also see dispatches from `onCreate`.
 - `editor.dev` is public (read-only).
@@ -38,4 +41,5 @@ Behaviour changes an integrator may notice.
 - Image: a preview's `blob:` URL is revoked once its upload settled and nothing can show it; a pasted `blob:` image this editor does not own (or whose upload failed) is dropped; an invalid `width` is ignored instead of dropping the image.
 
 ### Tooling
+- The e2e suite runs Chromium and WebKit; Firefox is no longer part of it (checked by hand).
 - Playwright reads `E2E_PORT` (default 5174) and `E2E_REUSE_SERVER=1` (never on CI).
