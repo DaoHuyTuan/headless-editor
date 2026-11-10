@@ -27,10 +27,11 @@
   ],
   "exports": {
     ".": "./src/index.ts",
+    "./internal": "./src/internal.ts",
     "./testing": "./src/testing/index.ts"
   },
   "scripts": {
-    "build": "tsup src/index.ts src/testing/index.ts --format esm --dts --clean --tsconfig ../../tsconfig.build.json",
+    "build": "tsup src/index.ts src/internal.ts src/testing/index.ts --format esm --dts --clean --tsconfig ../../tsconfig.build.json",
     "prepublishOnly": "pnpm run build"
   },
   "publishConfig": {
@@ -39,6 +40,10 @@
       ".": {
         "types": "./dist/index.d.ts",
         "import": "./dist/index.js"
+      },
+      "./internal": {
+        "types": "./dist/internal.d.ts",
+        "import": "./dist/internal.js"
       },
       "./testing": {
         "types": "./dist/testing/index.d.ts",

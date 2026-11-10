@@ -1,16 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import {
-  applyOp,
-  getNode,
-  transformPath,
-  transformPoint,
-  transformSelection,
-  type Doc,
-  type Node,
-  type Operation,
-  type Path,
-  type TextNode,
-} from '../../src/index'
+import { getNode, transformPoint, transformSelection, type Doc, type Node, type Operation, type Path, type TextNode } from '../../src/index'
+import { applyOp, transformPath } from '../../src/internal'
 import { single } from '../../src/model/selection'
 import { doc, el, txt } from '../../src/testing/builders'
 

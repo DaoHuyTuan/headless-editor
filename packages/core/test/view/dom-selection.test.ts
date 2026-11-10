@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mainRange, single } from '../../src/model/selection'
 import { definePlugin } from '../../src/plugin/define'
 import type { ElementNode, Node, Selection } from '../../src/model/types'
-import { Renderer, domToModel, modelToDom, readDomSelection, writeDomSelection } from '../../src/index'
+import { Renderer, domToModel, modelToDom, readDomSelection, writeDomSelection } from '../../src/internal'
 import { createTestEditor, doc, txt } from '../../src/testing/index'
 import { testBold, testParagraph } from '../fixtures'
 

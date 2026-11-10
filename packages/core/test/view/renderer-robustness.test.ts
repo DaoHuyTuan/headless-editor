@@ -2,7 +2,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { definePlugin } from '../../src/plugin/define'
 import type { ElementNode, Node } from '../../src/model/types'
-import { Renderer, type NodeViewFactory } from '../../src/index'
+import { type NodeViewFactory } from '../../src/index'
+import { Renderer } from '../../src/internal'
 import { createTestEditor, doc, txt } from '../../src/testing/index'
 import { testParagraph } from '../fixtures'
 

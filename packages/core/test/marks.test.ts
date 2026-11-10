@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { definePlugin } from '../src/plugin/define'
 import type { Doc, ElementNode, Node, Selection } from '../src/model/types'
-import { isMarkActive, marksAt } from '../src/index'
+import { isMarkActive, marksAt } from '../src/internal'
 import { createTestEditor, doc, el, sel, stripIds, txt } from '../src/testing/index'
 import { testBold, testParagraph } from './fixtures'
 

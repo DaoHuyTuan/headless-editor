@@ -1,16 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { mainRange, single } from '../../src/model/selection'
-import {
-  definePlugin,
-  findPathById,
-  getFragment,
-  isNodeSelection,
-  nodeSelection,
-  type Doc,
-  type ElementNode,
-  type Node,
-  type Selection,
-} from '../../src/index'
+import { definePlugin, findPathById, isNodeSelection, nodeSelection, type Doc, type ElementNode, type Node, type Selection } from '../../src/index'
+import { getFragment } from '../../src/internal'
 import { atomEl, createTestEditor, doc, el, sel, stripIds, txt } from '../../src/testing/index'
 import { testBold, testParagraph } from '../fixtures'
 

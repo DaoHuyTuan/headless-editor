@@ -19,18 +19,26 @@ npm install @penline/core @penline/react @penline/paragraph @penline/bold
 
 ## Contents
 
-1. [Requirements and setup](#requirements-and-setup)
-2. [Run the playground](#run-the-playground)
-3. [Use the editor in React](#use-the-editor-in-react)
-4. [Use the core without React](#use-the-core-without-react)
-5. [Content: JSON and HTML](#content-json-and-html)
-6. [Built-in plugins](#built-in-plugins)
-7. [Customizing a plugin](#customizing-a-plugin)
-8. [Writing your own plugin](#writing-your-own-plugin)
-9. [Tests](#tests)
-10. [Repository layout](#repository-layout)
-11. [Browser support](#browser-support)
-12. [Documentation](#documentation)
+1. [API stability](#api-stability)
+2. [Requirements and setup](#requirements-and-setup)
+3. [Run the playground](#run-the-playground)
+4. [Use the editor in React](#use-the-editor-in-react)
+5. [Use the core without React](#use-the-core-without-react)
+6. [Content: JSON and HTML](#content-json-and-html)
+7. [Built-in plugins](#built-in-plugins)
+8. [Customizing a plugin](#customizing-a-plugin)
+9. [Writing your own plugin](#writing-your-own-plugin)
+10. [Tests](#tests)
+11. [Repository layout](#repository-layout)
+12. [Browser support](#browser-support)
+13. [Documentation](#documentation)
+
+## API stability
+
+- **`@penline/core`, `@penline/react` and the plugins' main entries** follow semver from 1.0 (0.x minors may still break).
+- **`@penline/core/internal`** holds the engine and view internals (raw ops, the renderer, normalization, clipboard plumbing). It has no semver guarantee: anything there can change in any release. Open an issue if you need something from it.
+- **Customization levels 3–4** (`parts` and the view hooks, marked `@experimental`) may change in a minor release. See [plugin-authoring.md](docs/plugin-authoring.md).
+- **`@penline/core/testing`** (`createTestEditor` and the builders) is for tests; it follows semver like the main entry.
 
 ## Requirements and setup
 

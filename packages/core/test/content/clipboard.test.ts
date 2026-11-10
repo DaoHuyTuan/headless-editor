@@ -2,7 +2,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mainRange, single } from '../../src/model/selection'
 import type { Doc, ElementNode, Node, Selection } from '../../src/model/types'
-import { definePlugin, isText, parseFromClipboard, serializeForClipboard, type AnyPlugin, type Fragment } from '../../src/index'
+import { definePlugin, isText, type AnyPlugin, type Fragment } from '../../src/index'
+import { parseFromClipboard, serializeForClipboard } from '../../src/internal'
 import { createTestEditor, doc, stripIds, txt } from '../../src/testing/index'
 import { testBold, testParagraph } from '../fixtures'
 

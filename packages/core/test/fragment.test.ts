@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { definePlugin } from '../src/plugin/define'
 import type { DeepReadonly, Doc, ElementNode, Node, Range, Selection } from '../src/model/types'
-import { getFragment, isElement, nodeEntries, nodeSelection, type Fragment } from '../src/index'
+import { isElement, nodeEntries, nodeSelection, type Fragment } from '../src/index'
+import { getFragment } from '../src/internal'
 import { atomEl, createTestEditor, doc, el, sel, stripIds, txt } from '../src/testing/index'
 import { testBold, testParagraph } from './fixtures'
 

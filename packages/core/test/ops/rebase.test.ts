@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { applyOp, getNode, invertOp, type Doc, type ElementNode, type Operation, type Path, type TextNode } from '../../src/index'
+import { getNode, type Doc, type ElementNode, type Operation, type Path, type TextNode } from '../../src/index'
+import { applyOp, invertOp } from '../../src/internal'
 import { single } from '../../src/model/selection'
 import { rebaseBoth, rebaseOps } from '../../src/ops/rebase'
 import { doc, el, txt } from '../../src/testing/builders'

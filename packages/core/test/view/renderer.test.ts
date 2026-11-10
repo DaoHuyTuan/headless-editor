@@ -2,7 +2,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { definePlugin } from '../../src/plugin/define'
 import type { ElementNode, Node } from '../../src/model/types'
-import { Renderer } from '../../src/index'
+import { Renderer } from '../../src/internal'
 import { createTestEditor, doc, txt } from '../../src/testing/index'
 import { testBold, testParagraph } from '../fixtures'
 

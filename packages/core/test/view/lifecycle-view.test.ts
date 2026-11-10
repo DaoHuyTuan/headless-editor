@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it } from 'vitest'
-import { definePlugin, EditorView, type AnyPlugin, type NodeViewFactory } from '../../src/index'
+import { definePlugin, type AnyPlugin, type NodeViewFactory } from '../../src/index'
+import { EditorView } from '../../src/internal'
 import { createTestEditor, doc, el, sel, txt } from '../../src/testing/index'
 import { testParagraph } from '../fixtures'
 

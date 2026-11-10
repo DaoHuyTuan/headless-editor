@@ -2,7 +2,8 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { createSelection, single } from '../../src/model/selection'
 import type { ElementNode, Selection } from '../../src/model/types'
-import { definePlugin, modelToDom, type AnyPlugin, type Editor } from '../../src/index'
+import { definePlugin, type AnyPlugin, type Editor } from '../../src/index'
+import { modelToDom } from '../../src/internal'
 import { createTestEditor, doc, el, txt } from '../../src/testing/index'
 import { testBold, testParagraph } from '../fixtures'
 

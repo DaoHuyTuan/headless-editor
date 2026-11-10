@@ -155,5 +155,5 @@ Likely candidates once the mechanism exists: i18n strings (for example the code 
 
 ## 7. Open questions
 
-- Should `nodeViews` become updatable at runtime (re-register the factories and invalidate), or be documented as read-once? The playground works around it with React context (`apps/playground/src/image-views.tsx`).
-- Decide whether `@experimental` levels 3–4 (parts, hooks) graduate before a second view arrives.
+- ~~Should `nodeViews` become updatable at runtime?~~ Decided 2026-11-10: read once, documented with the runtime-switch pattern (props or context). A `setNodeViews` can still be added later without breaking anything.
+- ~~Do `@experimental` levels 3–4 graduate before 1.0?~~ Decided 2026-11-10: no, they stay experimental in 1.0 (they may change in a minor release).

@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it } from 'vitest'
 import { createSelection, mainRange } from '@penline/core'
-import { definePlugin, serializeForClipboard, type Doc, type ElementNode, type Node, type Selection, type TextNode } from '@penline/core'
+import { definePlugin, type Doc, type ElementNode, type Node, type Selection, type TextNode } from '@penline/core'
+import { serializeForClipboard } from '@penline/core/internal'
 import { createTestEditor, doc, el, sel, stripIds, txt } from '@penline/core/testing'
 import { bold } from '@penline/bold'
 import { mention } from '@penline/mention'

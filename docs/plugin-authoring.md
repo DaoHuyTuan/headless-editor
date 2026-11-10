@@ -30,7 +30,7 @@ Naming: part keys are camelCase (`altInput`, `resizeHandle`, `languageSelect`) a
 | 4 | Your own view from the headless hooks | `@experimental` |
 | 5 | Change behaviour with `extend(parent => ...)` | stable |
 
-"Experimental" means marked `@experimental` in JSDoc: it may change after M3 without a deprecation cycle. Levels 3 and 4 stay experimental until validated on Image, Mention and Code block.
+"Experimental" means marked `@experimental` in JSDoc: it may change in a minor release, without a deprecation cycle, until it is marked stable. Levels 3 and 4 stay experimental in 1.0 (decided 2026-11-10): they are validated on Image, Mention and Code block only, and will graduate from users' feedback. Pin a minor version (`~`) if you build on them.
 
 ### Level 0: the default view
 
@@ -42,7 +42,7 @@ const editor = useEditor({
 return <EditorContent editor={editor} />
 ```
 
-`nodeViews` maps a node type to a React component. It is read on the first render only.
+`nodeViews` maps a node type to a React component. It is read once, on the first render: changing the object later has no effect. To switch a view at runtime, keep one component in `nodeViews` and let it choose what to render, from its props (`props.options`, `props.node.data`) or from React context, as the playground's image story does (`apps/playground/src/image-views.tsx`).
 
 ### Level 1: CSS on `data-*`
 

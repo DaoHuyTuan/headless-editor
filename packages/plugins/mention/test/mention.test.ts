@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createSelection, definePlugin, serializeForClipboard, type Doc, type ElementNode, type Node, type Transaction } from '@penline/core'
+import { createSelection, definePlugin, type Doc, type ElementNode, type Node, type Transaction } from '@penline/core'
+import { serializeForClipboard } from '@penline/core/internal'
 import { createTestEditor, doc, el, sel, stripIds, txt } from '@penline/core/testing'
 import { paragraph } from '@penline/paragraph'
 import { mention, type MentionState, type User } from '../src/index'

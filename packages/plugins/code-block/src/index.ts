@@ -12,39 +12,8 @@
  * docs/plugin-authoring.md.
  */
 import { z } from 'zod'
-import {
-  applyOp,
-  createId,
-  createSelection,
-  definePlugin,
-  findPathById,
-  getNode,
-  isElement,
-  isNodeRange,
-  isNodeSelection,
-  isText,
-  mainRange,
-  mergeAttrs,
-  nextPath,
-  nodeText,
-  type Command,
-  type Decoration,
-  type DeepReadonly,
-  type Doc,
-  type Editor,
-  type ElementNode,
-  type Fragment,
-  type HTMLAttributes,
-  type Node,
-  type Operation,
-  type OptionsLookup,
-  type Path,
-  type PluginContext,
-  type Point,
-  type Registry,
-  type SelectionRange,
-  type Transaction,
-} from '@penline/core'
+import { createId, createSelection, definePlugin, findPathById, getNode, isElement, isNodeRange, isNodeSelection, isText, mainRange, mergeAttrs, nextPath, nodeText, type Command, type Decoration, type DeepReadonly, type Doc, type Editor, type ElementNode, type Fragment, type HTMLAttributes, type Node, type Operation, type OptionsLookup, type Path, type PluginContext, type Point, type Registry, type SelectionRange, type Transaction } from '@penline/core'
+import { applyOp } from '@penline/core/internal'
 import { defaultHighlighter, type HighlightToken, type Highlighter } from './highlight'
 
 export { defaultHighlighter, type HighlightToken, type Highlighter } from './highlight'
