@@ -1,23 +1,28 @@
 name: Release
 
-# Publishes every @penline/* package whose version is not on npm yet. Run it by hand (Actions >
-# Release > Run workflow) or push a tag such as v0.2.0 after bumping the versions.
+# On every push to main, Changesets either
+# - opens (or updates) a "Version Packages" pull request when there are unreleased changesets: it
+#   bumps the versions of every @penline/* package (they share one version) and writes the
+#   changelogs; or
+# - publishes to npm when there are none left (that pull request was just merged): every package
+#   whose version is not on npm yet, with provenance, then pushes a git tag per package.
+# "Run workflow" (by hand) does the same from main.
 on:
-  workflow_dispatch:
   push:
-    tags: ['v*']
+    branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: release
   cancel-in-progress: false
 
 permissions:
-  contents: read
-  # npm provenance: the registry records that the packages were built here, from this commit.
-  id-token: write
+  contents: write # version commits and release tags
+  pull-requests: write # the "Version Packages" pull request
+  id-token: write # npm provenance
 
 jobs:
-  publish:
+  release:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: npm
@@ -30,13 +35,17 @@ jobs:
           cache: pnpm
           registry-url: https://registry.npmjs.org
       - run: pnpm install --frozen-lockfile
-      - run: pnpm typecheck
-      - run: pnpm test --retry=2
+      # CI already ran on the pull request; the build is what gets published.
       - run: pnpm build
-      # Versions already on npm are skipped, so a re-run after a partial failure only publishes the rest.
-      - name: Publish to npm
-        run: pnpm -r --filter "./packages/**" publish --no-git-checks
+      - uses: changesets/action@v1
+        with:
+          version: pnpm version-packages
+          publish: pnpm release
+          title: 'chore: version packages'
+          commit: 'chore: version packages'
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # A granular access token with publish rights on @penline (Settings > Secrets > NPM_TOKEN).
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: 'true'

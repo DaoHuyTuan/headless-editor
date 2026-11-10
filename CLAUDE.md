@@ -73,6 +73,7 @@ Longer docs:
 - Commit messages are conventional (`feat(core): …`, `fix(…)`, `docs: …`) and end with the trailer `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 - Stage files explicitly. Never run `git add -A` or `git add .`, stash, or reset when other agents may share the checkout.
 - TDD: write a failing test first. Never weaken an assertion to make a test pass.
+- A change users of a published package can notice gets a changeset (`pnpm changeset`, or a file in `.changeset/`): patch for fixes, minor for features or 0.x breaking changes. Docs, tests and internal refactors need none.
 - Match the surrounding code's style and comment density. JSDoc states contracts, including "acts on the main range on purpose" where that applies.
 
 ## Navigating code cheaply: Serena by default

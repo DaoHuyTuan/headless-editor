@@ -1,5 +1,7 @@
 # Changelog
 
+From 0.1.1 on, each package has its own `CHANGELOG.md`, written by Changesets (the packages share one version). This file keeps the notes of 0.1.0.
+
 ## 0.1.0 (first public pre-release)
 
 The project is published as **penline**: packages `@penline/core`, `@penline/react`, `@penline/paragraph`, `@penline/bold`, `@penline/font-size`, `@penline/image`, `@penline/mention`, `@penline/code-block`, built to ESM with type declarations, MIT licensed. DOM attributes are `data-penline-*`, the clipboard JSON flavor is `application/x-penline-fragment`. `@penline/core` (and `@penline/react` for the plugins' views) are peer dependencies, so an app has one copy. Levels 3–4 of plugin customization (parts, view hooks) stay `@experimental`. 0.x versions can change their API between minor versions.
