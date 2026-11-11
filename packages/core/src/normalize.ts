@@ -373,7 +373,7 @@ function rehomeSelection(tr: Transaction, siblings: Node[], parent: Path, i: num
 }
 
 /** Whether an element of `spec` holds inline content: a `content: 'inline'` block or a (non-atom) inline element. */
-function holdsInline(spec: { kind: 'block' | 'inline'; content?: 'inline' | 'text' }): boolean {
+function holdsInline(spec: { kind: 'block' | 'inline'; content?: string }): boolean {
   return spec.kind === 'inline' || spec.content === 'inline'
 }
 

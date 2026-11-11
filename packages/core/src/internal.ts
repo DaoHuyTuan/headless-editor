@@ -20,6 +20,8 @@ export type { OptionsLookup } from './content/text'
 // Plugin machinery.
 export { DEFAULT_PRIORITY, Registry } from './plugin/registry'
 export type { RegisteredMark, RegisteredNode, ValidateResult } from './plugin/registry'
+// The compiled content automaton (`registry.contentMatch(type)`).
+export type { ContentEdge, ContentMatch } from './schema/content-match'
 export { corePlugin } from './core-plugin'
 export { historyPlugin } from './history'
 

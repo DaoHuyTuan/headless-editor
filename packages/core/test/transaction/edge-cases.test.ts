@@ -130,7 +130,7 @@ describe('toggleMark edge cases (3.4)', () => {
 })
 
 describe('fragments (3.5)', () => {
-  const quote = definePlugin({ name: 'quote', node: { kind: 'block' } })
+  const quote = definePlugin({ name: 'quote', node: { kind: 'block', content: 'block+' } })
   const inl = definePlugin({ name: 'link', node: { kind: 'inline' } })
   const pq = (t: string) => p(t)
   const json = (ed: ReturnType<typeof createTestEditor>) => stripIds(ed.getJSON())
@@ -325,7 +325,7 @@ describe('forEachRange and a delete-then-reinsert (3.15, documented)', () => {
 
 describe('coverage gaps (3.16)', () => {
   const italic = definePlugin({ name: 'italic', mark: { render: () => ({ tag: 'em' }) } })
-  const quote = definePlugin({ name: 'quote', node: { kind: 'block' } })
+  const quote = definePlugin({ name: 'quote', node: { kind: 'block', content: 'block+' } })
   const it_: Mark = { type: 'italic', data: {} }
 
   it('Backspace at the start of a second text ([0, 1]:0) deletes the last character of the text before it', () => {

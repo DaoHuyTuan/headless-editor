@@ -180,7 +180,8 @@ class Parser {
     if (spec.atom) return [BOUNDARY, node, BOUNDARY]
     const items = this.children(el, marks, pre, depth)
     const hasBlocks = items.some((i) => isNode(i) && this.isBlock(i))
-    if (spec.content === undefined && hasBlocks) {
+    // A block that may hold blocks: no `content` (for now) or a container expression such as `block+`.
+    if ((spec.content === undefined || !this.registry.isTextblock(plugin.name)) && hasBlocks) {
       node.children = this.blockify(items)
       return [BOUNDARY, node, BOUNDARY]
     }

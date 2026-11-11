@@ -249,14 +249,16 @@ export function insertInlineNode(tr: Transaction, node: ElementNode): boolean {
 }
 
 /**
- * Whether `node` is a registered, non-atom block that may hold blocks (no `content`: normalize rule 9
- * only unwraps blocks inside `content: 'inline' | 'text'` ones) and does (e.g. a quote of
- * paragraphs). Its children cannot merge into a text block's: they would be flattened into its text.
+ * Whether `node` is a registered, non-atom block that may hold blocks (no `content`, or one that is
+ * not a textblock's: normalize rule 9 only unwraps blocks inside `content: 'inline' | 'text'` ones)
+ * and does (e.g. a quote of paragraphs). Its children cannot merge into a text block's: they would be
+ * flattened into its text.
  */
 function isContainer(node: Node, registry: Registry): boolean {
   if (!isElement(node)) return false
   const spec = registry.node(node.type)
-  if (!spec || spec.kind !== 'block' || spec.atom || spec.content !== undefined) return false
+  if (!spec || spec.kind !== 'block' || spec.atom) return false
+  if (spec.content !== undefined && registry.isTextblock(node.type)) return false
   return (node.children ?? []).some((c) => isElement(c) && registry.node(c.type)?.kind === 'block')
 }
 

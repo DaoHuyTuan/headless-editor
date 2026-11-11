@@ -1,6 +1,41 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
-import type { Data } from '../model/types'
+import { createId } from '../model/id'
+import type { Data, ElementNode, Node } from '../model/types'
+import { type ContentExpr, parseContentExpr } from '../schema/content-expr'
+import { compileContent, type ContentMatch, type SchemaLookup } from '../schema/content-match'
 import type { AnyPlugin, MarkSpec, NodeSpec } from './types'
+
+const DOC_CONTENT = 'block+'
+
+/** The expression a node's `content` stands for: aliases expanded, omitted meaning inline content. */
+function contentSource(spec: NodeSpec): string {
+  const content = spec.content ?? 'inline'
+  return content === 'inline' ? 'inline*' : content === 'text' ? 'text*' : content
+}
+
+function exprNames(expr: ContentExpr, out: string[] = []): string[] {
+  if (expr.kind === 'name') out.push(expr.name)
+  else if (expr.kind === 'repeat') exprNames(expr.expr, out)
+  else for (const item of expr.items) exprNames(item, out)
+  return out
+}
+
+/** Every type an edge of the automaton from `start` can consume. */
+function reachableTypes(start: ContentMatch): Set<string> {
+  const types = new Set<string>()
+  const seen = new Set<ContentMatch>([start])
+  const queue = [start]
+  while (queue.length) {
+    for (const e of queue.pop()!.edges) {
+      types.add(e.type)
+      if (!seen.has(e.next)) {
+        seen.add(e.next)
+        queue.push(e.next)
+      }
+    }
+  }
+  return types
+}
 
 export const DEFAULT_PRIORITY = 100
 
@@ -44,6 +79,21 @@ export class Registry {
   private readonly nodes = new Map<string, RegisteredNode>()
   private readonly marks = new Map<string, RegisteredMark>()
   private readonly markRanks = new Map<string, number>()
+  /** Group name -> member types, in priority order with the default block first ('text' leads `inline`). */
+  private readonly groups = new Map<string, string[]>()
+  /** Compiled content of every non-atom node. */
+  private readonly matches = new Map<string, ContentMatch>()
+  /** Types the content of a non-atom node can hold anywhere. */
+  private readonly allowed = new Map<string, Set<string>>()
+  private readonly textblocks = new Set<string>()
+  private readonly docMatch: ContentMatch
+  /**
+   * Auto-creatable types, each with the order it became creatable in: its content can always be
+   * filled with lower-ranked types only, which keeps `createAndFill` from looping through cycles.
+   */
+  private creatable = new Map<string, number>()
+  /** While filling a node, only types ranked below this may be auto-created (see `createAndFill`). */
+  private rankLimit = Infinity
 
   constructor(plugins: AnyPlugin[]) {
     for (const plugin of plugins) {
@@ -66,6 +116,113 @@ export class Registry {
     const defaultBlock = this.plugins.find((p) => p.spec.node?.kind === 'block' && p.spec.node.default)
     if (!defaultBlock) throw new Error('No default block plugin registered')
     this.defaultBlock = defaultBlock.name
+
+    this.docMatch = this.compileSchema()
+  }
+
+  /** Builds the groups, compiles every content expression and finds the auto-creatable types. */
+  private compileSchema(): ContentMatch {
+    this.groups.set('block', [])
+    this.groups.set('inline', ['text'])
+    const ordered = [this.defaultBlock, ...this.plugins.map((p) => p.name).filter((n) => n !== this.defaultBlock)]
+    for (const name of ordered) {
+      const spec = this.nodes.get(name)
+      if (!spec) continue
+      const groups =
+        spec.group === undefined
+          ? [spec.kind]
+          : typeof spec.group === 'string'
+            ? spec.group.split(/\s+/).filter(Boolean)
+            : spec.group
+      for (const g of groups) {
+        const members = this.groups.get(g)
+        if (members) members.push(name)
+        else this.groups.set(g, [name])
+      }
+    }
+
+    const lookup: SchemaLookup = {
+      expand: (name) => (name === 'text' || this.nodes.has(name) ? [name] : this.groups.get(name)),
+      autoCreatable: (type) => (this.creatable.get(type) ?? Infinity) < this.rankLimit,
+      contentOf: (type) => (this.textblocks.has(type) ? null : (this.matches.get(type) ?? null)),
+    }
+    const compile = (source: string, owner: string): ContentMatch => {
+      let expr: ContentExpr
+      try {
+        expr = parseContentExpr(source)
+      } catch (e) {
+        throw new SyntaxError(`Invalid content for plugin "${owner}": ${(e as Error).message}`)
+      }
+      for (const name of exprNames(expr)) {
+        if (!lookup.expand(name)) {
+          throw new Error(`Invalid content for plugin "${owner}": unknown node or group "${name}" in "${source}"`)
+        }
+      }
+      return compileContent(expr, lookup)
+    }
+
+    for (const [type, spec] of this.nodes) {
+      if (spec.atom) continue
+      const match = compile(contentSource(spec), type)
+      const allowed = reachableTypes(match)
+      this.matches.set(type, match)
+      this.allowed.set(type, allowed)
+      const inlineOnly = [...allowed].every((t) => t === 'text' || this.nodes.get(t)?.kind === 'inline')
+      if (spec.kind === 'block' && inlineOnly) this.textblocks.add(type)
+    }
+    const docMatch = compile(DOC_CONTENT, 'doc')
+
+    // Every non-atom node must have some finite content, whatever its data.
+    this.growCreatable(() => true)
+    for (const [type, spec] of this.nodes) {
+      if (!spec.atom && !this.creatable.has(type)) {
+        throw new Error(
+          `Node "${type}" (plugin "${type}") cannot be created: no finite content matches "${contentSource(spec)}"`,
+        )
+      }
+    }
+    this.growCreatable((type) => this.parsesEmptyData(type))
+    if (docMatch.fillBefore([], true, () => true) === null) {
+      // The usual cause, with the message normalization gives for it when another block is creatable.
+      const result = this.validateData(this.defaultBlock, {})
+      if (!result.ok) {
+        throw new Error(
+          `The default block "${this.defaultBlock}" cannot be created with empty data (${result.message}). ` +
+            'Give every field of its data schema a default, or make it optional.',
+        )
+      }
+      throw new Error(
+        `The doc content "${DOC_CONTENT}" cannot be created: no block parses from {} data with fillable content`,
+      )
+    }
+    return docMatch
+  }
+
+  /**
+   * Least fixpoint of the creatable types: a type joins once `admit` accepts it and its content can
+   * be filled with types already in. Ranks record the order they joined in.
+   */
+  private growCreatable(admit: (type: string) => boolean): void {
+    this.creatable = new Map([['text', 0]])
+    let changed = true
+    while (changed) {
+      changed = false
+      for (const type of this.nodes.keys()) {
+        if (this.creatable.has(type) || !admit(type)) continue
+        const match = this.matches.get(type)
+        if (match && match.fillBefore([], true, () => true) === null) continue
+        this.creatable.set(type, this.creatable.size)
+        changed = true
+      }
+    }
+  }
+
+  private parsesEmptyData(type: string): boolean {
+    try {
+      return this.validateData(type, {}).ok
+    } catch {
+      return false // a validator that throws on `{}`
+    }
   }
 
   node(type: string): RegisteredNode | undefined {
@@ -79,6 +236,82 @@ export class Registry {
   /** Registration order among mark plugins; unknown marks sort last. */
   markRank(type: string): number {
     return this.markRanks.get(type) ?? Number.MAX_SAFE_INTEGER
+  }
+
+  /** Compiled match for an element type's content; the doc's (`block+`) for `'doc'`. Undefined for unknown types and atoms. */
+  contentMatch(type: string): ContentMatch | undefined {
+    return type === 'doc' ? this.docMatch : this.matches.get(type)
+  }
+
+  /** A known non-atom block whose content matches only inline content (text and inline nodes). */
+  isTextblock(type: string): boolean {
+    return this.textblocks.has(type)
+  }
+
+  /**
+   * Whether `mark` is allowed in the inline content of `type` (from `marks`: `'_'` all, `''` none,
+   * or names; `content: 'text'` defaults to none, anything else to all). True for unknown types.
+   */
+  allowsMark(type: string, mark: string): boolean {
+    const spec = this.nodes.get(type)
+    if (!spec) return true
+    const marks = spec.marks ?? (spec.content === 'text' ? '' : '_')
+    return marks === '_' || marks.split(/\s+/).includes(mark)
+  }
+
+  /**
+   * Whether `type`'s content allows inline element `inlineType`. True for an unknown `type`
+   * (opaque); for an unknown `inlineType`, whether `type` holds any inline content. False for atoms.
+   */
+  allowsInline(type: string, inlineType: string): boolean {
+    const allowed = this.allowed.get(type)
+    if (!allowed) return !this.nodes.has(type)
+    if (this.nodes.has(inlineType)) return allowed.has(inlineType)
+    return [...allowed].some((t) => t === 'text' || this.nodes.get(t)?.kind === 'inline')
+  }
+
+  /** Whether edits must not cross `type`'s boundary (`isolating`). */
+  isIsolating(type: string): boolean {
+    return this.nodes.get(type)?.isolating === true
+  }
+
+  /**
+   * A new node of `type` (fresh ids) with data parsed from `data ?? {}` and its required content
+   * filled with auto-created nodes; an empty text when it then holds nothing but may hold text.
+   * Null for unknown types, invalid data, or content that cannot be filled.
+   */
+  createAndFill(type: string, data?: Data): ElementNode | null {
+    const spec = this.nodes.get(type)
+    if (!spec) return null
+    let parsed: ValidateResult
+    try {
+      parsed = this.validateData(type, data ?? {})
+    } catch {
+      return null
+    }
+    if (!parsed.ok) return null
+    const node: ElementNode = { id: createId(), type, data: parsed.data }
+    if (spec.atom) return node
+
+    // Fill with types ranked below this one only (when it is auto-creatable), so a cycle such as
+    // `a: 'b'`, `b: 'a | paragraph'` fills `b` with a paragraph instead of looping.
+    const outer = this.rankLimit
+    this.rankLimit = Math.min(outer, this.creatable.get(type) ?? Infinity)
+    try {
+      const fill = this.matches.get(type)!.fillBefore([], true, () => true)
+      if (!fill) return null
+      const children: Node[] = []
+      for (const t of fill) {
+        const child = t === 'text' ? { text: '', marks: [] } : this.createAndFill(t)
+        if (!child) return null
+        children.push(child)
+      }
+      if (children.length === 0 && this.allowed.get(type)!.has('text')) children.push({ text: '', marks: [] })
+      node.children = children
+      return node
+    } finally {
+      this.rankLimit = outer
+    }
   }
 
   /** Validates `raw` against the type's data schema. `undefined` is treated as `{}`. */
