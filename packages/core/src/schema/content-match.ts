@@ -75,11 +75,14 @@ export class ContentMatch {
       for (const { chain, state } of level) {
         for (const e of state.edges) {
           if (visited.has(e.type) || !this.lookup.autoCreatable(e.type)) continue
-          visited.add(e.type)
           const inner = this.lookup.contentOf(e.type)
-          if (!inner) continue
+          // The wrapper must leave its parent completable, and its own content must be
+          // completable once `type` is placed: results are valid without later repair.
+          if (!inner || !completable(e.next)) continue
+          visited.add(e.type)
           const next = [...chain, e.type]
-          if (inner.matchType(type)) return next
+          const placed = inner.matchType(type)
+          if (placed && completable(placed)) return next
           nextLevel.push({ chain: next, state: inner })
         }
       }
@@ -201,3 +204,6 @@ export function compileContent(expr: ContentExpr, lookup: SchemaLookup): Content
   }
   return stateFor(closure([start]))
 }
+
+/** Whether a state can be filled to a valid end using only auto-creatable types. */
+const completable = (state: ContentMatch): boolean => state.fillBefore([], true, () => true) !== null

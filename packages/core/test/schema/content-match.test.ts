@@ -153,3 +153,27 @@ describe('findWrapping', () => {
     expect(compile('block+').findWrapping('unknownX')).toBeNull()
   })
 })
+
+describe('findWrapping completability', () => {
+  it('skips a wrapper whose content cannot be completed', () => {
+    contents.badWrap = 'tableCell b'
+    contents.goodWrap = 'tableCell'
+    groups.wrappers = ['badWrap', 'goodWrap']
+    nodes.add('badWrap').add('goodWrap')
+    try {
+      expect(compile('wrappers').findWrapping('tableCell')).toEqual(['goodWrap'])
+      expect(compile('badWrap').findWrapping('tableCell')).toBeNull()
+    } finally {
+      delete contents.badWrap
+      delete contents.goodWrap
+      delete groups.wrappers
+      nodes.delete('badWrap')
+      nodes.delete('goodWrap')
+      compiled.clear()
+    }
+  })
+  it('works from a mid-state', () => {
+    const mid = compile('paragraph block*').matchType('paragraph')!
+    expect(mid.findWrapping('listItem')).toEqual(['bulletList'])
+  })
+})
