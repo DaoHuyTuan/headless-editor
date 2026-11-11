@@ -16,8 +16,8 @@ export const FRAGMENT_MIME = 'application/x-penline-fragment'
 /**
  * The three clipboard flavors of `range`: `json` is the fragment itself, `html` the fragment
  * serialized as a doc (inline content is wrapped into a default block first), `text` the text of
- * each block (inline elements included, through their `renderText` when they have one) joined by
- * `\n`. With `node` (the `node` of a node selection's range), the fragment is that node alone.
+ * each textblock at every depth (inline elements included, through their `renderText` when they
+ * have one) joined by `\n`. With `node` (the `node` of a node selection's range), the fragment is that node alone.
  */
 export function serializeForClipboard(
   editor: Editor,

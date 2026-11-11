@@ -3,6 +3,8 @@ import { deepEqualJson, isText } from '../model/node'
 import type { Data, ElementNode, Mark, Node, TextNode } from '../model/types'
 import type { Registry } from '../plugin/registry'
 import type { AnyPlugin, ParseRule } from '../plugin/types'
+import type { ContentMatch } from '../schema/content-match'
+import { inlineWrapping, matchChild, wrapChain } from '../schema/validate'
 import type { Fragment } from '../transaction/fragment'
 
 /** Priority of a parse rule that declares none. */
@@ -179,14 +181,15 @@ class Parser {
     }
     if (spec.atom) return [BOUNDARY, node, BOUNDARY]
     const items = this.children(el, marks, pre, depth)
-    const hasBlocks = items.some((i) => isNode(i) && this.isBlock(i))
-    // A block that may hold blocks: no `content` (for now) or a container expression such as `block+`.
-    if ((spec.content === undefined || !this.registry.isTextblock(plugin.name)) && hasBlocks) {
-      node.children = this.blockify(items)
+    // A container (any non-textblock, e.g. `block+`): nested blocks are kept and inline runs go into
+    // the textblock its content expects; an empty one gets the content its schema requires.
+    if (!this.registry.isTextblock(plugin.name)) {
+      node.children = this.blockify(items, { parent: plugin.name })
+      if (node.children.length === 0) node.children = this.registry.createAndFill(plugin.name, data)?.children ?? []
       return [BOUNDARY, node, BOUNDARY]
     }
     // Inline content: nested blocks split this block into several of the same type.
-    const blocks = this.blockify(items, plugin.name, data)
+    const blocks = this.blockify(items, { type: plugin.name, data })
     if (blocks.length === 0) blocks.push({ ...node, children: [{ text: '', marks: [] }] })
     return [BOUNDARY, ...blocks, BOUNDARY]
   }
@@ -196,30 +199,43 @@ class Parser {
   }
 
   /**
-   * Groups items into blocks: inline runs become blocks of `type` (whitespace-only runs are
-   * dropped unless a `<br>` forces the block), block items are kept, and `<br>` ends a block.
+   * Groups items into blocks: block items are kept, `<br>` ends a block, and inline runs become
+   * blocks (whitespace-only runs are dropped unless a `<br>` forces the block). A run becomes a
+   * block of `into.type` (with `into.data`) or, with `into.parent` (a container type), the
+   * textblock that container's content expects at the run's position, wrapped as needed (a run in
+   * a list becomes a list item holding a paragraph); the default block where nothing fits.
    */
-  blockify(items: Item[], type = this.registry.defaultBlock, data: Data = {}): ElementNode[] {
+  blockify(
+    items: Item[],
+    into: { type: string; data: Data } | { parent: string } = { type: this.registry.defaultBlock, data: {} },
+  ): ElementNode[] {
+    const { registry } = this
     const blocks: ElementNode[] = []
+    // The content state after the blocks so far (containers only); a block that does not fit keeps it.
+    let state: ContentMatch | null = 'parent' in into ? (registry.contentMatch(into.parent) ?? null) : null
+    const push = (block: ElementNode) => {
+      blocks.push(block)
+      if (state) state = matchChild(state, block, registry) ?? state
+    }
     let run: Node[] = []
     let first = true
     const flush = (force: boolean) => {
       const children = collapseRun(run, this.preTexts, true)
       run = []
       if (!force && children.length === 0) return
-      blocks.push({
-        id: createId(),
-        type,
-        data: first ? data : structuredClone(data),
-        children: children.length > 0 ? children : [{ text: '', marks: [] }],
-      })
+      const content = children.length > 0 ? children : [{ text: '', marks: [] }]
+      if ('parent' in into) {
+        push(wrapChain((state && inlineWrapping(state, registry)) ?? [registry.defaultBlock], content))
+        return
+      }
+      blocks.push({ id: createId(), type: into.type, data: first ? into.data : structuredClone(into.data), children: content })
       first = false
     }
     for (const item of items) {
       if (!isNode(item)) flush(item === BREAK)
       else if (this.isBlock(item)) {
         flush(false)
-        blocks.push(item as ElementNode)
+        push(item as ElementNode)
       } else run.push(item)
     }
     flush(false)
@@ -280,9 +296,11 @@ function collapseRun(run: Node[], pre: WeakSet<TextNode>, trim: boolean): Node[]
  * element rule matched or not (`<p style="font-weight: bold">`). Unknown inline tags are
  * unwrapped; unknown block tags become default blocks (an empty one for whitespace-only content),
  * or are unwrapped when they contain blocks. Inline content outside blocks (e.g. bare text) is
- * wrapped into default blocks. Whitespace runs collapse to one space, across adjacent texts too
- * (inline elements included); whitespace-only text between blocks is dropped and block content is
- * trimmed. Inside `<pre>` whitespace is kept as is, edges included. Past `MAX_DEPTH` levels of
+ * wrapped into default blocks. In an element a plugin claims that is not a textblock (a container),
+ * nested blocks are kept and inline runs go into the textblock its content expects there
+ * (`<li>text</li>` becomes a list item holding a paragraph). Whitespace runs collapse to one space,
+ * across adjacent texts too (inline elements included); whitespace-only text between blocks is
+ * dropped and block content is trimmed. Inside `<pre>` whitespace is kept as is, edges included. Past `MAX_DEPTH` levels of
  * nesting, content is read as flat text. M1 has no hard-break node, so `<br>` splits the block.
  * Load the result with `coerceDoc` + `normalize`, or paste it with `insertFragment`.
  */

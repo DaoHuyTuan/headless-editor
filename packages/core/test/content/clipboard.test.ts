@@ -4,8 +4,8 @@ import { mainRange, single } from '../../src/model/selection'
 import type { Doc, ElementNode, Node, Selection } from '../../src/model/types'
 import { definePlugin, isText, type AnyPlugin, type Fragment } from '../../src/index'
 import { parseFromClipboard, serializeForClipboard } from '../../src/internal'
-import { createTestEditor, doc, stripIds, txt } from '../../src/testing/index'
-import { testBold, testParagraph } from '../fixtures'
+import { createTestEditor, doc, el, stripIds, txt } from '../../src/testing/index'
+import { nested, testBold, testParagraph } from '../fixtures'
 
 const p = (id: string, ...children: ReturnType<typeof txt>[]): ElementNode => ({ id, type: 'paragraph', data: {}, children })
 const range = (path: number[], offset: number, focusPath: number[], focusOffset: number): Selection => single({
@@ -41,6 +41,16 @@ describe('serializeForClipboard / parseFromClipboard', () => {
     expect(stripIds(parseFromClipboard(editor, { json: out.json }))).toEqual(
       stripIds([p('a', txt('ne')), p('b', txt('two', 'bold')), p('c', txt('th'))]),
     )
+  })
+
+  it('separates textblocks with newlines at every depth in the text flavor', () => {
+    const list = el('bulletList', el('listItem', p('i1', txt('a'))), el('listItem', p('i2', txt('b'))))
+    const editor = setup(doc(list), caret([0, 0, 0, 0], 0), nested)
+    const out = serializeForClipboard(editor, { start: { path: [0, 0, 0, 0], offset: 0 }, end: { path: [0, 1, 0, 0], offset: 1 } })
+    expect(out.text).toBe('a\nb')
+    const quoted = setup(doc(el('quote', p('q1', txt('x')), list), p('p2', txt('y'))), caret([0, 0, 0], 0), nested)
+    const all = { start: { path: [0, 0, 0], offset: 0 }, end: { path: [1, 0], offset: 1 } }
+    expect(serializeForClipboard(quoted, all).text).toBe('x\na\nb\ny')
   })
 
   it("the text flavor uses an inline atom's renderText (with the editor's current options)", () => {
@@ -185,6 +195,18 @@ describe('serializeForClipboard / parseFromClipboard', () => {
       { type: 'paragraph', data: {}, children: [txt('loose')] },
       { type: 'paragraph', data: {}, children: [txt('')] },
     ])
+  })
+
+  it('wraps inline runs in pasted json at every depth, into the textblock each position expects', () => {
+    const editor = setup(doc(p('p1', txt(''))), caret([0, 0], 0), nested)
+    const json = JSON.stringify([
+      { id: 'q', type: 'quote', data: {}, children: [{ text: 'x' }, { id: 'a', type: 'paragraph', children: [] }, { text: 'y' }] },
+      { id: 'l', type: 'bulletList', data: {}, children: [{ text: 'z' }] },
+    ])
+    expect(stripIds(parseFromClipboard(editor, { json }))).toEqual(stripIds([
+      el('quote', el('paragraph', txt('x')), el('paragraph', txt('')), el('paragraph', txt('y'))),
+      el('bulletList', el('listItem', el('paragraph', txt('z')))),
+    ]))
   })
 
   it('warns once per paste, not once per malformed node (4.5)', () => {

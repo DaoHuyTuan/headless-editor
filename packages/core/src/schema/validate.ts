@@ -1,3 +1,4 @@
+import { createId } from '../model/id'
 import { isText } from '../model/node'
 import type { DeepReadonly, Doc, ElementNode, Node } from '../model/types'
 import type { Registry } from '../plugin/registry'
@@ -12,6 +13,23 @@ export function matchChild(state: ContentMatch, node: DeepReadonly<Node>, regist
   if (isText(node)) return state.matchType('text')
   if (registry.node(node.type)) return state.matchType(node.type)
   return state.edges[0]?.next ?? state
+}
+
+/** The types to wrap an inline run in at `state`, outermost first, ending with a textblock; null if none. */
+export function inlineWrapping(state: ContentMatch, registry: Registry): string[] | null {
+  const type = state.defaultType
+  if (type && registry.isTextblock(type)) return [type]
+  const wrappers = state.findWrapping(registry.defaultBlock)
+  return wrappers ? [...wrappers, registry.defaultBlock] : null
+}
+
+/** A new element chain of `types` (outermost first, fresh ids, data `{}`) whose innermost element holds `children`. */
+export function wrapChain(types: readonly string[], children: Node[]): ElementNode {
+  let node: ElementNode | null = null
+  for (let k = types.length - 1; k >= 0; k--) {
+    node = { id: createId(), type: types[k]!, data: {}, children: node ? [node] : children }
+  }
+  return node!
 }
 
 /**

@@ -10,7 +10,7 @@ import { contentSource, exprNames, type RegisteredNode, type Registry } from './
 import type { AnyPlugin, PluginContext } from './plugin/types'
 import { parseContentExpr } from './schema/content-expr'
 import type { ContentMatch } from './schema/content-match'
-import { matchChild } from './schema/validate'
+import { inlineWrapping, matchChild } from './schema/validate'
 import { splitBlockAt } from './transaction/text'
 import { touchedElements } from './transaction/touched'
 import type { Transaction } from './transaction/transaction'
@@ -273,14 +273,6 @@ function fixContent(tr: Transaction, parent: ElementNode | null, path: Path, chi
   if (state.validEnd) return false
   const fill = state.fillBefore([], true, known)
   return !!fill && fill.length > 0 && insertFilled(tr, path, children.length, fill)
-}
-
-/** The types to wrap an inline run in at `state`, outermost first, ending with a textblock; null if none. */
-function inlineWrapping(state: ContentMatch, registry: Registry): string[] | null {
-  const type = state.defaultType
-  if (type && registry.isTextblock(type)) return [type]
-  const wrappers = state.findWrapping(registry.defaultBlock)
-  return wrappers ? [...wrappers, registry.defaultBlock] : null
 }
 
 /**
