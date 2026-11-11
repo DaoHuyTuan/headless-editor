@@ -8,12 +8,12 @@ import type { AnyPlugin, MarkSpec, NodeSpec } from './types'
 const DOC_CONTENT = 'block+'
 
 /** The expression a node's `content` stands for: aliases expanded, omitted meaning inline content. */
-function contentSource(spec: NodeSpec): string {
+export function contentSource(spec: NodeSpec): string {
   const content = spec.content ?? 'inline'
   return content === 'inline' ? 'inline*' : content === 'text' ? 'text*' : content
 }
 
-function exprNames(expr: ContentExpr, out: string[] = []): string[] {
+export function exprNames(expr: ContentExpr, out: string[] = []): string[] {
   if (expr.kind === 'name') out.push(expr.name)
   else if (expr.kind === 'repeat') exprNames(expr.expr, out)
   else for (const item of expr.items) exprNames(item, out)
@@ -182,15 +182,17 @@ export class Registry {
       }
     }
     this.growCreatable((type) => this.parsesEmptyData(type))
+    // The core creates default blocks with empty data (normalization, splits, paste); the insert
+    // stores the schema's output for `{}`, so fields with a default get it. A required field without
+    // one would make those inserts reject, so it is a setup error.
+    const result = this.validateData(this.defaultBlock, {})
+    if (!result.ok) {
+      throw new Error(
+        `The default block "${this.defaultBlock}" cannot be created with empty data (${result.message}). ` +
+          'Give every field of its data schema a default, or make it optional.',
+      )
+    }
     if (docMatch.fillBefore([], true, () => true) === null) {
-      // The usual cause, with the message normalization gives for it when another block is creatable.
-      const result = this.validateData(this.defaultBlock, {})
-      if (!result.ok) {
-        throw new Error(
-          `The default block "${this.defaultBlock}" cannot be created with empty data (${result.message}). ` +
-            'Give every field of its data schema a default, or make it optional.',
-        )
-      }
       throw new Error(
         `The doc content "${DOC_CONTENT}" cannot be created: no block parses from {} data with fillable content`,
       )
@@ -261,12 +263,13 @@ export class Registry {
 
   /**
    * Whether `type`'s content allows inline element `inlineType`. True for an unknown `type`
-   * (opaque); for an unknown `inlineType`, whether `type` holds any inline content. False for atoms.
+   * (opaque); for an unknown `inlineType`, whether `type` holds any inline content. `'text'` asks
+   * whether text is allowed. False for atoms.
    */
   allowsInline(type: string, inlineType: string): boolean {
     const allowed = this.allowed.get(type)
     if (!allowed) return !this.nodes.has(type)
-    if (this.nodes.has(inlineType)) return allowed.has(inlineType)
+    if (inlineType === 'text' || this.nodes.has(inlineType)) return allowed.has(inlineType)
     return [...allowed].some((t) => t === 'text' || this.nodes.get(t)?.kind === 'inline')
   }
 

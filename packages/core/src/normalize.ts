@@ -6,52 +6,44 @@ import { nextPath } from './model/path'
 import { createSelection } from './model/selection'
 import type { ElementNode, Mark, Node, Path, Point, TextNode } from './model/types'
 import { transformPath } from './ops/transform'
-import type { Registry } from './plugin/registry'
+import { contentSource, exprNames, type RegisteredNode, type Registry } from './plugin/registry'
 import type { AnyPlugin, PluginContext } from './plugin/types'
+import { parseContentExpr } from './schema/content-expr'
+import type { ContentMatch } from './schema/content-match'
+import { matchChild } from './schema/validate'
 import { splitBlockAt } from './transaction/text'
+import { touchedElements } from './transaction/touched'
 import type { Transaction } from './transaction/transaction'
 
 const MAX_PASSES = 100
 const MAX_CORE_FIXES_PER_PASS = 1_000_000
 
+/** Whether the content rule checks an element (null: the doc). */
+type Check = (node: ElementNode | null) => boolean
+
 /**
  * Normalizes `tr.doc` in place by appending operations to `tr`: core rules first, then every
  * plugin's `normalize` hook on every node entry. Passes repeat until one adds no operations.
+ *
+ * The content rule (children matching the schema) runs on the doc and on the elements the tr's ops
+ * touched, with their ancestors (`recordTouched`), including those its own fixes touch; on every
+ * element when the tr has no doc op yet (a direct call on a doc to normalize, as on load). The
+ * other core rules run on the whole doc.
  */
 export function normalize(tr: Transaction, getContext: (plugin: AnyPlugin) => PluginContext<any, any>): void {
-  assertDefaultBlockData(tr.registry)
   const options: OptionsLookup = (plugin) => getContext(plugin).options
+  const full = !tr.docChanged
+  const check: Check = (node) => full || node === null || touchedElements(tr).has(node.id)
   for (let pass = 0; ; pass++) {
     if (pass >= MAX_PASSES) throw new Error('Normalization did not converge')
     const before = tr.ops.length
     // Core rules always converge (each fix shrinks the work left); the cap is only a safety net.
-    for (let fixes = 0; fixOne(tr, options); fixes++) {
+    for (let fixes = 0; fixOne(tr, options, check); fixes++) {
       if (fixes >= MAX_CORE_FIXES_PER_PASS) throw new Error('Normalization did not converge')
     }
     runPluginHooks(tr, getContext)
     if (tr.ops.length === before) return
   }
-}
-
-/** Registries whose default block accepts empty data. */
-const defaultBlockChecked = new WeakSet<Registry>()
-
-/**
- * Throws when the default block's data schema rejects `{}`. Core creates default blocks with empty
- * data (normalize rules 1 and 2, splits, paste); the insert stores the schema's output for `{}`, so
- * fields with a default get it. A required field without one would make those inserts reject (and
- * rule 1 never converge), so it is a setup error: the editor constructor normalizes, hence throws.
- */
-function assertDefaultBlockData(registry: Registry): void {
-  if (defaultBlockChecked.has(registry)) return
-  const result = registry.validateData(registry.defaultBlock, {})
-  if (!result.ok) {
-    throw new Error(
-      `The default block "${registry.defaultBlock}" cannot be created with empty data (${result.message}). ` +
-        'Give every field of its data schema a default, or make it optional.',
-    )
-  }
-  defaultBlockChecked.add(registry)
 }
 
 function runPluginHooks(tr: Transaction, getContext: (plugin: AnyPlugin) => PluginContext<any, any>): void {
@@ -85,82 +77,78 @@ function runPluginHooks(tr: Transaction, getContext: (plugin: AnyPlugin) => Plug
 }
 
 /** Applies the first core-rule fix found. Returns false when the doc is normal. */
-function fixOne(tr: Transaction, options: OptionsLookup): boolean {
-  const { registry } = tr
+function fixOne(tr: Transaction, options: OptionsLookup, check: Check): boolean {
   const root = tr.doc.children as Node[]
-
-  // Rule 1: the doc is never empty.
-  if (root.length === 0) {
-    tr.insertNode([0], emptyBlock(registry))
-    return true
-  }
-
-  // Rule 2: texts and inline elements at the root are wrapped into a default block.
-  for (let i = 0; i < root.length; i++) {
-    if (!isInlineContent(root[i]!, registry)) continue
-    let end = i
-    while (end + 1 < root.length && isInlineContent(root[end + 1]!, registry)) end++
-    tr.insertNode([i], { id: createId(), type: registry.defaultBlock, data: {}, children: [] })
-    for (let k = 0; k <= end - i; k++) tr.apply({ type: 'move_node', path: [i + 1], newPath: [i, k] })
-    return true
-  }
-
+  // Rules 1 (the doc is never empty: it gets a default block) and 2 (texts and inline elements at
+  // the root are wrapped into a default block) are the root case of the content rule.
+  if (check(null) && fixContent(tr, null, [], root, options)) return true
   for (let i = 0; i < root.length; i++) {
     const n = root[i]!
-    if (isElement(n) && fixElement(tr, n, [i], options)) return true
+    if (isElement(n) && fixElement(tr, n, [i], options, check)) return true
   }
   return false
 }
 
-function fixElement(tr: Transaction, node: ElementNode, path: Path, options: OptionsLookup): boolean {
+function fixElement(tr: Transaction, node: ElementNode, path: Path, options: OptionsLookup, check: Check): boolean {
   const { registry } = tr
   const spec = registry.node(node.type)
   // Rule 7: unknown types are left untouched, including their children.
   if (!spec || spec.atom) return false
   const children = node.children ?? []
+  if (children.length === 0 && spec.kind !== 'block') return false
+  const inline = holdsInline(node.type, registry)
 
-  // Rule 5: a non-atom block with no children gets an empty text.
-  if (children.length === 0) {
-    if (spec.kind !== 'block') return false
-    tr.insertNode([...path, 0], { text: '', marks: [] })
-    return true
-  }
-
-  // Rule 9: a block holding inline content (or text) has no block children: a nested block is
-  // unwrapped (its children are lifted into this block at its position). Repeated passes handle
-  // deeper nesting. Unknown types are not blocks here (rule 7 leaves them alone). An atom block
-  // has no editable children to lift, so it is hoisted out whole instead (see `hoist`).
-  if (spec.kind === 'block' && (spec.content === 'inline' || spec.content === 'text')) {
-    for (let i = 0; i < children.length; i++) {
-      const c = children[i]!
-      if (isText(c)) continue
-      const childSpec = registry.node(c.type)
-      if (childSpec?.kind !== 'block') continue
-      if (childSpec.atom) {
-        // Empty texts first (rule 4, which runs later otherwise): hoisting past them would split off
-        // halves holding only them, left behind as stray empty blocks.
-        const empty = children.findIndex(
-          (t, k) => isText(t) && t.text === '' && !neededByRule10(children, k, registry, true),
-        )
-        if (empty >= 0) dropEmptyText(tr, children, path, empty)
-        else hoist(tr, node, path, i)
-      } else unwrap(tr, c, [...path, i])
-      return true
+  if (check(node)) {
+    if (!inline) {
+      // The content rule for containers (rules 2 and 5 at any depth).
+      if (fixContent(tr, node, path, children, options)) return true
+    } else if (children.length === 0) {
+      // Rule 5: an empty textblock gets an empty text where text is allowed (else what its content
+      // requires, maybe nothing).
+      if (registry.allowsInline(node.type, 'text')) {
+        tr.insertNode([...path, 0], { text: '', marks: [] })
+        return true
+      }
+      const fill = registry.contentMatch(node.type)!.fillBefore([], true, (t) => isKnown(t, registry))
+      if (fill && fill.length > 0) return insertFilled(tr, path, 0, fill)
+    } else {
+      // Rule 9: inline content has no block children: a nested block is unwrapped (its children
+      // are lifted into this element at its position). Repeated passes handle deeper nesting.
+      // Unknown types are not blocks here (rule 7 leaves them alone). An atom block has no editable
+      // children to lift, so it is hoisted out whole instead (see `hoist`).
+      for (let i = 0; i < children.length; i++) {
+        const c = children[i]!
+        if (isText(c)) continue
+        const childSpec = registry.node(c.type)
+        if (childSpec?.kind !== 'block') continue
+        if (childSpec.atom) {
+          // Empty texts first (rule 4, which runs later otherwise): hoisting past them would split off
+          // halves holding only them, left behind as stray empty blocks.
+          const empty = children.findIndex(
+            (t, k) => isText(t) && t.text === '' && !neededByRule10(children, k, registry, true),
+          )
+          if (empty >= 0) dropEmptyText(tr, children, path, empty)
+          else hoist(tr, node, path, i)
+        } else unwrap(tr, c, [...path, i])
+        return true
+      }
     }
   }
 
-  // Rule 8: a `content: 'text'` block holds only unmarked text. Inline elements are unwrapped, except
-  // an inline atom with `renderText`, which becomes that text (so a mention keeps its `@label`).
-  if (spec.content === 'text') {
+  if (inline) {
+    // Rule 8: inline content keeps only the marks its element allows (`marks`; none in a
+    // `content: 'text'` block) and the inline elements its content allows. Others are unwrapped,
+    // except an inline atom with `renderText`, which becomes that text (so a mention keeps its `@label`).
     for (let i = 0; i < children.length; i++) {
       const c = children[i]!
       if (isText(c)) {
-        if (c.marks.length === 0) continue
-        for (const m of [...c.marks].reverse()) tr.apply({ type: 'remove_mark', path: [...path, i], mark: m })
+        const banned = c.marks.filter((m) => !registry.allowsMark(node.type, m.type))
+        if (banned.length === 0) continue
+        for (const m of banned.reverse()) tr.apply({ type: 'remove_mark', path: [...path, i], mark: m })
         return true
       }
       const childSpec = registry.node(c.type)
-      if (childSpec?.kind !== 'inline') continue
+      if (childSpec?.kind !== 'inline' || registry.allowsInline(node.type, c.type)) continue
       if (childSpec.atom && childSpec.plugin.spec.renderText) {
         tr.insertNode([...path, i], { text: nodeText(c, registry, options), marks: [] })
         tr.removeNode([...path, i + 1])
@@ -169,12 +157,13 @@ function fixElement(tr: Transaction, node: ElementNode, path: Path, options: Opt
     }
   }
 
-  // Rule 11: `\n` is a line break only in `content: 'text'` blocks (HTML collapses it elsewhere, so it
-  // would not round-trip). A `content: 'inline'` block holding one (e.g. joined with a code block's
-  // text by Backspace, a range delete or a paste) is split there into a block of its type with a fresh
-  // id, and the `\n` removed. Every `\n` of the block is split in this one fix (see `splitAtNewlines`),
-  // so a many-line text costs one fix, not one restart from the root per line.
-  if (spec.kind === 'block' && spec.content === 'inline') {
+  // Rule 11: `\n` is a line break only in text-only content (`content: 'text'`; HTML collapses it
+  // elsewhere, so it would not round-trip). A textblock holding inline content with one (e.g. joined
+  // with a code block's text by Backspace, a range delete or a paste) is split there into a block of
+  // its type with a fresh id, and the `\n` removed. Every `\n` of the block is split in this one fix
+  // (see `splitAtNewlines`), so a many-line text costs one fix, not one restart from the root per line.
+  const richInline = inline && !textOnly(node.type, registry)
+  if (richInline && spec.kind === 'block') {
     const at = newlines(node, path, registry)
     if (at.length > 0) {
       splitAtNewlines(tr, node, path, at)
@@ -193,7 +182,7 @@ function fixElement(tr: Transaction, node: ElementNode, path: Path, options: Opt
     }
     // Rule 4: drop empty texts when the element has other children, except one that rule 10 needs
     // (beside an inline element, with no other text on that side).
-    if (c.text === '' && children.length > 1 && !neededByRule10(children, i, registry, holdsInline(spec))) {
+    if (c.text === '' && children.length > 1 && !neededByRule10(children, i, registry, richInline)) {
       dropEmptyText(tr, children, path, i)
       return true
     }
@@ -201,9 +190,10 @@ function fixElement(tr: Transaction, node: ElementNode, path: Path, options: Opt
     if (fixMarks(tr, c, [...path, i])) return true
   }
 
-  // Rule 10: in inline content, every inline element has a text sibling on each side (an empty one
-  // is added where needed), so a caret can always sit right before and right after it.
-  if (holdsInline(spec)) {
+  // Rule 10: in inline content that can hold inline elements and text, every inline element has a
+  // text sibling on each side (an empty one is added where needed), so a caret can always sit right
+  // before and right after it.
+  if (richInline && registry.allowsInline(node.type, 'text')) {
     for (let i = 0; i < children.length; i++) {
       if (!isInlineElement(children[i]!, registry, true)) continue
       const prev = children[i - 1]
@@ -221,9 +211,119 @@ function fixElement(tr: Transaction, node: ElementNode, path: Path, options: Opt
 
   for (let i = 0; i < children.length; i++) {
     const c = children[i]!
-    if (isElement(c) && fixElement(tr, c, [...path, i], options)) return true
+    if (isElement(c) && fixElement(tr, c, [...path, i], options, check)) return true
   }
   return false
+}
+
+const isKnown = (type: string, registry: Registry) => type === 'text' || !!registry.node(type)
+
+/**
+ * The content rule for the doc (`parent` null) or a container: the first child that does not fit
+ * the content expression (`matchChild`; unknown types always fit, rule 7) is fixed, in this order:
+ * 1. a run of inline content is wrapped into a textblock (the position's default type, or the
+ *    default block inside the wrappers it needs); 2. a block that fits once some nodes are inserted
+ *    before it gets them (`fillBefore`); 3. a block that fits inside wrappers is wrapped
+ *    (`findWrapping`); 4. a non-atom block is unwrapped; 5. an atom block is hoisted out of its
+ *    container; 6. anything else is dropped, its text kept as a default block where one fits (logged
+ *    in dev; unreachable with known plugins). Content that fits but is incomplete gets what it
+ *    lacks appended (`fillBefore` to the end), so an empty container is filled and never gets a text.
+ * Returns whether it made a fix.
+ */
+function fixContent(tr: Transaction, parent: ElementNode | null, path: Path, children: Node[], options: OptionsLookup): boolean {
+  const { registry } = tr
+  const known = (t: string) => isKnown(t, registry)
+  let state = registry.contentMatch(parent ? parent.type : 'doc')!
+  for (let i = 0; i < children.length; i++) {
+    const c = children[i]!
+    const next = matchChild(state, c, registry)
+    if (next) {
+      state = next
+      continue
+    }
+    if (isInlineContent(c, registry)) {
+      const chain = inlineWrapping(state, registry)
+      if (chain) {
+        let end = i
+        while (end + 1 < children.length && isInlineContent(children[end + 1]!, registry)) end++
+        wrap(tr, path, i, end - i + 1, chain)
+        return true
+      }
+    } else {
+      const type = (c as ElementNode).type
+      const fill = state.fillBefore([type], false, known)
+      if (fill && fill.length > 0) return insertFilled(tr, path, i, fill)
+      const wrappers = state.findWrapping(type)
+      if (wrappers && wrappers.length > 0) {
+        wrap(tr, path, i, 1, wrappers)
+        return true
+      }
+      if (!registry.node(type)!.atom) {
+        unwrap(tr, c as ElementNode, [...path, i])
+        return true
+      }
+      if (parent) {
+        hoist(tr, parent, path, i)
+        return true
+      }
+    }
+    drop(tr, state, parent, path, i, options)
+    return true
+  }
+  if (state.validEnd) return false
+  const fill = state.fillBefore([], true, known)
+  return !!fill && fill.length > 0 && insertFilled(tr, path, children.length, fill)
+}
+
+/** The types to wrap an inline run in at `state`, outermost first, ending with a textblock; null if none. */
+function inlineWrapping(state: ContentMatch, registry: Registry): string[] | null {
+  const type = state.defaultType
+  if (type && registry.isTextblock(type)) return [type]
+  const wrappers = state.findWrapping(registry.defaultBlock)
+  return wrappers ? [...wrappers, registry.defaultBlock] : null
+}
+
+/**
+ * Inserts an empty element chain of `types` (outermost first, data `{}`, so the schema's output
+ * for it) at child `i` of `parent`, then moves the `count` children from `i` into its innermost
+ * element, keeping their order (selection points follow).
+ */
+function wrap(tr: Transaction, parent: Path, i: number, count: number, types: string[]): void {
+  let node: ElementNode | null = null
+  for (let k = types.length - 1; k >= 0; k--) {
+    node = { id: createId(), type: types[k]!, data: {}, children: node ? [node] : [] }
+  }
+  tr.insertNode([...parent, i], node!)
+  const inner = [...parent, i, ...types.slice(1).map(() => 0)]
+  for (let k = 0; k < count; k++) tr.apply({ type: 'move_node', path: [...parent, i + 1], newPath: [...inner, k] })
+}
+
+/** Inserts a filled node (`createAndFill`, or an empty text) of each of `types` from child `i` of `parent`. */
+function insertFilled(tr: Transaction, parent: Path, i: number, types: string[]): boolean {
+  types.forEach((type, k) => {
+    const node = type === 'text' ? { text: '', marks: [] } : tr.registry.createAndFill(type)
+    if (!node) throw new Error(`Normalization could not create a "${type}" node`)
+    tr.insertNode([...parent, i + k], node)
+  })
+  return true
+}
+
+/**
+ * Removes child `i` of `parent` (at `path`), which fits nowhere: its text, when it has some, is
+ * put in its place in a default block if one fits there. Logged in dev.
+ */
+function drop(tr: Transaction, state: ContentMatch, parent: ElementNode | null, path: Path, i: number, options: OptionsLookup): void {
+  const { registry } = tr
+  const node = getNode(tr.doc, [...path, i]) as Node
+  if (tr.dev) {
+    const what = isText(node) ? 'text' : `"${node.type}" node`
+    console.warn(`@penline/core: normalization dropped a ${what} that fits nowhere in "${parent ? parent.type : 'doc'}"`)
+  }
+  const text = nodeText(node, registry, options)
+  if (text && state.matchType(registry.defaultBlock)) {
+    tr.insertNode([...path, i], { id: createId(), type: registry.defaultBlock, data: {}, children: [{ text, marks: [] }] })
+    tr.removeNode([...path, i + 1])
+  } else tr.removeNode([...path, i])
 }
 
 /** Every `\n` in the editable texts of `node`, in document order (inside non-atom inline elements too, not in opaque ones). */
@@ -372,9 +472,27 @@ function rehomeSelection(tr: Transaction, siblings: Node[], parent: Path, i: num
   tr.apply({ type: 'set_selection', selection: createSelection(moved, sel.main), prevSelection: sel })
 }
 
-/** Whether an element of `spec` holds inline content: a `content: 'inline'` block or a (non-atom) inline element. */
-function holdsInline(spec: { kind: 'block' | 'inline'; content?: string }): boolean {
-  return spec.kind === 'inline' || spec.content === 'inline'
+/** Whether an element of `type` (known, not an atom) holds inline content: a textblock or an inline element. */
+function holdsInline(type: string, registry: Registry): boolean {
+  return registry.isTextblock(type) || registry.node(type)?.kind === 'inline'
+}
+
+const textOnlyTypes = new WeakMap<RegisteredNode, boolean>()
+
+/**
+ * Whether the content expression of `type` names only `text` (`content: 'text'`, `'text+'`…): such
+ * content is plain text, where `\n` is a line break and no inline element goes. Read from the
+ * expression, not the compiled match: with no inline plugin registered, `inline*` reaches only text too.
+ */
+function textOnly(type: string, registry: Registry): boolean {
+  const spec = registry.node(type)
+  if (!spec) return false
+  let out = textOnlyTypes.get(spec)
+  if (out === undefined) {
+    out = exprNames(parseContentExpr(contentSource(spec))).every((name) => name === 'text')
+    textOnlyTypes.set(spec, out)
+  }
+  return out
 }
 
 /**
@@ -401,8 +519,4 @@ function neededByRule10(children: Node[], i: number, registry: Registry, inInlin
 
 function isInlineContent(n: Node, registry: Registry): boolean {
   return isText(n) || registry.node(n.type)?.kind === 'inline'
-}
-
-function emptyBlock(registry: Registry): ElementNode {
-  return { id: createId(), type: registry.defaultBlock, data: {}, children: [{ text: '', marks: [] }] }
 }

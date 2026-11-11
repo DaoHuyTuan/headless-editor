@@ -14,6 +14,7 @@ import * as markEdit from './marks'
 import { forEachRange, inForEachRange, mapRun, selectionLock } from './ranges'
 import type { RangeStep } from './ranges'
 import * as textEdit from './text'
+import { recordTouched } from './touched'
 import type { DeleteUnit } from './text'
 
 export interface TransactionMeta {
@@ -92,6 +93,7 @@ export class Transaction {
     if (op.type === 'set_selection') {
       this._selection = op.selection
     } else {
+      recordTouched(this, this._doc, op)
       this._doc = applyOp(this._doc, op)
       if (this._selection) this._selection = this.mapSelection(this._selection, op)
       mapRun(this, op)

@@ -76,13 +76,14 @@ describe('range delete edges (3.11)', () => {
 })
 
 describe('selection when its node goes away (3.9, 3.13)', () => {
-  const quote = definePlugin({ name: 'quote', node: { kind: 'block' } })
+  const code = definePlugin({ name: 'code', node: { kind: 'block', content: 'text' } })
   const chip = definePlugin({ name: 'chip', node: { kind: 'inline', atom: true } })
   const bold = { type: 'bold', data: {} }
 
   it('a caret in an empty text that rule 4 drops, with no text beside it, moves to the nearest editable text', () => {
-    // The quote holds an empty text and an atom block: no sibling has a text to re-home to.
-    const ed = createTestEditor({ plugins: [testParagraph, img, quote], doc: doc(p('ab'), el('quote', atomEl('img', {}))) })
+    // The code block holds an empty text and an unknown element: no sibling has a text to re-home to.
+    // (A container no longer holds texts: one put there is wrapped into a paragraph, not dropped.)
+    const ed = createTestEditor({ plugins: [testParagraph, img, code], doc: doc(p('ab'), el('code', el('weird', {}, txt('q')))) })
     const tr = ed.createTransaction()
     tr.apply({ type: 'insert_node', path: [1, 0], node: txt('') })
     tr.setSelection(sel([1, 0], 0))
