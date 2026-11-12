@@ -5,7 +5,8 @@ import type { Doc, ElementNode, Node, Path, Selection } from '../../src/model/ty
 import type { DOMOutputSpec } from '../../src/plugin/types'
 import { isValidDoc } from '../../src/schema/validate'
 import { createTestEditor, doc, el, sel, stripIds, txt } from '../../src/testing/index'
-import { nested, testBulletList, testListItem, testParagraph, testBold } from '../fixtures'
+import type { AnyPlugin } from '../../src/plugin/types'
+import { nested, testBold, testBulletList, testListItem, testParagraph, testQuote, testTable, testTableCell, testTableRow } from '../fixtures'
 
 const p = (...children: (Node | string)[]): ElementNode =>
   el('paragraph', ...children.map((c) => (typeof c === 'string' ? txt(c) : c)))
@@ -13,10 +14,15 @@ const ul = (...children: ElementNode[]): ElementNode => el('bulletList', ...chil
 const li = (...children: ElementNode[]): ElementNode => el('listItem', ...children)
 const range = (sp: Path, so: number, ep: Path, eo: number) => ({ start: { path: sp, offset: so }, end: { path: ep, offset: eo } })
 
-// Local plugins claiming and rendering the list tags (the shared fixtures have no HTML rules).
+// Local plugins claiming the container tags (and rendering the list ones): the shared fixtures have no HTML rules.
 const bulletList = testBulletList.extend({ parseHTML: [{ tag: 'ul' }], renderHTML: (): DOMOutputSpec => ['ul', 0] })
 const listItem = testListItem.extend({ parseHTML: [{ tag: 'li' }], renderHTML: (): DOMOutputSpec => ['li', 0] })
-const plugins = nested.map((pl) => (pl.name === 'bulletList' ? bulletList : pl.name === 'listItem' ? listItem : pl))
+const quotePl = testQuote.extend({ parseHTML: [{ tag: 'blockquote' }] })
+const tablePl = testTable.extend({ parseHTML: [{ tag: 'table' }] })
+const rowPl = testTableRow.extend({ parseHTML: [{ tag: 'tr' }] })
+const cellPl = testTableCell.extend({ parseHTML: [{ tag: 'td' }] })
+const claimed: Record<string, AnyPlugin> = { bulletList, listItem, quote: quotePl, table: tablePl, tableRow: rowPl, tableCell: cellPl }
+const plugins = nested.map((pl) => claimed[pl.name] ?? pl)
 
 const setup = (content: Doc, selection: Selection) => createTestEditor({ plugins, doc: content, selection })
 const transfer = (data: Record<string, string>) => ({ getData: (t: string) => data[t] ?? '' }) as unknown as DataTransfer
@@ -77,6 +83,33 @@ describe('clipboard flavors of a slice', () => {
     expect(paste(ed, { 'text/html': '<ul><li><p>c</p></li><li><p>d</p></li></ul>' })).toBe(true)
     expect(isValidDoc(ed.state.doc, ed.registry)).toBe(true)
     expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(ul(li(p('xc')), li(p('dy'))))))
+  })
+
+  describe('a lone pasted container is kept when the root takes it (open ends that do not line up are closed)', () => {
+    const quote = (...children: ElementNode[]): ElementNode => el('quote', ...children)
+    const table = (...rows: ElementNode[]): ElementNode => el('table', ...rows)
+    const row = (...cells: ElementNode[]): ElementNode => el('tableRow', ...cells)
+    const cell = (...children: ElementNode[]): ElementNode => el('tableCell', ...children)
+    const pasteAtRoot = (html: string) => {
+      const ed = setup(doc(p('xy')), sel([0, 0], 1))
+      expect(paste(ed, { 'text/html': html })).toBe(true)
+      expect(isValidDoc(ed.state.doc, ed.registry)).toBe(true)
+      return stripIds(ed.getJSON())
+    }
+
+    it.each([
+      ['a one-item list', '<ul><li><p>a</p></li></ul>', ul(li(p('a')))],
+      ['a quote of one paragraph', '<blockquote><p>a</p></blockquote>', quote(p('a'))],
+      ['a quote of two paragraphs', '<blockquote><p>a</p><p>b</p></blockquote>', quote(p('a'), p('b'))],
+      ['a single-cell table', '<table><tr><td><p>a</p></td></tr></table>', table(row(cell(p('a'))))],
+      ['a two-item list (control)', '<ul><li><p>a</p></li><li><p>b</p></li></ul>', ul(li(p('a')), li(p('b')))],
+    ])('%s goes in whole between the halves', (_name, html, node) => {
+      expect(pasteAtRoot(html)).toEqual(stripIds(doc(p('x'), node, p('y'))))
+    })
+
+    it('flat paragraphs still merge at both ends (control)', () => {
+      expect(pasteAtRoot('<p>a</p><p>b</p>')).toEqual(stripIds(doc(p('xa'), p('by'))))
+    })
   })
 
   it('pasting HTML with a loose run in a list into a root paragraph gives a valid list with all three texts (Review Focus 3)', () => {

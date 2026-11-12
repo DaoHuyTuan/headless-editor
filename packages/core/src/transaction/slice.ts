@@ -57,12 +57,16 @@ function typeOf(doc: ReadDoc, path: Path): string {
   return path.length === 0 ? 'doc' : (getNode(doc, path) as DeepReadonly<ElementNode>).type
 }
 
-/** How deep `node` can be open on `side`: down its edge children to a textblock, through containers only. */
-function maxOpen(node: Node | undefined, side: 'start' | 'end', registry: Registry): number {
+/**
+ * How deep `node` can be open on `side`: down its edge children to a textblock, through containers
+ * only. With `isolating: false`, an isolating node (a table cell) is never opened.
+ */
+function maxOpen(node: Node | undefined, side: 'start' | 'end', registry: Registry, isolating = true): number {
   if (!isBlockNode(node, registry) || isOpaque(node, registry)) return 0
+  if (!isolating && registry.isIsolating(node.type)) return 0
   if (registry.isTextblock(node.type)) return 1
   const kids = node.children ?? []
-  return 1 + maxOpen(side === 'start' ? kids[0] : kids[kids.length - 1], side, registry)
+  return 1 + maxOpen(side === 'start' ? kids[0] : kids[kids.length - 1], side, registry, isolating)
 }
 
 /** `slice` with its open depths clamped to what its content can support (whole numbers, 0 for inline content). */
@@ -88,12 +92,18 @@ export function fragmentSlice(content: Fragment, registry: Registry): Slice {
 }
 
 /**
- * `content` as open at each end as it can be (`clampSlice` of the largest depths): every container
- * down the edge to a textblock. For flat content (textblocks and opaque blocks) the depths of
- * `fragmentSlice`.
+ * `content` as open at each end as it can be: every container down the edge to a textblock, but
+ * never an isolating node (a table cell) or anything inside one, so a pasted table is never opened
+ * past its rows. For flat content (textblocks and opaque blocks) the depths of `fragmentSlice`.
+ * `insertSlice` keeps such a depth only where it lines up with the target (`closeUnaligned`).
  */
 export function maxOpenSlice(content: Fragment, registry: Registry): Slice {
-  return clampSlice({ content, openStart: Number.MAX_SAFE_INTEGER, openEnd: Number.MAX_SAFE_INTEGER }, registry)
+  if (!isBlockNode(content[0], registry)) return { content, openStart: 0, openEnd: 0 }
+  return {
+    content,
+    openStart: maxOpen(content[0], 'start', registry, false),
+    openEnd: maxOpen(content[content.length - 1], 'end', registry, false),
+  }
 }
 
 /** Whether `slice` has the open depths of its content as a plain fragment (`fragmentSlice`). */
@@ -177,6 +187,42 @@ function flatFits(tr: Transaction, slice: Slice, sel: SelectionRange, nodeEdit: 
 }
 
 /**
+ * The open depth of `slice` at `side` when its open chain lines up with the block at `blockPath` and
+ * its ancestors (see `fitsToTry`), else 0.
+ */
+function alignedDepth(tr: Transaction, slice: Slice, side: 'start' | 'end', blockPath: Path): number {
+  const { registry, doc } = tr
+  const D = blockPath.length
+  const { content } = slice
+  const depth = side === 'start' ? slice.openStart : slice.openEnd
+  if (depth < 1 || depth > D) return 0
+  let node: Node | undefined = side === 'start' ? content[0] : content[content.length - 1]
+  for (let j = 1; j < depth; j++) {
+    const type = typeOf(doc, blockPath.slice(0, D - depth + j))
+    if (!node || !isElement(node) || node.type !== type || registry.isIsolating(type) || !registry.contentMatch(type)) return 0
+    const kids: Node[] = node.children ?? []
+    node = side === 'start' ? kids[0] : kids[kids.length - 1]
+  }
+  return node && isElement(node) && registry.isTextblock(node.type) ? depth : 0
+}
+
+/**
+ * `slice` with each open end that cannot line up with the target block (`alignedDepth`) closed, so
+ * a lone container open at both ends (pasted HTML: a quote, a one-item list) is placed whole instead
+ * of being reduced to its paragraphs. An end open at depth 1 on a textblock stays (it merges, as a
+ * fragment's does).
+ */
+function closeUnaligned(tr: Transaction, slice: Slice, blockPath: Path): Slice {
+  const { content } = slice
+  const keep = (side: 'start' | 'end', depth: number) => {
+    const edge = side === 'start' ? content[0] : content[content.length - 1]
+    if (depth === 1 && isElement(edge!) && tr.registry.isTextblock(edge.type)) return 1
+    return alignedDepth(tr, slice, side, blockPath)
+  }
+  return { content, openStart: keep('start', slice.openStart), openEnd: keep('end', slice.openEnd) }
+}
+
+/**
  * One way to fit a slice at a caret: merge depth at the start and at the end, how many levels are
  * split, and whether `place` may wrap or unwrap nodes.
  */
@@ -201,21 +247,8 @@ interface Fit {
 function fitsToTry(tr: Transaction, slice: Slice, blockPath: Path): Fit[] {
   const { registry, doc } = tr
   const D = blockPath.length
-  const { content } = slice
-  const aligned = (side: 'start' | 'end'): number => {
-    const depth = side === 'start' ? slice.openStart : slice.openEnd
-    if (depth < 1 || depth > D) return 0
-    let node: Node | undefined = side === 'start' ? content[0] : content[content.length - 1]
-    for (let j = 1; j < depth; j++) {
-      const type = typeOf(doc, blockPath.slice(0, D - depth + j))
-      if (!node || !isElement(node) || node.type !== type || registry.isIsolating(type) || !registry.contentMatch(type)) return 0
-      const kids: Node[] = node.children ?? []
-      node = side === 'start' ? kids[0] : kids[kids.length - 1]
-    }
-    return node && isElement(node) && registry.isTextblock(node.type) ? depth : 0
-  }
-  const s = aligned('start')
-  const e = aligned('end')
+  const s = alignedDepth(tr, slice, 'start', blockPath)
+  const e = alignedDepth(tr, slice, 'end', blockPath)
   const out: Fit[] = []
   if (s && e && s === e) out.push({ s, e, k: s, wrap: true })
   if (s) out.push({ s, e: 0, k: s, wrap: true })
@@ -499,7 +532,12 @@ function fitStep(tr: Transaction, slice: Slice, sel: SelectionRange, nodeEdit: b
  */
 export function insertSliceStep(tr: Transaction, input: Slice, sel: SelectionRange, nodeEdit: boolean): FragmentStep {
   const { registry } = tr
-  let slice = reduce(clampSlice(input, registry), registry, false)
+  const selected = nodeEdit && isNodeRange(sel) ? sel.node : null
+  const target =
+    selected && registry.node(typeOf(tr.doc, selected))?.kind !== 'inline'
+      ? selected
+      : blockPathOf(tr, selected ?? toRange(sel).start.path)
+  let slice = reduce(closeUnaligned(tr, clampSlice(input, registry), target), registry, false)
   if (flatFits(tr, slice, sel, nodeEdit)) return insertFragmentStep(tr, slice.content, sel, nodeEdit)
   slice = reduce(slice, registry, true)
   if (!isBlockNode(slice.content[0], registry)) return insertFragmentStep(tr, slice.content, sel, nodeEdit)
