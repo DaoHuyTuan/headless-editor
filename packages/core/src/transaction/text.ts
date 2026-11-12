@@ -368,11 +368,9 @@ export function deleteRangeStep(tr: Transaction, range: Range): Point | null {
       for (const op of plan.ops) tr.apply(op)
       startAt = plan.startAt
     } else {
-      // No valid replace (an exotic schema): text-only deletion, then opaque edges whole (end
-      // first: removing it cannot shift the start).
-      removeTextBetween(tr, start, end)
-      if (endOpaque && !isAncestorPath(endBlock, startBlock)) tr.removeNode(endBlock)
-      if (startOpaque && !isAncestorPath(startBlock, endBlock)) tr.removeNode(startBlock)
+      const ops = fallbackDelete(tr, start, end, startBlock, endBlock, startOpaque, endOpaque)
+      if (!ops) return null
+      for (const op of ops) tr.apply(op)
     }
   } else {
     if (!startOpaque) removeTextBetween(tr, start, lastPoint(blockTexts(tr, startBlock))!)
@@ -599,6 +597,36 @@ function joinsInto(registry: Registry, doc: DeepReadonly<Doc>, a: Path, b: Path)
     !bannedMarks(registry, left.type, moved) &&
     (textOnly(left.type, registry) || !hasNewline(moved))
   )
+}
+
+/**
+ * The delete when no replace is valid (an exotic schema; see `planNestedDelete`), planned on a
+ * `Draft`: the text between the points, then the opaque edges whole (end first: removing it cannot
+ * shift the start), kept only when the elements around them stay valid. Without them, only the text
+ * removal (null, no ops, if even that leaves an edge block invalid).
+ */
+function fallbackDelete(
+  tr: Transaction,
+  start: Point,
+  end: Point,
+  a: Path,
+  b: Path,
+  aOpaque: boolean,
+  bOpaque: boolean,
+): Operation[] | null {
+  const d = new Draft(tr.registry, tr.doc)
+  const edges = [d.watch(a), d.watch(b)]
+  const parents = [d.watch(parentPath(a)), d.watch(parentPath(b))]
+  removeTextBetween(d, start, end)
+  const textOps = d.ops.length
+  if (!edges.every((i) => validAt(d, d.at(i)!))) return null
+  if (bOpaque && !isAncestorPath(b, a)) d.removeNode(d.at(edges[1]!)!)
+  if (aOpaque && !isAncestorPath(a, b)) d.removeNode(d.at(edges[0]!)!)
+  const valid = parents.every((i) => {
+    const p = d.at(i)
+    return !p || validAt(d, p)
+  })
+  return valid ? d.ops : d.ops.slice(0, textOps)
 }
 
 /**

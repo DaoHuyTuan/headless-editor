@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { z } from 'zod'
+import { definePlugin } from '../../src/plugin/define'
 import type { Doc, ElementNode, Mark, Node, Path, SelectionRange } from '../../src/model/types'
 import { isValidDoc } from '../../src/schema/validate'
 import { createTestEditor, doc, el, sel, stripIds, txt } from '../../src/testing/index'
@@ -183,5 +185,29 @@ describe('deleteRange in containers: emptied containers and several ranges', () 
     ed.dispatch(tr)
     expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(quote(p('ad')), quote(p('eh')))))
     expect(ed.state.selection?.ranges).toEqual([sel([0, 0, 0], 1).ranges[0], sel([1, 0, 0], 1).ranges[0]])
+  })
+})
+
+describe('deleteRange fallback when no replace is valid', () => {
+  // `frame` needs its `box` and `box` needs a second block, which nothing can create (`key` has no default).
+  const frame = definePlugin({ name: 'frame', node: { kind: 'block', content: 'paragraph box' } })
+  const box = definePlugin({ name: 'box', node: { kind: 'block', content: 'paragraph secret', group: [] } })
+  const secret = definePlugin({
+    name: 'secret',
+    node: { kind: 'block', content: 'inline', group: [] },
+    data: z.object({ key: z.string() }),
+  })
+
+  it('keeps an opaque edge whose removal would leave its container invalid; only the text goes', () => {
+    const ed = createTestEditor({
+      plugins: [...nested, frame, box, secret],
+      doc: doc(el('frame', p('ab'), el('box', p('cd'), el('weird', txt('zz'))))),
+    })
+    const tr = ed.createTransaction()
+    // From inside "ab" to inside the unknown block, which stands for the box's `secret`.
+    tr.deleteRange(range([0, 0, 0], 1, [0, 1, 1, 0], 1))
+    expect(isValidDoc(tr.doc, tr.registry)).toBe(true)
+    expect(stripIds(tr.doc)).toEqual(stripIds(doc(el('frame', p('a'), el('box', p(''), el('weird', txt('zz')))))))
+    expect(tr.selection).toEqual(sel([0, 0, 0], 1))
   })
 })
