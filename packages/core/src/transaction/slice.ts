@@ -4,7 +4,6 @@ import { deepEqualJson, getNode, isElement, isText } from '../model/node'
 import { parentPath, toRange } from '../model/path'
 import { isNodeRange, mainRange } from '../model/selection'
 import type { DeepReadonly, Doc, ElementNode, Node, Path, Point, Range, SelectionRange } from '../model/types'
-import { textOnly } from '../normalize'
 import type { Registry } from '../plugin/registry'
 import type { ContentMatch } from '../schema/content-match'
 import { bannedMarks, fits, hasNewline, matchChild, missingContent } from '../schema/validate'
@@ -305,7 +304,7 @@ function validNode(node: DeepReadonly<Node>, registry: Registry): boolean {
   return (
     fits(registry, el.type, kids) &&
     !bannedMarks(registry, el.type, kids) &&
-    (textOnly(el.type, registry) || !hasNewline(kids)) &&
+    (registry.isTextOnly(el.type) || !hasNewline(kids)) &&
     kids.every((k) => validNode(k, registry))
   )
 }

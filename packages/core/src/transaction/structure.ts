@@ -2,7 +2,6 @@ import { createId } from '../model/id'
 import { cloneJson, deepEqualJson, getNode, isElement, isText, sameMarkSet } from '../model/node'
 import { comparePath, nextPath, parentPath, pathEquals, previousPath, toRange } from '../model/path'
 import type { Data, DeepReadonly, Doc, ElementNode, Mark, Node, Path, Point, Range, SelectionRange, TextNode } from '../model/types'
-import { textOnly } from '../normalize'
 import type { Registry } from '../plugin/registry'
 import { bannedMarks, fits, hasNewline } from '../schema/validate'
 import { mapSince } from './ranges'
@@ -303,7 +302,7 @@ function conversion(doc: ReadDoc, registry: Registry, path: Path, type: string, 
   if (!fits(registry, typeAt(doc, parent), [...siblings.slice(0, at), stub(type), ...siblings.slice(at + 1)])) return null
   const kids = node.children ?? []
   if (!fits(registry, type, kids)) return null
-  if (!textOnly(type, registry) && hasNewline(kids)) return null
+  if (!registry.isTextOnly(type) && hasNewline(kids)) return null
   return 'type'
 }
 
@@ -437,7 +436,7 @@ export function split(
     const left = kids.slice(0, c + 1)
     const right = j === 0 ? kids.slice(c) : [stub(rightType), ...kids.slice(c + 1)]
     if (!fits(registry, node.type, left) || !fits(registry, type, right)) return null
-    if (j === 0 && type !== node.type && (bannedMarks(registry, type, right) || (!textOnly(type, registry) && hasNewline(right))))
+    if (j === 0 && type !== node.type && (bannedMarks(registry, type, right) || (!registry.isTextOnly(type) && hasNewline(right))))
       return null
     props.push({ id: createId(), type, data })
     rightType = type
@@ -484,7 +483,7 @@ function joinable(doc: ReadDoc, registry: Registry, path: Path): boolean {
   for (const n of [a, b]) if (!registry.contentMatch(n.type) || registry.isIsolating(n.type)) return false
   const moved = b.children ?? []
   if (!fits(registry, a.type, [...(a.children ?? []), ...moved])) return false
-  if (bannedMarks(registry, a.type, moved) || (!textOnly(a.type, registry) && hasNewline(moved))) return false
+  if (bannedMarks(registry, a.type, moved) || (!registry.isTextOnly(a.type) && hasNewline(moved))) return false
   return fits(registry, typeAt(doc, parent), [...siblings.slice(0, at), ...siblings.slice(at + 1)])
 }
 

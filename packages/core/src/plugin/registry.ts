@@ -86,6 +86,8 @@ export class Registry {
   /** Types the content of a non-atom node can hold anywhere. */
   private readonly allowed = new Map<string, Set<string>>()
   private readonly textblocks = new Set<string>()
+  /** `isTextOnly`, cached per type. */
+  private readonly textOnlyTypes = new Map<string, boolean>()
   private readonly docMatch: ContentMatch
   /**
    * Auto-creatable types, each with the order it became creatable in: its content can always be
@@ -248,6 +250,23 @@ export class Registry {
   /** A known non-atom block whose content matches only inline content (text and inline nodes). */
   isTextblock(type: string): boolean {
     return this.textblocks.has(type)
+  }
+
+  /**
+   * Whether the content expression of `type` names only `text` (`content: 'text'`, `'text*'`,
+   * `'text+'`…): such content is plain text, where `\n` is a line break and no inline element goes.
+   * Read from the expression, not the compiled match: with no inline plugin registered, `inline*`
+   * reaches only text too. False for unknown types.
+   */
+  isTextOnly(type: string): boolean {
+    const spec = this.nodes.get(type)
+    if (!spec) return false
+    let out = this.textOnlyTypes.get(type)
+    if (out === undefined) {
+      out = exprNames(parseContentExpr(contentSource(spec))).every((name) => name === 'text')
+      this.textOnlyTypes.set(type, out)
+    }
+    return out
   }
 
   /**

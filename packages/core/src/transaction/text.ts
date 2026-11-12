@@ -4,7 +4,6 @@ import { getNode, isElement, isText, sameMarkSet } from '../model/node'
 import { comparePath, comparePoint, isAncestorPath, nextPath, parentPath, pathEquals, pointEquals, toRange } from '../model/path'
 import { isNodeRange, rangeEquals, single } from '../model/selection'
 import type { Data, DeepReadonly, Doc, ElementNode, Mark, Node, Path, Point, Range, Selection, SelectionRange, TextNode } from '../model/types'
-import { textOnly } from '../normalize'
 import { applyOp } from '../ops/apply'
 import { transformPath } from '../ops/transform'
 import type { Operation } from '../ops/types'
@@ -565,7 +564,7 @@ function validAt(d: Draft, path: Path): boolean {
   return (
     fits(registry, owner, kids) &&
     !bannedMarks(registry, owner, kids) &&
-    (textOnly(owner, registry) || !hasNewline(kids))
+    (registry.isTextOnly(owner) || !hasNewline(kids))
   )
 }
 
@@ -578,7 +577,7 @@ function joinsInto(registry: Registry, doc: DeepReadonly<Doc>, a: Path, b: Path)
   return (
     fits(registry, left.type, [...(left.children ?? []), ...moved]) &&
     !bannedMarks(registry, left.type, moved) &&
-    (textOnly(left.type, registry) || !hasNewline(moved))
+    (registry.isTextOnly(left.type) || !hasNewline(moved))
   )
 }
 

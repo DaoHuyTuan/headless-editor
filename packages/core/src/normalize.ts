@@ -6,9 +6,8 @@ import { nextPath } from './model/path'
 import { createSelection } from './model/selection'
 import type { ElementNode, Mark, Node, Path, Point, TextNode } from './model/types'
 import { transformPath } from './ops/transform'
-import { contentSource, exprNames, type RegisteredNode, type Registry } from './plugin/registry'
+import type { Registry } from './plugin/registry'
 import type { AnyPlugin, PluginContext } from './plugin/types'
-import { parseContentExpr } from './schema/content-expr'
 import type { ContentMatch } from './schema/content-match'
 import { inlineWrapping, matchChild } from './schema/validate'
 import { splitBlockAt } from './transaction/text'
@@ -162,7 +161,7 @@ function fixElement(tr: Transaction, node: ElementNode, path: Path, options: Opt
   // with a code block's text by Backspace, a range delete or a paste) is split there into a block of
   // its type with a fresh id, and the `\n` removed. Every `\n` of the block is split in this one fix
   // (see `splitAtNewlines`), so a many-line text costs one fix, not one restart from the root per line.
-  const richInline = inline && !textOnly(node.type, registry)
+  const richInline = inline && !registry.isTextOnly(node.type)
   if (richInline && spec.kind === 'block') {
     const at = newlines(node, path, registry)
     if (at.length > 0) {
@@ -467,24 +466,6 @@ function rehomeSelection(tr: Transaction, siblings: Node[], parent: Path, i: num
 /** Whether an element of `type` (known, not an atom) holds inline content: a textblock or an inline element. */
 function holdsInline(type: string, registry: Registry): boolean {
   return registry.isTextblock(type) || registry.node(type)?.kind === 'inline'
-}
-
-const textOnlyTypes = new WeakMap<RegisteredNode, boolean>()
-
-/**
- * Whether the content expression of `type` names only `text` (`content: 'text'`, `'text+'`…): such
- * content is plain text, where `\n` is a line break and no inline element goes. Read from the
- * expression, not the compiled match: with no inline plugin registered, `inline*` reaches only text too.
- */
-export function textOnly(type: string, registry: Registry): boolean {
-  const spec = registry.node(type)
-  if (!spec) return false
-  let out = textOnlyTypes.get(spec)
-  if (out === undefined) {
-    out = exprNames(parseContentExpr(contentSource(spec))).every((name) => name === 'text')
-    textOnlyTypes.set(spec, out)
-  }
-  return out
 }
 
 /**

@@ -24,6 +24,20 @@ describe('Registry schema', () => {
     expect(r.isTextblock('nope')).toBe(false)
   })
 
+  it('tells text-only content (an expression naming only `text`) from inline content', () => {
+    const plus = definePlugin({ name: 'plus', node: { kind: 'block', content: 'text+' } })
+    const bare = definePlugin({ name: 'bare', node: { kind: 'block' } })
+    // With no inline plugin, `inline*` reaches only text: still not text-only (read from the expression).
+    const r2 = new Registry([testParagraph, plus, bare])
+    expect(r.isTextOnly('code')).toBe(true)
+    expect(r2.isTextOnly('plus')).toBe(true)
+    expect(r.isTextOnly('paragraph')).toBe(false)
+    expect(r2.isTextOnly('paragraph')).toBe(false)
+    expect(r2.isTextOnly('bare')).toBe(false)
+    expect(r.isTextOnly('quote')).toBe(false)
+    expect(r.isTextOnly('nope')).toBe(false)
+  })
+
   it('reads an omitted content on a non-atom block as inline content', () => {
     const bare = definePlugin({ name: 'bare', node: { kind: 'block' } })
     const r2 = new Registry([testParagraph, bare, mention])
