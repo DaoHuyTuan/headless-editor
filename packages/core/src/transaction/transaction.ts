@@ -11,6 +11,8 @@ import type { EditorState } from '../state'
 import * as fragmentEdit from './fragment'
 import type { Fragment } from './fragment'
 import * as markEdit from './marks'
+import * as sliceEdit from './slice'
+import type { Slice } from './slice'
 import * as structureEdit from './structure'
 import { forEachRange, inForEachRange, mapRun, selectionLock } from './ranges'
 import type { RangeStep } from './ranges'
@@ -292,6 +294,27 @@ export class Transaction {
   insertFragment(fragment: Fragment, at?: SelectionRange | Range): this {
     fragmentEdit.insertFragment(this, fragment, at)
     return this
+  }
+
+  /**
+   * The slice of `range` (default: the main selection range; a node range gives its node): its
+   * content below the deepest node holding both ends, and how many block levels are cut open at each
+   * end (spec §5.4). Acts on the main range on purpose: a slice is one piece of content.
+   */
+  getSlice(range?: Range): Slice {
+    return sliceEdit.getSlice(this, range)
+  }
+
+  /**
+   * Deletes every selection range (or only `range`) and fits `slice` there: open ends merge into the
+   * textblock at the caret when their open nodes line up with its ancestors, whole nodes go where the
+   * content match accepts them, wrapped or unwrapped as needed (list items pasted into a root
+   * paragraph become a list). `insertFragment(f)` is this with a fragment's open depths. False, with
+   * no ops at that range, when the slice fits nowhere there. Inside a `forEachRange` callback pass
+   * the callback's range.
+   */
+  insertSlice(slice: Slice, range?: SelectionRange): boolean {
+    return sliceEdit.insertSlice(this, slice, range)
   }
 
   /**

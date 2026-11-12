@@ -87,6 +87,7 @@ export type { EditorState } from './state'
 export { Transaction } from './transaction/transaction'
 export type { TransactionMeta } from './transaction/transaction'
 export type { Fragment } from './transaction/fragment'
+export type { Slice } from './transaction/slice'
 export { parseHTML } from './html/parse'
 export { Editor } from './editor'
 export type {

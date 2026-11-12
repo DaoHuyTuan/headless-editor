@@ -5,6 +5,7 @@ import { addMark, removeMark } from '../../src/transaction/marks'
 import { insertFragment } from '../../src/transaction/fragment'
 import { setIdGenerator } from '../../src/model/id'
 import type { ElementNode, Mark, Node } from '../../src/model/types'
+import { isValidDoc } from '../../src/schema/validate'
 import { createTestEditor, doc, el, sel, stripIds, txt } from '../../src/testing/index'
 import { testBold, testParagraph } from '../fixtures'
 
@@ -135,26 +136,34 @@ describe('fragments (3.5)', () => {
   const pq = (t: string) => p(t)
   const json = (ed: ReturnType<typeof createTestEditor>) => stripIds(ed.getJSON())
 
-  it('a lone container block goes in whole, splitting the text block', () => {
+  // Spec §8: containers are fitted (`insertSlice` with a fragment's open depths: a container edge is
+  // closed), not pasted as siblings by a heuristic. The fitted results are valid before normalization.
+  const valid = (ed: ReturnType<typeof createTestEditor>) => expect(isValidDoc(ed.state.doc, ed.registry)).toBe(true)
+
+  it('a lone container is closed: it goes between the halves, where the parent of the caret block accepts it', () => {
     const ed = createTestEditor({ plugins: [testParagraph, quote], doc: doc(p('xy')), selection: sel([0, 0], 1) })
-    ed.commands.insertContent([el('quote', pq('a'), pq('b'))])
+    expect(ed.commands.insertContent([el('quote', pq('a'), pq('b'))])).toBe(true)
     expect(json(ed)).toEqual(stripIds(doc(p('x'), el('quote', pq('a'), pq('b')), p('y'))))
     expect(ed.state.selection).toEqual(sel([1, 1, 0], 1))
+    valid(ed)
   })
 
-  it('a container pasted inside a container nests there', () => {
+  it('a container fitted inside a container that accepts it nests there', () => {
     const ed = createTestEditor({ plugins: [testParagraph, quote], doc: doc(el('quote', p('xy'))), selection: sel([0, 0, 0], 1) })
-    ed.commands.insertContent([el('quote', pq('a'), pq('b'))])
+    expect(ed.commands.insertContent([el('quote', pq('a'), pq('b'))])).toBe(true)
     expect(json(ed)).toEqual(stripIds(doc(el('quote', p('x'), el('quote', pq('a'), pq('b')), p('y')))))
+    valid(ed)
   })
 
-  it('a container at an edge of several blocks goes in whole too', () => {
+  it('a container at an edge of several blocks is closed while a textblock edge merges', () => {
     const ed = createTestEditor({ plugins: [testParagraph, quote], doc: doc(p('xy')), selection: sel([0, 0], 1) })
-    ed.commands.insertContent([el('quote', pq('a'), pq('b')), p('2')])
+    expect(ed.commands.insertContent([el('quote', pq('a'), pq('b')), p('2')])).toBe(true)
     expect(json(ed)).toEqual(stripIds(doc(p('x'), el('quote', pq('a'), pq('b')), p('2y'))))
+    valid(ed)
     const ed2 = createTestEditor({ plugins: [testParagraph, quote], doc: doc(p('xy')), selection: sel([0, 0], 1) })
-    ed2.commands.insertContent([p('1'), el('quote', pq('a'), pq('b'))])
+    expect(ed2.commands.insertContent([p('1'), el('quote', pq('a'), pq('b'))])).toBe(true)
     expect(json(ed2)).toEqual(stripIds(doc(p('x1'), el('quote', pq('a'), pq('b')), p('y'))))
+    valid(ed2)
   })
 
   it('an empty-string id gets a fresh one', () => {
