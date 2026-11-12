@@ -14,11 +14,12 @@ const PUBLIC = [
 ]
 
 const INTERNAL = [
-  'DEFAULT_PRIORITY', 'EditorView', 'FRAGMENT_MIME', 'Registry', 'Renderer', 'applyOp', 'coerceDoc', 'corePlugin',
-  'deepEqualJson', 'domToModel', 'eventToKeyName', 'getFragment', 'historyPlugin', 'invertOp', 'isIgnoredTarget',
-  'isMarkActive', 'marksAt', 'modelToDom', 'normalize', 'normalizeKeyName', 'parseFromClipboard', 'readDomSelection',
-  'sameMarkSet', 'serializeForClipboard', 'serializeHTML', 'transformPath', 'transformSelectionStrict',
-  'writeDomSelection',
+  'DEFAULT_PRIORITY', 'EditorView', 'FRAGMENT_MIME', 'Registry', 'Renderer', 'applyOp', 'blockRange', 'canJoin', 'canLift',
+  'canSetBlockType', 'canWrap', 'coerceDoc', 'corePlugin', 'deepEqualJson', 'domToModel', 'eventToKeyName', 'fits',
+  'getFragment', 'historyPlugin', 'invertOp', 'isIgnoredTarget', 'isMarkActive', 'liftTarget', 'marksAt', 'matchChild',
+  'modelToDom', 'normalize', 'normalizeKeyName', 'parseFromClipboard', 'parseSliceFromClipboard', 'readDomSelection',
+  'sameMarkSet', 'serializeForClipboard', 'serializeHTML', 'transformPastedSlice', 'transformPath',
+  'transformSelectionStrict', 'writeDomSelection',
 ]
 
 describe('the public API of @penline/core', () => {

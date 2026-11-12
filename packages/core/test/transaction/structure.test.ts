@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { createSelection } from '../../src/model/selection'
+import { z } from 'zod'
+import { definePlugin } from '../../src/plugin/define'
+import { createSelection, mainRange } from '../../src/model/selection'
 import type { Doc, ElementNode, Node, Selection } from '../../src/model/types'
 import { isValidDoc } from '../../src/schema/validate'
 import { canJoin, canLift, canSetBlockType, canWrap, liftTarget } from '../../src/transaction/structure'
@@ -204,6 +206,22 @@ describe('setBlockType', () => {
     // A list item must start with a paragraph.
     const ed = setup(doc(ul(li(p('a')))), sel([0, 0, 0, 0], 0))
     expectRefused(ed, (t) => t.setBlockType('code'))
+  })
+
+  it('canSetBlockType with data reports a data-only change; invalid data reports false', () => {
+    const heading = definePlugin({
+      name: 'heading',
+      node: { kind: 'block', content: 'inline' },
+      data: z.object({ level: z.number().default(1) }),
+    })
+    const ed = createTestEditor({ plugins: [...nested, heading], doc: doc(el('heading', { level: 1 }, txt('a'))), selection: sel([0, 0], 0) })
+    const tr = ed.createTransaction()
+    expect(canSetBlockType(tr, 'heading')).toBe(false)
+    expect(canSetBlockType(tr, 'heading', { level: 1 })).toBe(false)
+    expect(canSetBlockType(tr, 'heading', { level: 2 })).toBe(true)
+    expect(canSetBlockType(tr, 'heading', { level: 'x' })).toBe(false)
+    expect(canSetBlockType(tr, 'paragraph', undefined, mainRange(tr.selection!))).toBe(true)
+    expectApplied(ed, (t) => t.setBlockType('heading', { level: 2 }), doc(el('heading', { level: 2 }, txt('a'))))
   })
 })
 

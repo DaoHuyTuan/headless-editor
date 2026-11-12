@@ -306,11 +306,21 @@ function conversion(doc: ReadDoc, registry: Registry, path: Path, type: string, 
   return 'type'
 }
 
-/** Whether `setBlockType(type)` would change some textblock at `range` (default: at some selection range). */
-export function canSetBlockType(tr: Transaction, type: string, range?: SelectionRange): boolean {
+/**
+ * Whether `setBlockType(type, data)` would change some textblock at `range` (default: at some
+ * selection range). Without `data` only a change of type counts; with it, a textblock of `type`
+ * with other data counts too (as `setBlockType` would set it). False for data `type` rejects.
+ */
+export function canSetBlockType(tr: Transaction, type: string, data?: Data, range?: SelectionRange): boolean {
   if (!tr.registry.isTextblock(type)) return false
+  let checked: Data | null = null
+  if (data !== undefined) {
+    const result = tr.registry.validateData(type, data)
+    if (!result.ok) return false
+    checked = result.data
+  }
   return rangesOf(tr, range).some((r) =>
-    textblocksIn(tr.doc, tr.registry, r).some((path) => conversion(tr.doc, tr.registry, path, type, null) !== null),
+    textblocksIn(tr.doc, tr.registry, r).some((path) => conversion(tr.doc, tr.registry, path, type, checked) !== null),
   )
 }
 

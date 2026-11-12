@@ -22,6 +22,11 @@ export { DEFAULT_PRIORITY, Registry } from './plugin/registry'
 export type { RegisteredMark, RegisteredNode, ValidateResult } from './plugin/registry'
 // The compiled content automaton (`registry.contentMatch(type)`).
 export type { ContentEdge, ContentMatch } from './schema/content-match'
+// Schema checks: whether nodes fit a content expression, one child at a content state.
+export { fits, matchChild } from './schema/validate'
+// Structural checks (what `tr.wrap` / `lift` / `setBlockType` / `join` would do), for list and table plugins.
+export { blockRange, canJoin, canLift, canSetBlockType, canWrap, liftTarget } from './transaction/structure'
+export type { BlockRange } from './transaction/structure'
 export { corePlugin } from './core-plugin'
 export { historyPlugin } from './history'
 
@@ -34,7 +39,14 @@ export type { MarkStateView } from './transaction/marks'
 export { eventToKeyName, normalizeKeyName } from './keymap'
 
 // Clipboard and HTML serialization (the editor's `getHTML()` and its clipboard handling use these).
-export { FRAGMENT_MIME, parseFromClipboard, serializeForClipboard } from './content/clipboard'
+export {
+  FRAGMENT_MIME,
+  parseFromClipboard,
+  parseSliceFromClipboard,
+  serializeForClipboard,
+  transformPastedSlice,
+} from './content/clipboard'
+export type { PastedSlice } from './content/clipboard'
 export { getFragment } from './transaction/fragment'
 export { serializeHTML } from './html/serialize'
 
