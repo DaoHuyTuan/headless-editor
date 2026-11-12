@@ -228,27 +228,39 @@ export function lift(tr: Transaction, range?: SelectionRange): boolean {
   const done = new Set<string>()
   return runStep(tr, range, (r) => {
     const br = blockRange(tr.doc, tr.registry, r)
-    if (!br || !liftable(tr.doc, tr.registry, br)) return false
+    if (!br) return false
     const ids = blockIds(tr.doc, br)
     if (ids.some((id) => done.has(id))) return false
-    const C = br.parent
-    const container = getNode(tr.doc, C) as DeepReadonly<ElementNode>
-    const count = (container.children ?? []).length
-    const half = (): Partial<ElementNode> => ({ id: createId(), type: container.type, data: container.data as Data })
-    const from = tr.ops.length
-    if (br.end < count) tr.apply({ type: 'split_node', path: C, position: br.end, properties: half() })
-    let at = C[C.length - 1]!
-    if (br.start > 0) {
-      tr.apply({ type: 'split_node', path: C, position: br.start, properties: half() })
-      at++
-    }
-    const G = parentPath(C)
-    // Each block leaves the front of the (moving) middle part for the place right before it.
-    for (let k = 0; k < br.end - br.start; k++) tr.apply({ type: 'move_node', path: [...G, at + k, 0], newPath: [...G, at + k] })
-    tr.removeNode([...G, at + br.end - br.start])
-    for (const id of ids) done.add(id)
-    return mapSince(tr, r, from)
+    const out = liftStep(tr, r)
+    if (out !== false) for (const id of ids) done.add(id)
+    return out
   })
+}
+
+/**
+ * `lift` at one range, as a per-range step (it does not set the selection): the range mapped
+ * through the lift, or false (no ops) when the lift is not valid there. Backspace and Enter at a
+ * container's edge use it.
+ */
+export function liftStep(tr: Transaction, r: SelectionRange): SelectionRange | null | false {
+  const br = blockRange(tr.doc, tr.registry, r)
+  if (!br || !liftable(tr.doc, tr.registry, br)) return false
+  const C = br.parent
+  const container = getNode(tr.doc, C) as DeepReadonly<ElementNode>
+  const count = (container.children ?? []).length
+  const half = (): Partial<ElementNode> => ({ id: createId(), type: container.type, data: container.data as Data })
+  const from = tr.ops.length
+  if (br.end < count) tr.apply({ type: 'split_node', path: C, position: br.end, properties: half() })
+  let at = C[C.length - 1]!
+  if (br.start > 0) {
+    tr.apply({ type: 'split_node', path: C, position: br.start, properties: half() })
+    at++
+  }
+  const G = parentPath(C)
+  // Each block leaves the front of the (moving) middle part for the place right before it.
+  for (let k = 0; k < br.end - br.start; k++) tr.apply({ type: 'move_node', path: [...G, at + k, 0], newPath: [...G, at + k] })
+  tr.removeNode([...G, at + br.end - br.start])
+  return mapSince(tr, r, from)
 }
 
 // ---- setBlockType ----
