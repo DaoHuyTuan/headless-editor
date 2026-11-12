@@ -48,18 +48,32 @@ export function NodeViewScope({
 
 export interface NodeContentProps {
   /**
-   * The placeholder element's tag (default `div`; use `span` in an inline node view, or the tag the
-   * view's markup needs there, e.g. `tbody` in a `table` container).
+   * The placeholder element's tag (default `div`; use `span` in an inline node view). Ignored with
+   * `placeholder={false}`.
    *
    * Tags other than `div` and `span` are `@experimental`.
    */
   as?: string
+  /**
+   * Default true: `contentDOM` goes inside a placeholder element (`as`). False puts `contentDOM`
+   * itself in the view's DOM, right after an empty `<template>` marker, with no wrapper: for markup
+   * whose content model allows no extra element, e.g. a `table` container (`as: 'table'`) with
+   * `contentAs: 'tbody'` gives `table > tbody[data-penline-content] > tr`. `className` then goes on
+   * the marker; style `contentDOM` through its tag or `[data-penline-content]`.
+   *
+   * @experimental Part of the node-view customization levels; the shape may change.
+   */
+  placeholder?: boolean
   className?: string
 }
 
+/** The marker of the adopting `<NodeContent placeholder={false} />` that last placed each contentDOM. */
+const adopters = new WeakMap<HTMLElement, HTMLElement>()
+
 /**
  * Where a non-atom React node view shows its editable content: renders a placeholder and moves the
- * view's `contentDOM` (created and filled by the core) into it. Render it exactly once per node view.
+ * view's `contentDOM` (created and filled by the core) into it (or, with `placeholder={false}`, right
+ * after a `<template>` marker). Render it exactly once per node view.
  * The core owns `contentDOM`: unmounting only detaches it, and re-renders never move or recreate it.
  * Never render it inside a `contentEditable={false}` element: mark only its siblings (headers, labels)
  * non-editable, or the content becomes a separate editing host (the core warns).
@@ -68,7 +82,7 @@ export interface NodeContentProps {
  * `<NodeContent />` of a view when the editor's `dev` option is on; outside any node view when
  * `NODE_ENV` is set and not `'production'` (there is no editor to ask).
  */
-export function NodeContent({ as: Tag = 'div', className }: NodeContentProps) {
+export function NodeContent({ as: Tag = 'div', placeholder: wrap = true, className }: NodeContentProps) {
   const ctx = useContext(NodeContentContext)
   const ref = useRef<HTMLElement>(null)
   const warned = useRef(false)
@@ -91,6 +105,23 @@ export function NodeContent({ as: Tag = 'div', className }: NodeContentProps) {
       console.warn('[penline] <NodeContent /> is rendered more than once in a node view: only one shows the content.')
     }
     ctx.mounted.count++
+    if (!wrap) {
+      // Adopting: contentDOM is the marker's next sibling, in the marker's parent.
+      const parent = placeholder.parentNode
+      if (parent && contentDOM.previousSibling !== placeholder) parent.insertBefore(contentDOM, placeholder.nextSibling)
+      adopters.set(contentDOM, placeholder)
+      return () => {
+        ctx.mounted.count--
+        // Deferred as below; detach only when this marker placed it last and no NodeContent took it back.
+        queueMicrotask(() => {
+          const unused = ctx.mounted.count === 0 || !placeholder.isConnected
+          if (unused && adopters.get(contentDOM) === placeholder && contentDOM.parentNode === parent) {
+            adopters.delete(contentDOM)
+            parent?.removeChild(contentDOM)
+          }
+        })
+      }
+    }
     // StrictMode re-runs this effect right after its cleanup: the content is still in place then.
     if (contentDOM.parentNode !== placeholder) placeholder.appendChild(contentDOM)
     return () => {
@@ -102,7 +133,7 @@ export function NodeContent({ as: Tag = 'div', className }: NodeContentProps) {
         if (unused && contentDOM.parentNode === placeholder) placeholder.removeChild(contentDOM)
       })
     }
-    // `Tag`: another tag is another placeholder element, which must take contentDOM.
-  }, [ctx, contentDOM, Tag])
-  return createElement(Tag, { ref, className })
+    // `Tag`, `wrap`: another tag or mode is another placeholder element, which must take contentDOM.
+  }, [ctx, contentDOM, Tag, wrap])
+  return createElement(wrap ? Tag : 'template', { ref, className })
 }
