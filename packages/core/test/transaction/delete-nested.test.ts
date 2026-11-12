@@ -211,3 +211,22 @@ describe('deleteRange fallback when no replace is valid', () => {
     expect(tr.selection).toEqual(sel([0, 0, 0], 1))
   })
 })
+
+describe('deleteRange between sibling blocks inside a strict container (final review, finding 6)', () => {
+  const card = definePlugin({ name: 'card', node: { kind: 'block', content: 'heading paragraph' } })
+  const heading = definePlugin({ name: 'heading', node: { kind: 'block', content: 'inline', group: [] } })
+  const h = (text: string): ElementNode => el('heading', txt(text))
+
+  it('does not merge the paragraph into the heading the card needs before it: only the text goes', () => {
+    const ed = createTestEditor({ plugins: [...nested, card, heading], doc: doc(el('card', h('ab'), p('cd'))) })
+    const tr = ed.createTransaction()
+    tr.deleteRange(range([0, 0, 0], 1, [0, 1, 0], 1))
+    expect(isValidDoc(tr.doc, tr.registry)).toBe(true)
+    expect(stripIds(tr.doc)).toEqual(stripIds(doc(el('card', h('a'), p('d')))))
+    expect(tr.selection).toEqual(sel([0, 0, 0], 1))
+  })
+
+  it('still merges sibling paragraphs in a quote (control)', () => {
+    expectDeleted(doc(quote(p('ab'), p('cd'))), range([0, 0, 0], 1, [0, 1, 0], 1), doc(quote(p('ad'))), [[0, 0, 0], 1])
+  })
+})

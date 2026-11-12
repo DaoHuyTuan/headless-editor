@@ -361,40 +361,72 @@ export function deleteRangeStep(tr: Transaction, range: Range): Point | null {
       tr.removeNode(startBlock)
       if (parent.length > 0) startAt = pruneEmpty(tr, parent) ?? startAt
     } else removeTextBetween(tr, start, end)
-  } else if (!siblings) {
-    const plan =
-      planNestedDelete(tr, start, end, startBlock, endBlock, startOpaque, endOpaque, true) ??
-      planNestedDelete(tr, start, end, startBlock, endBlock, startOpaque, endOpaque, false)
-    if (plan) {
-      for (const op of plan.ops) tr.apply(op)
-      startAt = plan.startAt
-    } else {
-      const ops = fallbackDelete(tr, start, end, startBlock, endBlock, startOpaque, endOpaque)
-      if (!ops) return null
-      for (const op of ops) tr.apply(op)
-    }
+  } else if (siblings && parent.length === 0) {
+    // Root siblings: the flat delete, as it always was.
+    startAt = siblingDelete(tr, start, end, startBlock, endBlock, startOpaque, endOpaque) ?? startAt
   } else {
-    if (!startOpaque) removeTextBetween(tr, start, lastPoint(blockTexts(tr, startBlock))!)
-    if (!endOpaque) removeTextBetween(tr, firstPoint(blockTexts(tr, endBlock))!, end)
-    const k = startBlock.length - 1
-    const from = startBlock[k]! + (startOpaque ? 0 : 1)
-    const to = endBlock[k]! - (endOpaque ? 0 : 1)
-    for (let i = to; i >= from; i--) tr.removeNode([...parent, i])
-    if (!startOpaque && !endOpaque) {
-      const merged = nextPath(startBlock)
-      const node = getNode(tr.doc, merged) as ElementNode
-      const position = ((getNode(tr.doc, startBlock) as ElementNode).children ?? []).length
-      tr.apply({
-        type: 'merge_node',
-        path: merged,
-        position,
-        properties: { id: node.id, type: node.type, data: node.data },
-      })
-    } else if (startOpaque && endOpaque && parent.length > 0) {
-      startAt = pruneEmpty(tr, parent) ?? startAt
+    // Siblings inside a container: the flat delete when its result is valid there (planned on a
+    // `Draft`); else, as across depths, the replace that is (a strict container keeps the textblock
+    // its content needs: no merge), or the fallback.
+    const d = siblings ? new Draft(tr.registry, tr.doc) : null
+    const checked = d ? [d.watch(parent), d.watch(startBlock)] : []
+    const at = d ? siblingDelete(d, start, end, startBlock, endBlock, startOpaque, endOpaque) : null
+    if (d && checked.every((i) => !d.at(i) || validAt(d, d.at(i)!))) {
+      for (const op of d.ops) tr.apply(op)
+      startAt = at ?? startAt
+    } else {
+      const plan =
+        planNestedDelete(tr, start, end, startBlock, endBlock, startOpaque, endOpaque, true) ??
+        planNestedDelete(tr, start, end, startBlock, endBlock, startOpaque, endOpaque, false)
+      if (plan) {
+        for (const op of plan.ops) tr.apply(op)
+        startAt = plan.startAt
+      } else {
+        const ops = fallbackDelete(tr, start, end, startBlock, endBlock, startOpaque, endOpaque)
+        if (!ops) return null
+        for (const op of ops) tr.apply(op)
+      }
     }
   }
   return startOpaque ? caretNearRemovedBlock(tr, startAt) : start
+}
+
+/**
+ * The delete across sibling blocks `a` .. `b` (see `deleteRangeStep`): the start block's tail and
+ * the end block's head go, the blocks in between are removed, and the end block is merged into the
+ * start block; two opaque edges go whole, and a container they leave empty is pruned. Returns the
+ * path of what `pruneEmpty` removed, else null.
+ */
+function siblingDelete(
+  t: DocEditor,
+  start: Point,
+  end: Point,
+  a: Path,
+  b: Path,
+  aOpaque: boolean,
+  bOpaque: boolean,
+): Path | null {
+  const parent = parentPath(a)
+  if (!aOpaque) removeTextBetween(t, start, lastPoint(blockTexts(t, a))!)
+  if (!bOpaque) removeTextBetween(t, firstPoint(blockTexts(t, b))!, end)
+  const k = a.length - 1
+  const from = a[k]! + (aOpaque ? 0 : 1)
+  const to = b[k]! - (bOpaque ? 0 : 1)
+  for (let i = to; i >= from; i--) t.removeNode([...parent, i])
+  if (!aOpaque && !bOpaque) {
+    const merged = nextPath(a)
+    const node = getNode(t.doc, merged) as DeepReadonly<ElementNode>
+    const position = ((getNode(t.doc, a) as DeepReadonly<ElementNode>).children ?? []).length
+    t.apply({
+      type: 'merge_node',
+      path: merged,
+      position,
+      properties: { id: node.id, type: node.type, data: node.data as Data },
+    })
+  } else if (aOpaque && bOpaque && parent.length > 0) {
+    return pruneEmpty(t, parent)
+  }
+  return null
 }
 
 // ---- range delete across depths ----
