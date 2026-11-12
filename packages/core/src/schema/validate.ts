@@ -72,6 +72,37 @@ export function fits(registry: Registry, owner: string, nodes: readonly DeepRead
   return !!state && state.validEnd
 }
 
+/**
+ * What the content of `type` holding `kids` lacks to be valid (`fillBefore`, `createAndFill`): the
+ * nodes to insert before the children (the rest of a container whose head was cut off), else after
+ * them (one whose tail was), with the index they go at. Null when the content is valid already, when
+ * it cannot be completed that way, and for an unknown or atom type.
+ */
+export function missingContent(
+  registry: Registry,
+  type: string,
+  kids: readonly DeepReadonly<Node>[],
+): { at: number; nodes: Node[] } | null {
+  const match = registry.contentMatch(type)
+  if (!match || fits(registry, type, kids)) return null
+  const known = (t: string) => t === 'text' || !!registry.node(t)
+  const types = kids.map((k) => (isText(k) ? 'text' : k.type))
+  let at = 0
+  let fill = match.fillBefore(types, true, known)
+  if (!fill) {
+    fill = match.matchTypes(types, known)?.fillBefore([], true, known) ?? null
+    at = kids.length
+  }
+  if (!fill) return null
+  const nodes: Node[] = []
+  for (const t of fill) {
+    const n = t === 'text' ? { text: '', marks: [] } : registry.createAndFill(t)
+    if (!n) return null
+    nodes.push(n)
+  }
+  return { at, nodes }
+}
+
 /** Whether some direct text of `nodes` has a mark `owner` does not allow. */
 export function bannedMarks(registry: Registry, owner: string, nodes: readonly DeepReadonly<Node>[]): boolean {
   return nodes.some((n) => isText(n) && n.marks.some((m) => !registry.allowsMark(owner, m.type)))

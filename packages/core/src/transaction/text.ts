@@ -9,7 +9,7 @@ import { applyOp } from '../ops/apply'
 import { transformPath } from '../ops/transform'
 import type { Operation } from '../ops/types'
 import type { Registry } from '../plugin/registry'
-import { bannedMarks, fits, hasNewline } from '../schema/validate'
+import { bannedMarks, fits, hasNewline, missingContent } from '../schema/validate'
 import { marksAtTr, marksOfRange } from './marks'
 import { currentRange, flagSwallowed, forEachRange, inForEachRange, mapSince, setCurrentRange } from './ranges'
 import { liftStep, split } from './structure'
@@ -550,27 +550,8 @@ function pruneEmpty(t: DocEditor, path: Path | null): Path | null {
  * was). Nothing when it is valid or cannot be completed.
  */
 function fillMissing(d: Draft, path: Path): void {
-  const { registry } = d
-  const type = typeOf(d.doc, path)
-  const match = registry.contentMatch(type)
-  const kids = childrenOf(d.doc, path)
-  if (!match || fits(registry, type, kids)) return
-  const known = (t: string) => t === 'text' || !!registry.node(t)
-  const types = kids.map((k) => (isText(k) ? 'text' : k.type))
-  let at = 0
-  let fill = match.fillBefore(types, true, known)
-  if (!fill) {
-    fill = match.matchTypes(types, known)?.fillBefore([], true, known) ?? null
-    at = kids.length
-  }
-  if (!fill) return
-  const nodes: Node[] = []
-  for (const t of fill) {
-    const n = t === 'text' ? { text: '', marks: [] } : registry.createAndFill(t)
-    if (!n) return
-    nodes.push(n)
-  }
-  nodes.forEach((node, k) => d.apply({ type: 'insert_node', path: [...path, at + k], node }))
+  const fill = missingContent(d.registry, typeOf(d.doc, path), childrenOf(d.doc, path))
+  fill?.nodes.forEach((node, k) => d.apply({ type: 'insert_node', path: [...path, fill.at + k], node }))
 }
 
 /** Whether the element (or doc) at `path` holds valid content: its content match, the marks and `\n` of its texts. */

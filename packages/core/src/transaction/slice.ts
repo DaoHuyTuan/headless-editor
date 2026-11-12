@@ -7,7 +7,7 @@ import type { DeepReadonly, Doc, ElementNode, Node, Path, Point, Range, Selectio
 import { textOnly } from '../normalize'
 import type { Registry } from '../plugin/registry'
 import type { ContentMatch } from '../schema/content-match'
-import { bannedMarks, fits, hasNewline, matchChild } from '../schema/validate'
+import { bannedMarks, fits, hasNewline, matchChild, missingContent } from '../schema/validate'
 import {
   docIds,
   endOfInserted,
@@ -216,7 +216,32 @@ function alignedDepth(tr: Transaction, slice: Slice, side: 'start' | 'end', bloc
  */
 function closeUnaligned(tr: Transaction, slice: Slice, blockPath: Path): Slice {
   if (alignedDepth(tr, slice, 'start', blockPath) || alignedDepth(tr, slice, 'end', blockPath)) return slice
-  return { content: slice.content, openStart: 0, openEnd: 0 }
+  const { registry } = tr
+  const content = [...slice.content]
+  if (content.length === 0) return { content, openStart: 0, openEnd: 0 }
+  content[0] = closeEdge(content[0]!, slice.openStart, 'start', registry)
+  const last = content.length - 1
+  content[last] = closeEdge(content[last]!, slice.openEnd, 'end', registry)
+  return { content, openStart: 0, openEnd: 0 }
+}
+
+/**
+ * `node`, the edge node of a slice open `depth` levels deep at `side`, closed: each node of its open
+ * edge chain (its first or last child, `depth - 1` levels down) is completed with what its content
+ * lacks (`missingContent`; a list item cut open before its nested list gets an empty leading
+ * paragraph), innermost first, as ProseMirror's `closeNodeStart` / `closeNodeEnd` do. So a closed
+ * end is placed as a valid node.
+ */
+function closeEdge(node: Node, depth: number, side: 'start' | 'end', registry: Registry): Node {
+  if (depth < 1 || !isElement(node) || !node.children) return node
+  let kids = node.children
+  if (depth > 1 && kids.length > 0) {
+    const i = side === 'start' ? 0 : kids.length - 1
+    kids = kids.map((k, j) => (j === i ? closeEdge(k, depth - 1, side, registry) : k))
+  }
+  const fill = missingContent(registry, node.type, kids)
+  if (fill) kids = [...kids.slice(0, fill.at), ...fill.nodes, ...kids.slice(fill.at)]
+  return kids === node.children ? node : { ...node, children: kids }
 }
 
 /**
@@ -435,6 +460,9 @@ function fitAt(tr: Transaction, slice: Slice, point: Point, blockPath: Path, fit
     if (s && isEmptyTree(getNode(tr.doc, leftTop), registry) && !sameKind(first)) s = 0
     if (e && isEmptyTree(getNode(tr.doc, rightTop), registry) && !sameKind(last)) e = 0
   }
+  // An open end that does not merge is placed whole: closed first (a lone node merged at its other end is not).
+  if (!s && (nodes.length > 1 || !e)) nodes[0] = closeEdge(first, slice.openStart, 'start', registry)
+  if (!e && (nodes.length > 1 || !s)) nodes[nodes.length - 1] = closeEdge(nodes[nodes.length - 1]!, slice.openEnd, 'end', registry)
 
   let rightInner: Path = [...rightTop, ...blockPath.slice(D - k + 1).map(() => 0)]
   let lastKids: Node[] = []

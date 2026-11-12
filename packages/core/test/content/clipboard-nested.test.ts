@@ -127,3 +127,40 @@ describe('clipboard flavors of a slice', () => {
     expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(ul(li(p('a')), li(p('text')), li(p('b'))))))
   })
 })
+
+describe('a slice starting inside a nested list item (final review, finding 1)', () => {
+  const quote = (...children: ElementNode[]): ElementNode => el('quote', ...children)
+  /** `b|b` (in the nested item) .. `c|c` (in the next root item). */
+  function copyFromNested() {
+    const ed = setup(doc(ul(li(p('a'), ul(li(p('bb')))), li(p('cc')))), sel([0, 0, 0, 0], 0))
+    return serializeForClipboard(ed, range([0, 0, 1, 0, 0, 0], 1, [0, 1, 0, 0], 1))
+  }
+  const flavors = () => {
+    const { json, html } = copyFromNested()
+    return [
+      ['the JSON flavor', { [FRAGMENT_MIME]: json, 'text/html': html }],
+      ['the HTML-only flavor', { 'text/html': html }],
+    ] as const
+  }
+
+  it.each(flavors())('%s pasted into a root paragraph gives a list whose first item gets a filled leading paragraph', (_n, data) => {
+    const ed = setup(doc(p('xy')), sel([0, 0], 1))
+    expect(paste(ed, data)).toBe(true)
+    expect(isValidDoc(ed.state.doc, ed.registry)).toBe(true)
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p('x'), ul(li(p(''), ul(li(p('b')))), li(p('c'))), p('y'))))
+  })
+
+  it.each(flavors())('%s pasted into a list item paragraph keeps every text, valid', (_n, data) => {
+    const ed = setup(doc(ul(li(p('xy')))), sel([0, 0, 0, 0], 1))
+    expect(paste(ed, data)).toBe(true)
+    expect(isValidDoc(ed.state.doc, ed.registry)).toBe(true)
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(ul(li(p('x')), li(p(''), ul(li(p('b')))), li(p('cy'))))))
+  })
+
+  it.each(flavors())('%s pasted into a quote paragraph gives a list in the quote', (_n, data) => {
+    const ed = setup(doc(quote(p('xy'))), sel([0, 0, 0], 1))
+    expect(paste(ed, data)).toBe(true)
+    expect(isValidDoc(ed.state.doc, ed.registry)).toBe(true)
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(quote(p('x'), ul(li(p(''), ul(li(p('b')))), li(p('c'))), p('y')))))
+  })
+})
