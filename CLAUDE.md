@@ -24,6 +24,11 @@ Longer docs:
   - `selection.ts`: `single`, `createSelection` (sort and merge), `mainRange`, `isNodeRange`, `selectionEquals`.
   - `editable.ts`: `nodeSelection`, `isNodeSelection`, `nearestEditablePoint`.
   - `path.ts`, `node.ts`, `find.ts`, `id.ts`.
+- `schema/`: nested content (spec `2026-11-11-nested-content-design.md`).
+  - `content-expr.ts`: `parseContentExpr` (the `content` grammar).
+  - `content-match.ts`: `compileContent` builds the `ContentMatch` automaton (`matchType`, `validEnd`, `fillBefore`, `findWrapping`).
+  - `validate.ts`: `isValidDoc`, `fits`, `matchChild` (unknown types are wildcards).
+  - The registry wraps them: `contentMatch`, `isTextblock`, `allowsMark`, `allowsInline`, `isIsolating`, `createAndFill`.
 - `ops/`
   - `types.ts`: invertible ops, including `set_selection`.
   - `apply.ts`, `invert.ts`.
@@ -37,11 +42,14 @@ Longer docs:
   - `text.ts`: text editing, following the `runStep` pattern.
   - `marks.ts`: marks (`allHaveMark` decides toggle direction and `isActive`).
   - `fragment.ts`: fragments, paste, inline and block inserts.
+  - `structure.ts`: `wrap`, `lift`, `setBlockType`, `split`, `join` and their `can*` checks (valid or no ops).
+  - `slice.ts`: `Slice`, `getSlice`, `insertSlice` (the schema fitter).
+  - `touched.ts`: the ids a tr touched; normalization checks content only there.
 - `editor.ts`: `Editor` (`dispatch`, the pipeline, `bindCommands`, `can()`, `isActive`, `passesFilters`).
 - `history.ts`: undo/redo, grouping, rebase, and folding normalization ops.
-- `normalize.ts`: normalization rules. Rule 8 strips marks and atoms in text-only blocks; rule 11 splits inline blocks at `\n`.
+- `normalize.ts`: normalization rules. The content rule applies the schema at every depth (touched nodes only); rule 8 strips the marks and inline nodes a textblock does not allow; rule 11 splits inline blocks at `\n`.
 - `core-plugin.ts`: default intents (typing, paste, delete) and core commands.
-- `content/clipboard.ts`: clipboard parse and serialize.
+- `content/clipboard.ts`: clipboard parse and serialize (`parseSliceFromClipboard`; the JSON flavor carries open depths).
 - `view/`: the DOM view: `renderer`, `dom-selection`, `input` (keydown, beforeinput, the WebKit delete fallback), `composition` (IME), `mutation`, `clipboard` events, `drop`, `node-select`, `decorations`.
 
 ## Invariants (do not break)

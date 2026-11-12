@@ -31,10 +31,11 @@ export const highlight = definePlugin({
 
 1. [How the spec is typed](#how-the-spec-is-typed): read this first.
 2. [Identity](#identity): `name`, `priority`.
-3. [Schema](#schema): `node`, `mark`, `data`, `onInvalidData`.
+3. [Schema](#schema): `node` (content expressions, `group`, `marks`, `isolating`), `mark`, `data`, `onInvalidData`.
 4. [Configuration](#configuration): `options`.
 5. [Commands and input](#commands-and-input): `commands`, `keymap`, `onBeforeInput`, `inputRules`, `handleDOMEvents`.
    - [Selections and multiple ranges](#selections-and-multiple-ranges): what every command must know.
+   - [Structure and slices](#structure-and-slices): `wrap`, `lift`, `setBlockType`, `split`, `join`, `Slice`.
 6. [Transactions](#transactions): `filterTransaction`, `appendTransaction`, `normalize`.
 7. [HTML and clipboard](#html-and-clipboard): `parseHTML`, `renderHTML`, `renderText`, `transformPasted`.
 8. [View integration](#view-integration): `decorations`, `stopEvent`, `ignoreMutation`, and the editor methods behind the view (`handleDOMEvent`, `transformPasted`).
@@ -102,14 +103,46 @@ A plugin declares at most one of `node` and `mark`. A plugin with neither is a b
 
 ### `node`
 ```ts
-{ kind: 'block' | 'inline'; atom?: boolean; default?: boolean; content?: 'inline' | 'text' }
+{
+  kind: 'block' | 'inline'
+  atom?: boolean
+  default?: boolean
+  content?: string            // a content expression; 'inline' and 'text' are aliases
+  group?: string | string[]
+  marks?: string
+  isolating?: boolean
+}
 ```
-- `kind: 'block'` is an element that stands at block level (paragraph, image, code block). `kind: 'inline'` is an element inside text (mention, link).
+- `kind: 'block'` is an element that stands at block level (paragraph, image, code block, quote, list). `kind: 'inline'` is an element inside text (mention, link).
 - `atom: true` means the node has no editable children. It is rendered by a node view or by `renderHTML`, the caret jumps over it, and Backspace deletes it whole. Examples: image, mention.
-- `content` applies to non-atom blocks.
-  - `'inline'` (default) allows text, marks and inline nodes.
-  - `'text'` allows plain text only. Marks and inline atoms are stripped by normalization, and `\n` is a real newline. Example: code block.
-- `default: true` makes this the block the editor creates when it needs one, for example an empty doc or Enter. Exactly one plugin should set it. The paragraph plugin does.
+- `content` applies to non-atom nodes. It is a **content expression**, compiled once when the editor is created:
+  - Names: a node type (`paragraph`, `listItem`), a group (`block`, `inline`, or one a plugin declares), or `text`.
+  - Sequence by spaces, alternation with `|`, parentheses, and the quantifiers `*`, `+`, `?`, `{n}`, `{n,}`, `{n,m}`.
+  - Examples: `'block+'` (a quote), `'listItem+'` (a list), `'paragraph block*'` (a list item: a paragraph first, then any blocks), `'tableRow+'`, `'(tableCell | tableHeader)+'`.
+  - `'inline'` means `inline*`: text, marks and inline nodes. It is the default: **an omitted `content` on a non-atom block means a textblock**, so a block that holds other blocks must declare it (`content: 'block+'` or narrower).
+  - `'text'` means `text*` with `marks: ''`: plain text only. Marks and inline atoms are stripped by normalization, and `\n` is a real newline. Example: code block.
+  - A **textblock** is a node whose content holds only inline content; text only lives in textblocks and inline elements. `tr.registry.isTextblock(type)` tells which.
+  - An unknown name in an expression, or a node that can never be created (its required content cannot be filled), throws when the editor is created and names the plugin.
+  - The doc's content is `block+`. An unregistered type in a document is a wildcard: it fits any one slot of an expression and normalization never changes it.
+- `group`: the groups the node belongs to, usable in other nodes' expressions. Default: `block` for a block, `inline` for an inline node. A node that sets `group` is only in the groups it lists, so a `listItem` sets `group: []` (or a group of its own) to stay out of `block` and only appear where a list asks for it.
+- `marks`: the marks allowed in the node's inline content. `'_'` allows all (the default), `''` none (the default for `content: 'text'`), or a space-separated list of mark names (`'bold italic'`). Normalization removes the others. The names are not checked against the registered marks: a misspelt name is accepted and the mark it meant is removed.
+- `isolating: true`: edits do not cross the node's boundary. Backspace and Delete never join it with a neighbour, and a range delete that only partly covers it never merges or removes it (it empties the covered text instead). Example: a table cell.
+- `default: true` makes this the block the editor creates when it needs one, for example an empty doc or Enter. Exactly one plugin should set it. The paragraph plugin does. Inside a container, the core creates the type that container's expression expects at that position instead (`registry.createAndFill`), so a block created after a split in a list item is still a paragraph, and a default block whose `data` schema has defaults gets them.
+
+The registry exposes the compiled schema through `tr.registry` (and `editor.registry`):
+- `isTextblock(type)`: whether the type holds only inline content.
+- `contentMatch(type)`: the compiled match of the type's content (`'doc'` for the root). Its shape lives in `@penline/core/internal` (no semver guarantee); use it to ask what fits, not to build documents.
+- `createAndFill(type, data?)`: a new node of `type` with fresh ids, data parsed from `data ?? {}`, and its required content filled in (a list gets a list item holding an empty paragraph). `null` for an unknown type, invalid data, or content that cannot be filled.
+
+Normalization follows the schema at every depth, on the nodes a transaction touched (the whole doc on load). Children that do not fit their parent are fixed in order: an inline run where blocks are expected is wrapped into the textblock the position expects, missing nodes are filled in, a node is wrapped into the containers it needs (a paragraph in a list becomes a list item), a block that fits nowhere is unwrapped, an atom block in a textblock is hoisted out. An empty container is filled, never given a bare text.
+
+Example: a quote and a two-level list.
+```ts
+const quote = definePlugin({ name: 'quote', node: { kind: 'block', content: 'block+' } })
+const bulletList = definePlugin({ name: 'bulletList', node: { kind: 'block', content: 'listItem+' } })
+const listItem = definePlugin({ name: 'listItem', node: { kind: 'block', content: 'paragraph block*', group: [] } })
+const tableCell = definePlugin({ name: 'tableCell', node: { kind: 'block', content: 'block+', group: [], isolating: true } })
+```
 
 ### `mark`
 ```ts
@@ -200,9 +233,9 @@ interface Selection { ranges: SelectionRange[]; main: number }        // never e
   - Read the primary range with `mainRange(sel)`.
   - Build selections with `single(range)` or `createSelection(ranges, main)`. `createSelection` sorts the ranges and merges any that overlap or touch.
   - A node range is always the only range. `isNodeSelection(sel)` returns a plain boolean, not a type guard. To narrow a range, use `isNodeRange(range)`.
-- **`tr` editing methods act on every range by default.** This covers `insertText`, `deleteRange`, `deleteBackward`/`deleteForward`, `splitBlock`, `insertBlockNode`, `insertInlineNode`, `insertFragment`, `insertSlice`, `addMark`, `removeMark` and `toggleMark`.
+- **`tr` editing methods act on every range by default.** This covers `insertText`, `deleteRange`, `deleteBackward`/`deleteForward`, `splitBlock`, `insertBlockNode`, `insertInlineNode`, `insertFragment`, `insertSlice`, `wrap`, `lift`, `setBlockType`, `addMark`, `removeMark` and `toggleMark`.
   - Called with no range, a method edits at every range in one transaction and one undo step. A plugin that calls `tr.toggleMark('bold')` is multi-range-correct with no extra work.
-  - Called with an explicit range, it edits only there and maps the other ranges. These methods take one (a `SelectionRange` or a `Range`): `insertText(text, at)`, `deleteRange(range)`, `deleteBackward(unit, at)`, `deleteForward(unit, at)`, `splitBlock(at)`, `insertBlockNode(node, at)`, `insertFragment(fragment, at)`, `insertSlice(slice, range)`, `addMark(mark, range)` and `removeMark(type, range)`. For a single position, pass a collapsed range; no method takes a bare point.
+  - Called with an explicit range, it edits only there and maps the other ranges. These methods take one (a `SelectionRange` or a `Range`): `insertText(text, at)`, `deleteRange(range)`, `deleteBackward(unit, at)`, `deleteForward(unit, at)`, `splitBlock(at)`, `insertBlockNode(node, at)`, `insertFragment(fragment, at)`, `insertSlice(slice, range)`, `wrap(type, data, range)`, `lift(range)`, `setBlockType(type, data, range)`, `addMark(mark, range)` and `removeMark(type, range)`. For a single position, pass a collapsed range; no method takes a bare point.
   - `insertInlineNode` and `toggleMark` take no range: they always act at every range, and throw inside a `forEachRange` callback in dev mode.
 - **Mark state across ranges.**
   - `toggleMark` and `isActive` look at all ranges. If every range already has the mark, toggling removes it everywhere; otherwise it adds it everywhere. Ranges that cover no characters do not count.
@@ -232,6 +265,34 @@ const insertTodo = (): Command => ({ tr }) => {
   return tr.rejected === null
 }
 ```
+
+### Structure and slices
+
+Containers (nodes whose `content` holds blocks) are edited through `tr` methods that check the schema first: each produces a valid document or changes nothing. The core never relies on normalization to repair what they produce.
+
+| Method | Does | Fails (no ops) when |
+|---|---|---|
+| `tr.wrap(type, data?, range?) => boolean` | wraps the blocks of each range (at the deepest level where they are siblings) into `type`, adding the inner wrappers the schema needs (a paragraph wrapped in `bulletList` gets a `listItem`) | the schema does not allow `type` there, or its data is invalid (then `tr.rejected` is set) |
+| `tr.lift(range?) => boolean` | moves the blocks of each range out of their container into the container's parent, splitting the container around them and removing it when left empty | the container's parent does not accept the blocks there (a list item's first paragraph cannot be lifted alone into its list); it never carries blocks past that parent |
+| `tr.setBlockType(type, data?, range?) => boolean` | changes the textblocks of each range to the textblock `type`, keeping their children; marks `type` does not allow are removed | no textblock changed |
+| `tr.split(point, depth = 1, typesAfter?) => Point \| null` | splits the textblock at `point` and its `depth - 1` nearest ancestors; `typesAfter` (outermost first, `null` keeps the split node's type) gives the new nodes' types. Returns the start of the new innermost block. Ranges are mapped; the selection is not set | the result would not be valid |
+| `tr.join(path) => boolean` | joins the node at `path` into its previous sibling (two lists of the same type) | the two nodes are not compatible, or either is isolating |
+| `tr.getSlice(range?) => Slice` | the slice of `range` (default: the main range, on purpose) | — |
+| `tr.insertSlice(slice, range?) => boolean` | deletes each range and fits `slice` there | the slice fits nowhere at that range |
+
+`wrap`, `lift`, `setBlockType` and `insertSlice` follow the multi-range rules above; their explicit range is a `SelectionRange`. A range whose blocks an earlier range already wrapped or lifted does nothing (two carets in one paragraph wrap it once). The core commands `wrapIn(type, data?)`, `lift()` and `setBlockType(type, data?)` call them at every range and answer `editor.can()`.
+
+```ts
+interface Slice { content: Fragment; openStart: number; openEnd: number }
+```
+A `Slice` is the content of a range below the deepest node that holds both ends, plus how many block levels are cut open at each end. A range from the middle of one list item to the middle of the next gives the two items with `openStart: 2` and `openEnd: 2`. `insertSlice` fits it with the schema:
+- An open end merges into the textblock at the caret when its open nodes line up with the caret's ancestors: two list items pasted into a list item's paragraph give two items of that list.
+- An open end that does not line up is closed, so a lone container (a quote, a list, a table) pasted into a root paragraph goes in whole.
+- Whole nodes go where the content match accepts them, wrapped when needed (list items pasted into a root paragraph become a list, table cells a table) or unwrapped one level.
+
+`Fragment` is unchanged. `insertFragment(fragment)` is `insertSlice` with a fragment's open depths (an edge textblock merges, other edges go in whole), so flat documents behave as before.
+
+The generic keys follow the schema too (spec §5.3): Backspace at the start of a container's first textblock lifts it out when the lift is valid, else joins into the textblock before; Delete mirrors it; Enter in an empty textblock inside a container lifts it out when valid; a range delete across depths joins the end textblock into the start one. None of them crosses an isolating node. Structure-specific behaviour (sinking a list item, Tab between cells) belongs to the container's plugin, bound at a higher priority.
 
 ## Transactions
 
@@ -263,6 +324,8 @@ Rules for turning HTML from `setContent(html)` or a paste into your node or mark
 - `getData(el)` returns the node or mark data, or `false` to say the rule doesn't match after all. Example: `getData: (el) => el.hasAttribute('data-mention') ? {...} : false`.
 - `priority` defaults to 50. Higher priorities are tried first, with ties broken by plugin priority.
 
+Parsed content is placed through the schema. An element claimed by a container plugin (a quote, a list) keeps its nested blocks, and its inline runs go into the textblock its content expects (`<li>text</li>` becomes a list item holding a paragraph). Unclaimed `ul`, `ol`, `li`, `blockquote` and table tags are unwrapped, as before.
+
 ### `renderHTML(node, { options }) => DOMOutputSpec`
 How a node is serialized to HTML for `getHTML()` and the clipboard. It is also the view for nodes without a node view.
 ```ts
@@ -279,6 +342,8 @@ The plain text of your node wherever content turns into text:
 - code-block conversion and paste.
 
 Without it, a childless atom has no text and disappears in those places. Example: mention returns `@label`.
+
+`nodeText` and the `text/plain` flavor put `\n` between adjacent textblocks at every depth, so a list or a quote reads as lines. The clipboard HTML wraps blocks the root does not accept in their ancestors (two copied list items go out inside their `<ul>`), and the `application/x-penline-fragment` JSON carries the slice with its open depths (`{ content, openStart, openEnd }`, or a bare array when they are a fragment's, as before). An older penline reader given the object form falls back to the HTML flavor.
 
 ### `transformPasted(fragment, ctx, info) => Fragment`
 Rewrites pasted or dropped content before it is inserted. `info.at` says where the fragment goes:
@@ -321,7 +386,7 @@ Return `false` only for changes your view did not make itself. A rebuilt view th
 ### Editor methods behind the view
 The DOM view drives two plugin hooks through public editor methods. A custom view, or a test, calls them the same way:
 - `editor.handleDOMEvent(type, event) => boolean` runs the plugins' [`handleDOMEvents`](#handledomevents-keydown-beforeinput-input)`[type]` by priority, and returns `true` when one claimed the event. The view calls it for `keydown`, `beforeinput` and `input` on the root (not for events inside `data-editor-ignore`), and then prevents a claimed `keydown` or `beforeinput`; the method itself never calls `preventDefault`.
-- `editor.transformPasted(fragment, at?) => Fragment` runs every plugin's [`transformPasted`](#transformpastedfragment-ctx-info--fragment) by priority with `info.at = at ?? null`, skipping (and logging) one that throws. The clipboard and drop modules call it through `parseFromClipboard` once per target range (the drop point for a drop). Call it on any fragment you insert as pasted content.
+- `editor.transformPasted(fragment, at?) => Fragment` runs every plugin's [`transformPasted`](#transformpastedfragment-ctx-info--fragment) by priority with `info.at = at ?? null`, skipping (and logging) one that throws. The core paste and drop intents (`insertFromPaste`, `insertFromDrop` in the core plugin) call it through `parseSliceFromClipboard` once per target range (the drop point for a drop). Call it on any fragment you insert as pasted content.
 
 A headless editor (never mounted) gets no DOM events, so `handleDOMEvents` runs only through `handleDOMEvent`. `transformPasted` runs through `transformPasted`, which the core paste intent (`insertFromPaste` through `editor.handleIntent`) also calls; `insertFragment` and `insertSlice` do not transform their content. The core paste works on a `Slice` (`tr.getSlice`, `tr.insertSlice`): `transformPasted` gets and returns the slice's `content`, and the open depths are clamped to what the returned content supports.
 
@@ -414,7 +479,7 @@ const myBold = bold.extend((parent) => ({
 |---|---|---|
 | `name` | `string` | identity, document type |
 | `priority` | `number` (100) | run order |
-| `node` | `{ kind, atom?, default?, content? }` | this plugin is a node |
+| `node` | `{ kind, atom?, default?, content?, group?, marks?, isolating? }` | this plugin is a node |
 | `mark` | `{ render(data, { options }) }` | this plugin is a mark |
 | `data` | Standard Schema | validates and types stored data |
 | `onInvalidData` | `(raw) => Data \| null` | repairs invalid data |

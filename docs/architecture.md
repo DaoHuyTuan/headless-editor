@@ -24,6 +24,7 @@ Properties worth keeping:
 - **The model layer has no DOM.** An editor that is never mounted still runs commands, `getJSON()` and `getHTML()`. Content I/O moved out of `view/` into `content/` in M4.
 - **Every change is an invertible op.** History, history rebasing through changes made outside history, and later collaboration all build on this.
 - **Features are plugins.** The core knows no paragraph or bold; it knows only the plugin contract. See [plugin-api.md](plugin-api.md).
+- **Nested content is driven by the schema** (since 2026-11, spec `docs/superpowers/specs/2026-11-11-nested-content-design.md`). Plugins declare ProseMirror-style content expressions (`'block+'`, `'listItem+'`, `'paragraph block*'`), groups, allowed marks and isolating nodes; the registry compiles them into content-match automata (`core/src/schema/`). Normalization, HTML parse, range delete, Backspace/Delete/Enter at container edges, the structural transforms (`wrap`, `lift`, `setBlockType`, `split`, `join` in `transaction/structure.ts`) and slice paste (`transaction/slice.ts`) all follow that schema at every depth, and each transform yields a valid document or no ops. Container node views set their tags (`as`, `contentAs`) and are updated when their children change. Container plugins (blockquote, list, toggle, table) build on this; cell selection, merged cells and node selection of containers are out of scope.
 
 Known coupling in the current code:
 - `Editor.mount(el)` constructs `EditorView` itself.
