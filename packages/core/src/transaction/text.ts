@@ -1,4 +1,4 @@
-import { createId } from '../model/id'
+import { createId, recordIds, replayIds } from '../model/id'
 import { editableTextEntries, isNodeSelection, isOpaque, nodeSelection } from '../model/editable'
 import { getNode, isElement, isText, sameMarkSet } from '../model/node'
 import { comparePath, comparePoint, isAncestorPath, nextPath, parentPath, pathEquals, pointEquals, toRange } from '../model/path'
@@ -13,7 +13,7 @@ import { bannedMarks, fits, hasNewline } from '../schema/validate'
 import { marksAtTr, marksOfRange } from './marks'
 import { currentRange, flagSwallowed, forEachRange, inForEachRange, mapSince, setCurrentRange } from './ranges'
 import { liftStep, split } from './structure'
-import type { Transaction } from './transaction'
+import { Transaction } from './transaction'
 
 /**
  * Text editing algorithms. Every change is an operation on `tr`; each returns whether it did anything.
@@ -759,9 +759,10 @@ function fitsWith(tr: Transaction, parent: Path, index: number, removed: number,
 /**
  * `insertBlockNode` above the caret's parent (see there): `node` goes next to the child of the
  * nearest ancestor accepting it that holds the caret, before or after it when the caret is at its
- * very start or end, else between its halves once it is split at `point`. Ancestors above an
- * isolating node are not tried. Returns where `node` went, null when no ancestor accepts it (no
- * ops), or false when `node` was rejected.
+ * very start or end, else between its halves once it is split at `point`. An empty textblock is
+ * never split with its ancestors (it would leave an empty copy behind): only the levels where it
+ * is at a very start or end are tried. Ancestors above an isolating node are not tried. Returns
+ * where `node` went, null when no ancestor accepts it (no ops), or false when `node` was rejected.
  */
 function insertAbove(
   tr: Transaction,
@@ -772,6 +773,7 @@ function insertAbove(
   atBlockEnd: boolean,
 ): Path | null | false {
   const depth = blockPath.length
+  const empty = atBlockStart && atBlockEnd
   for (let k = depth - 1; k >= 1; k--) {
     const child = blockPath.slice(0, k)
     if (tr.registry.isIsolating(typeOf(tr.doc, child))) return null
@@ -785,11 +787,78 @@ function insertAbove(
       at = [...ancestor, atEnd ? i + 1 : i]
       if (!fitsWith(tr, ancestor, at[at.length - 1]!, 0, [node])) continue
     } else {
-      if (!fitsWith(tr, ancestor, i + 1, 0, [node, stub(typeOf(tr.doc, child))])) continue
+      if (empty || !fitsWith(tr, ancestor, i + 1, 0, [node, stub(typeOf(tr.doc, child))])) continue
       // The textblock and its ancestors up to `child` are split at the caret (no ops when not valid).
       if (!split(tr, point, depth - k + 1)) continue
       at = [...ancestor, i + 1]
     }
+    tr.insertNode(at, node)
+    return tr.rejected !== null ? false : at
+  }
+  return null
+}
+
+/**
+ * `replaceSelectedNode({ node })` above the selected node's parent: the node at `path` is removed
+ * and `node` goes next to the child of the nearest ancestor accepting it that holds `path`, as
+ * `insertAbove` places it at a caret: before or after that child when `path` is at its very start
+ * or end, else between its halves once the elements from the selected node's parent up to that
+ * child are split where the selected node was. Everything is checked first (the parent stays
+ * valid without the selected node, each half matches its content); ancestors above an isolating
+ * node are not tried. Returns where `node` went, null when no ancestor accepts it (no ops), or
+ * false when `node` was rejected.
+ */
+function insertAboveNode(tr: Transaction, node: ElementNode, path: Path): Path | null | false {
+  const { registry } = tr
+  const parent = parentPath(path)
+  const index = path[path.length - 1]!
+  if (!fitsWith(tr, parent, index, 1, [])) return null
+  for (let k = path.length - 1; k >= 1; k--) {
+    const child = path.slice(0, k)
+    if (registry.isIsolating(typeOf(tr.doc, child))) return null
+    const ancestor = parentPath(child)
+    const i = child[k - 1]!
+    const below = path.slice(k)
+    const atStart = below.every((j) => j === 0)
+    const atEnd = below.every((j, n) => j === childrenOf(tr.doc, path.slice(0, k + n)).length - 1)
+    if (atStart || atEnd) {
+      const at = [...ancestor, atEnd ? i + 1 : i]
+      if (!fitsWith(tr, ancestor, at[at.length - 1]!, 0, [node])) continue
+      tr.insertNode(at, node)
+      if (tr.rejected !== null) return false
+      // Inserted before `child`, the selected node moved one place along with it.
+      tr.removeNode(atEnd ? path : [...ancestor, i + 1, ...below])
+      return at
+    }
+    if (!fitsWith(tr, ancestor, i + 1, 0, [node, stub(typeOf(tr.doc, child))])) continue
+    // The halves of each element split, from the selected node's parent up to `child`.
+    let valid = true
+    for (let level = path.length - 1; level >= k && valid; level--) {
+      const owner = path.slice(0, level)
+      const type = typeOf(tr.doc, owner)
+      const kids = childrenOf(tr.doc, owner)
+      const c = path[level]!
+      const [left, right] =
+        level === path.length - 1
+          ? [kids.slice(0, c), kids.slice(c + 1)]
+          : [kids.slice(0, c + 1), [stub(typeOf(tr.doc, path.slice(0, level + 1))), ...kids.slice(c + 1)]]
+      valid =
+        !!registry.contentMatch(type) &&
+        !registry.isIsolating(type) &&
+        left.length > 0 &&
+        right.length > 0 &&
+        fits(registry, type, left) &&
+        fits(registry, type, right)
+    }
+    if (!valid) continue
+    tr.removeNode(path)
+    for (let level = path.length - 1; level >= k; level--) {
+      const owner = path.slice(0, level)
+      const el = getNode(tr.doc, owner) as DeepReadonly<ElementNode>
+      const position = level === path.length - 1 ? index : path[level]! + 1
+      tr.apply({ type: 'split_node', path: owner, position, properties: { id: createId(), type: el.type, data: el.data as Data } })
+    }
+    const at = [...ancestor, i + 1]
     tr.insertNode(at, node)
     return tr.rejected !== null ? false : at
   }
@@ -905,9 +974,12 @@ export type NodeSelectionEdit = 'delete' | 'split' | { text: string } | { node: 
  *   default block in a flat doc); the caret goes into it.
  * - `{ text }`: replaces the node with the default node of its position holding `text` (stored
  *   marks); caret after it.
- * - `{ node }`: replaces the node with `node` (validated: false when rejected), wrapped into the
- *   containers the parent needs to hold it (`findWrapping`; false, no ops, when none can); the caret
- *   is at the start of the editable text following it (a default node is added when none follows).
+ * - `{ node }`: replaces the node with `node` (validated: false when rejected). Placed as
+ *   `insertBlockNode` places it at a caret: when the parent does not accept it there, it goes next
+ *   to the nearest accepting ancestor's child holding the selected node (`insertAboveNode`), else
+ *   it is wrapped into the containers the parent needs (`findWrapping`), else false with no ops.
+ *   The caret is at the start of the editable text following it (a default node is added when
+ *   none follows).
  */
 export function replaceSelectedNode(tr: Transaction, mode: NodeSelectionEdit): boolean {
   if (!isNodeSelection(tr.selection)) return false
@@ -934,6 +1006,9 @@ export function replaceNodeStep(tr: Transaction, range: SelectionRange & { node:
   } else {
     replacement = mode.node
     if (!acceptsAt(tr, parent, index, 1, [replacement])) {
+      const above = insertAboveNode(tr, replacement, path)
+      if (above === false) return false
+      if (above) return caret(caretAfterNode(tr, above))
       const wrapped = wrapToFit(tr, parent, index, 1, replacement)
       if (!wrapped) return false
       replacement = wrapped
@@ -962,12 +1037,14 @@ function withFreshIds(node: ElementNode): ElementNode {
  * node, in a default node of that position added when none follows. False without a selection or
  * when `node` is rejected (the tr stays rejected).
  *
- * Placement follows the content match (spec §5.3): when the caret's parent does not accept `node`
- * there, it goes to the nearest ancestor that does (not past an isolating node), next to the
- * ancestor's child holding the caret: before it when the caret is at its very start, after it at
- * its very end, else that child is split at the caret (`split`) and `node` goes between the halves.
- * When no ancestor accepts it, it is wrapped (`findWrapping`) where the caret is. When neither can,
- * nothing is inserted (false; a non-empty range is still deleted).
+ * Placement follows the content match (spec §5.3). An empty block whose parent does not accept
+ * `node` in its place gets it after it, else before it. Otherwise, when the caret's parent does not
+ * accept `node` there, it goes to the nearest ancestor that does (not past an isolating node), next
+ * to the ancestor's child holding the caret: before it when the caret is at its very start, after
+ * it at its very end, else that child is split at the caret (`split`; never around an empty
+ * block) and `node` goes between the halves. When no ancestor accepts it, it is wrapped
+ * (`findWrapping`) where the caret is. When neither can, that range does nothing: false and no ops
+ * (a non-empty range is not deleted either: the placement is tried on a copy first).
  */
 export function insertBlockNode(tr: Transaction, node: ElementNode, at?: SelectionRange | Range): boolean {
   let copies = 0
@@ -977,8 +1054,21 @@ export function insertBlockNode(tr: Transaction, node: ElementNode, at?: Selecti
 export function insertBlockNodeStep(tr: Transaction, node: ElementNode, sel: SelectionRange): StepResult {
   if (isNodeRange(sel)) return replaceNodeStep(tr, sel, { node })
   const range = toRange(sel)
-  const deleted = deleteRangeStep(tr, range)
-  const point = deleted ?? range.start
+  if (comparePoint(range.start, range.end) === 0) return placeBlock(tr, node, range.start)
+  // Placement is decided before anything is deleted: a dry run on a copy of the doc first (with the
+  // same ids, replayed), so a node that fits nowhere leaves the range as it is (false, no ops).
+  const probe = new Transaction({ doc: tr.doc, selection: null, storedMarks: null, pluginStates: new Map() }, tr.registry)
+  const ids: string[] = []
+  const tried = recordIds(ids, () => placeBlock(probe, node, deleteRangeStep(probe, range) ?? range.start))
+  if (tried === false) {
+    if (probe.rejected !== null) tr.rejected = probe.rejected
+    return false
+  }
+  return replayIds(ids, () => placeBlock(tr, node, deleteRangeStep(tr, range) ?? range.start))
+}
+
+/** `insertBlockNodeStep` at a caret `point` (see `insertBlockNode`): false, with no ops, when `node` fits nowhere. */
+function placeBlock(tr: Transaction, node: ElementNode, point: Point): StepResult {
   const blockPath = blockPathOf(tr, point.path)
   const blockNode = getNode(tr.doc, blockPath) as ElementNode
   const block = readBlock(tr, blockPath)
@@ -986,42 +1076,55 @@ export function insertBlockNodeStep(tr: Transaction, node: ElementNode, sel: Sel
   const empty = isEmptyBlock(blockNode)
   const parent = parentPath(blockPath)
   const index = blockPath[blockPath.length - 1]!
-  // Where it goes in the block's parent: in place of the empty block, before it, after it, or
-  // between its halves.
-  const here = empty
-    ? { index, removed: 1, kids: [] }
+  type Where = 'replace' | 'before' | 'after' | 'split'
+  const slot = (where: Where) =>
+    where === 'replace'
+      ? { index, removed: 1, kids: [] }
+      : where === 'before'
+        ? { index, removed: 0, kids: [] }
+        : where === 'after'
+          ? { index: index + 1, removed: 0, kids: [] }
+          : { index: index + 1, removed: 0, kids: [stub(blockNode.type)] }
+  // Where it may go in the block's parent: in place of an empty block (else after it, else before
+  // it), before the block, after it, or between its halves.
+  const options: Where[] = empty
+    ? ['replace', 'after', 'before']
     : offset === 0
-      ? { index, removed: 0, kids: [] }
+      ? ['before']
       : offset === block.text.length
-        ? { index: index + 1, removed: 0, kids: [] }
-        : { index: index + 1, removed: 0, kids: [stub(blockNode.type)] }
-  if (!acceptsAt(tr, parent, here.index, here.removed, [node, ...here.kids])) {
+        ? ['after']
+        : ['split']
+  let where = options.find((w) => {
+    const s = slot(w)
+    return acceptsAt(tr, parent, s.index, s.removed, [node, ...s.kids])
+  })
+  if (!where) {
     const above = insertAbove(tr, node, point, blockPath, offset === 0, offset === block.text.length)
     if (above === false) return false
     if (above) return caret(caretAfterNode(tr, above))
-    const wrapped = wrapToFit(tr, parent, here.index, here.removed, node)
-    if (!wrapped || (here.kids.length > 0 && !acceptsAt(tr, parent, here.index, 0, [wrapped, ...here.kids])))
-      return deleted ? caret(point) : false
+    where = options[0]!
+    const s = slot(where)
+    const wrapped = wrapToFit(tr, parent, s.index, s.removed, node)
+    if (!wrapped || (s.kids.length > 0 && !acceptsAt(tr, parent, s.index, 0, [wrapped, ...s.kids]))) return false
     node = wrapped
   }
   let at: Path
-  if (empty) {
+  if (where === 'replace') {
     tr.insertNode(blockPath, node)
     if (tr.rejected !== null) return false
     tr.removeNode(nextPath(blockPath))
+    return caret(caretAfterNode(tr, blockPath))
+  }
+  if (where === 'before') {
     at = blockPath
-  } else if (offset === 0) {
-    at = blockPath
-  } else if (offset === block.text.length) {
+  } else if (where === 'after') {
     at = nextPath(blockPath)
   } else {
     splitBlockAt(tr, point, blockPath, { id: createId(), type: blockNode.type, data: blockNode.data })
     at = nextPath(blockPath)
   }
-  if (!empty) {
-    tr.insertNode(at, node)
-    if (tr.rejected !== null) return false
-  }
+  tr.insertNode(at, node)
+  if (tr.rejected !== null) return false
   return caret(caretAfterNode(tr, at))
 }
 
@@ -1331,7 +1434,9 @@ export function deleteForward(tr: Transaction, unit: DeleteUnit = 'character', a
  * block gets a fresh id and the same type/data, except at the very end of a non-default block,
  * where it is the textblock the position expects (`createAndFill` of its default type: the default
  * block with `data {}` in a flat doc). When the parent does not take that type after the block, the
- * new block takes the textblock type its content match expects there (no ops when none fits).
+ * new block takes the textblock type its content match expects there. When none fits, nothing is
+ * split: a collapsed caret does nothing (false, no ops); a non-empty range stays deleted and its
+ * caret is at the deletion's start (Enter over a selection removes it, as a key press should).
  * Each caret ends at the start of its new block.
  *
  * A collapsed caret in an empty textblock inside a non-isolating container lifts it out instead,

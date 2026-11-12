@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createSelection } from '../../src/model/selection'
-import type { Doc, ElementNode, Node, Path, Selection } from '../../src/model/types'
+import type { Doc, ElementNode, Mark, Node, Path, Selection } from '../../src/model/types'
 import { definePlugin } from '../../src/plugin/define'
 import { isValidDoc } from '../../src/schema/validate'
 import { createTestEditor, doc, el, sel, stripIds, txt } from '../../src/testing/index'
@@ -20,11 +20,14 @@ const cell = (...children: ElementNode[]): ElementNode => el('tableCell', ...chi
 // A container whose content forbids the default block after its first paragraph.
 const caption = definePlugin({ name: 'caption', node: { kind: 'block', content: 'inline', group: [] } })
 const image = definePlugin({ name: 'image', node: { kind: 'block', atom: true, group: [] } })
+const hr = definePlugin({ name: 'hr', node: { kind: 'block', atom: true } })
 const figure = definePlugin({ name: 'figure', node: { kind: 'block', content: 'paragraph (caption | image)*' } })
-const plugins = [...nested, caption, image, figure]
+const plugins = [...nested, caption, image, figure, hr]
 const cap = (text: string): ElementNode => el('caption', txt(text))
 const fig = (...children: ElementNode[]): ElementNode => el('figure', ...children)
 const img = (): ElementNode => ({ id: 'img', type: 'image', data: {} })
+const rule = (): ElementNode => ({ id: 'hr', type: 'hr', data: {} })
+const bold: Mark = { type: 'bold', data: {} }
 
 const at = (path: Path, offset: number) => ({ anchor: { path, offset }, focus: { path, offset } })
 
@@ -115,6 +118,11 @@ describe('Backspace at a textblock start (spec §5.3)', () => {
     const t = doc(table(row(cell(p('a')), cell(p('b')))))
     expectNothing(t, sel([0, 0, 0, 0, 0], 0), backspace)
     expectNothing(t, sel([0, 0, 1, 0, 0], 0), backspace)
+  })
+
+  it('rule 2: a join across parents that the textblock before does not allow does nothing', () => {
+    // A code block allows no marks: the bold paragraph is not joined into it (no ops, no caret move).
+    expectNothing(doc(quote(el('code', txt('ab'))), p(txt('c', bold))), sel([1, 0], 0), backspace)
   })
 
   it('multi-range: two carets at the starts of two quote-first paragraphs are both lifted in one pass', () => {
@@ -227,6 +235,65 @@ describe('placing new blocks (spec §5.3)', () => {
 
   it('insertBlockNode fails with no ops when the node fits nowhere', () => {
     expectNothing(doc(fig(p('a'))), sel([0, 0, 0], 1), (tr) => insertBlockNode(tr, el('tableRow', cell(p('')))))
+  })
+
+  it('insertBlockNode over a non-empty range that fits nowhere deletes nothing either', () => {
+    expectNothing(doc(fig(p('abc'))), sel([0, 0, 0], 1, [0, 0, 0], 2), (tr) => insertBlockNode(tr, el('tableRow', cell(p('')))))
+  })
+
+  it('insertBlockNode over a non-empty range deletes it, then places the node', () => {
+    expectEdit(doc(p('abc')), sel([0, 0], 1, [0, 0], 2), (tr) => insertBlockNode(tr, rule()), doc(p('a'), rule(), p('c')), sel([2, 0], 0))
+  })
+
+  it('insertBlockNode in an empty paragraph its list item must keep goes after it, inside the item', () => {
+    expectEdit(
+      doc(ul(li(p('a')), li(p('')), li(p('c')))),
+      sel([0, 1, 0, 0], 0),
+      (tr) => insertBlockNode(tr, rule()),
+      doc(ul(li(p('a')), li(p(''), rule()), li(p('c')))),
+      sel([0, 2, 0, 0], 0),
+    )
+    // Nothing follows: the caret goes into a new default block after the node, in the item.
+    expectEdit(
+      doc(ul(li(p('')))),
+      sel([0, 0, 0, 0], 0),
+      (tr) => insertBlockNode(tr, rule()),
+      doc(ul(li(p(''), rule(), p('')))),
+      sel([0, 0, 2, 0], 0),
+    )
+  })
+
+  it('replacing a selected node with a node its parent rejects goes to the nearest accepting ancestor', () => {
+    const x = () => li(p('x'))
+    expectEdit(
+      doc(ul(li(p('a'), rule()), li(p('z')))),
+      createSelection([{ ...at([0, 0, 0, 0], 1), node: [0, 0, 1] }]),
+      (tr) => replaceSelectedNode(tr, { node: x() }),
+      doc(ul(li(p('a')), li(p('x')), li(p('z')))),
+      sel([0, 2, 0, 0], 0),
+    )
+    // In the middle of its item: the item is split where the node was.
+    expectEdit(
+      doc(ul(li(p('a'), rule(), p('b')))),
+      createSelection([{ ...at([0, 0, 0, 0], 1), node: [0, 0, 1] }]),
+      (tr) => replaceSelectedNode(tr, { node: x() }),
+      doc(ul(li(p('a')), li(p('x')), li(p('b')))),
+      sel([0, 2, 0, 0], 0),
+    )
+    // The same placement from insertBlockNode on the node selection.
+    expectEdit(
+      doc(ul(li(p('a'), rule()), li(p('z')))),
+      createSelection([{ ...at([0, 0, 0, 0], 1), node: [0, 0, 1] }]),
+      (tr) => insertBlockNode(tr, x()),
+      doc(ul(li(p('a')), li(p('x')), li(p('z')))),
+      sel([0, 2, 0, 0], 0),
+    )
+  })
+
+  it('replacing a selected node with a node that fits nowhere does nothing', () => {
+    expectNothing(doc(fig(p('a'), img())), createSelection([{ ...at([0, 0, 0], 1), node: [0, 1] }]), (tr) =>
+      replaceSelectedNode(tr, { node: el('tableRow', cell(p(''))) }),
+    )
   })
 
   it("replacing a selected node creates the position's default block", () => {
