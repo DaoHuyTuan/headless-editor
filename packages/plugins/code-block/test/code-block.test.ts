@@ -287,6 +287,24 @@ describe('code block commands', () => {
     expect(ed.state.selection).toEqual(caret([0, 0], 8))
   })
 
+  it('setCodeBlock converts a textblock whatever its content expression says (omitted, inline*)', () => {
+    const note = definePlugin({ name: 'note', node: { kind: 'block' } })
+    const starred = definePlugin({ name: 'starred', node: { kind: 'block', content: 'inline*' } })
+    for (const [type, plugin] of [['note', note], ['starred', starred]] as const) {
+      const ed = createTestEditor({
+        plugins: [paragraph, bold, mention.configure({ fetchUsers: async () => [] }), codeBlock, plugin],
+        doc: doc(el(type, txt('hi'))),
+        selection: caret([0, 0], 1),
+      })
+      expect(ed.commands.setCodeBlock()).toBe(true)
+      expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(code('hi'))))
+    }
+    // A text-only block (other than a code block) is not converted.
+    const plain = definePlugin({ name: 'plain', node: { kind: 'block', content: 'text+' } })
+    const ed = createTestEditor({ plugins: [paragraph, codeBlock, plain], doc: doc(el('plain', txt('hi'))), selection: caret([0, 0], 1) })
+    expect(ed.commands.setCodeBlock()).toBe(false)
+  })
+
   it('setCodeBlock is false inside a code block or with an unsafe language', () => {
     expect(setup(doc(code('a')), caret([0, 0], 0)).commands.setCodeBlock()).toBe(false)
     const ed = setup(doc(p(txt('a'))), caret([0, 0], 0))

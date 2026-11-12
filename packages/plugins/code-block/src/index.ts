@@ -397,7 +397,9 @@ function toCodeBlock(tr: Transaction, editor: Editor, language: string | undefin
     const blockPath = blockPathOf(tr.doc, tr.registry, range.anchor.path)
     const focusBlock = blockPathOf(tr.doc, tr.registry, range.focus.path)
     const block = blockPath && (getNode(tr.doc, blockPath) as ElementNode)
-    if (!blockPath || !focusBlock || blockPath.join() !== focusBlock.join() || !block || tr.registry.node(block.type)?.content !== 'inline') {
+    // Any textblock with inline content converts, whatever its content expression (`inline`, `inline*`, omitted).
+    const convertible = !!block && tr.registry.isTextblock(block.type) && !tr.registry.isTextOnly(block.type)
+    if (!blockPath || !focusBlock || blockPath.join() !== focusBlock.join() || !convertible) {
       offsets.push(null)
       continue
     }
