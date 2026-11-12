@@ -121,7 +121,8 @@ A plugin declares at most one of `node` and `mark`. A plugin with neither is a b
   - Examples: `'block+'` (a quote), `'listItem+'` (a list), `'paragraph block*'` (a list item: a paragraph first, then any blocks), `'tableRow+'`, `'(tableCell | tableHeader)+'`.
   - `'inline'` means `inline*`: text, marks and inline nodes. It is the default: **an omitted `content` on a non-atom block means a textblock**, so a block that holds other blocks must declare it (`content: 'block+'` or narrower).
   - `'text'` means `text*` with `marks: ''`: plain text only. Marks and inline atoms are stripped by normalization, and `\n` is a real newline. Example: code block.
-  - A **textblock** is a node whose content holds only inline content; text only lives in textblocks and inline elements. `tr.registry.isTextblock(type)` tells which.
+  - Only the alias sets `marks: ''`. An explicit `'text*'` (or `'text+'`) is text-only too (no inline nodes, `\n` a real newline) but keeps the default `marks: '_'`, so its text may carry marks; add `marks: ''` to get the alias's plain text.
+  - A **textblock** is a node whose content holds only inline content; text only lives in textblocks and inline elements. `tr.registry.isTextblock(type)` tells which, and `tr.registry.isTextOnly(type)` whether its expression names only `text`.
   - An unknown name in an expression, or a node that can never be created (its required content cannot be filled), throws when the editor is created and names the plugin.
   - The doc's content is `block+`. An unregistered type in a document is a wildcard: it fits any one slot of an expression and normalization never changes it.
 - `group`: the groups the node belongs to, usable in other nodes' expressions. Default: `block` for a block, `inline` for an inline node. A node that sets `group` is only in the groups it lists, so a `listItem` sets `group: []` (or a group of its own) to stay out of `block` and only appear where a list asks for it.
