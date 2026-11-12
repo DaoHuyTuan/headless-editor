@@ -452,7 +452,9 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
 
   /**
    * True only when every selection range has it (spec §5.4). Marks: `isMarkActive`. Elements: per
-   * range, the block containing the range's start. `data` entries must deep-equal the node's; an
+   * range, true when the block containing the range's start or any of its ancestors is `type`
+   * (the innermost one is checked against `data`). Every range must pass, so a multi-range selection
+   * is active only when all of them are inside `type`. `data` entries must deep-equal the node's; an
    * `undefined` entry is ignored, like a missing key.
    */
   isActive(type: string, data?: Partial<Data>): boolean {
@@ -461,8 +463,8 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     if (!sel) return false
     return sel.ranges.every((range) => {
       const start = comparePoint(range.anchor, range.focus) <= 0 ? range.anchor : range.focus
-      const block = this.blockAt(start.path)
-      if (!block || block.type !== type) return false
+      const block = this.blockAncestorOfType(start.path, type)
+      if (!block) return false
       if (!data) return true
       return Object.entries(data).every(([k, v]) => v === undefined || (k in block.data && deepEqualJson(block.data[k] as Json, v)))
     })
@@ -706,11 +708,11 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     return out
   }
 
-  /** The nearest block-level element on `path` (unknown element types count as blocks). */
-  private blockAt(path: number[]): DeepReadonly<ElementNode> | null {
+  /** The innermost block-level element of `type` on `path`, the textblock included (unknown element types count as blocks). */
+  private blockAncestorOfType(path: number[], type: string): DeepReadonly<ElementNode> | null {
     for (let depth = path.length - 1; depth >= 1; depth--) {
       const node = getNode(this._state.doc, path.slice(0, depth))
-      if (isElement(node) && this.registry.node(node.type)?.kind !== 'inline') return node
+      if (isElement(node) && node.type === type && this.registry.node(node.type)?.kind !== 'inline') return node
     }
     return null
   }
