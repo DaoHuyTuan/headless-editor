@@ -135,6 +135,13 @@ export function canWrap(tr: Transaction, type: string, range?: SelectionRange): 
  * nothing. False (no ops) when the schema allows it nowhere.
  */
 export function wrap(tr: Transaction, type: string, data?: Data, range?: SelectionRange): boolean {
+  // `type`'s data is the same at every range: checked once, before any range is wrapped.
+  if (!tr.registry.contentMatch(type) || tr.registry.isTextblock(type)) return false
+  const outer = tr.registry.validateData(type, data ?? {})
+  if (!outer.ok) {
+    tr.rejected = outer.message
+    return false
+  }
   const done = new Set<string>()
   return runStep(tr, range, (r) => {
     const br = blockRange(tr.doc, tr.registry, r)
@@ -143,9 +150,9 @@ export function wrap(tr: Transaction, type: string, data?: Data, range?: Selecti
     if (ids.some((id) => done.has(id))) return false
     const chain = wrapping(tr.doc, tr.registry, type, br)
     if (!chain) return false
-    const datas: Data[] = []
-    for (const [k, t] of chain.entries()) {
-      const result = tr.registry.validateData(t, k === 0 ? (data ?? {}) : {})
+    const datas: Data[] = [cloneJson(outer.data)]
+    for (const t of chain.slice(1)) {
+      const result = tr.registry.validateData(t, {})
       if (!result.ok) {
         tr.rejected = result.message
         return false

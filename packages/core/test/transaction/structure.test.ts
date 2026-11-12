@@ -79,6 +79,29 @@ describe('wrap', () => {
     expectRefused(ed, (t) => t.wrap('listItem'))
   })
 
+  it("validates the wrapper's data once, before any range is wrapped (invalid data: no ops at any range)", () => {
+    let calls = 0
+    const box = definePlugin({
+      name: 'box',
+      node: { kind: 'block', content: 'block+' },
+      data: z.object({ tone: z.string().default('plain') }).refine((d) => (calls++, d.tone !== 'bad')),
+    })
+    const ed = createTestEditor({
+      plugins: [...nested, box],
+      doc: doc(p('a'), p('b'), p('c')),
+      selection: createSelection([
+        { anchor: caret([0, 0], 0), focus: caret([0, 0], 0) },
+        { anchor: caret([2, 0], 0), focus: caret([2, 0], 0) },
+      ]),
+    })
+    calls = 0
+    const tr = ed.createTransaction()
+    expect(tr.wrap('box', { tone: 'bad' })).toBe(false)
+    expect(tr.ops).toEqual([])
+    expect(tr.rejected).not.toBeNull()
+    expect(calls).toBe(1)
+  })
+
   it('refuses a textblock or unknown wrapper type', () => {
     const ed = setup(doc(p('a')), sel([0, 0], 1))
     expectRefused(ed, (t) => t.wrap('code'))
