@@ -169,14 +169,16 @@ export function insertionMarks(tr: Transaction, point: Point): Mark[] {
 
 /**
  * Whether the element is an inline opaque element: a registered inline atom, or an unknown type
- * inside inline content (the parent `parentType` is an inline element or a `content: 'inline'` block).
- * It counts as one character of its inline content: no caret goes inside, edits remove it whole.
+ * inside inline content (the parent `parentType` is an inline element or a textblock, whatever its
+ * content expression says: `'inline'`, `'inline*'` or omitted). It counts as one character of its
+ * inline content: no caret goes inside, edits remove it whole.
  */
 export function isInlineOpaque(tr: Pick<DocEditor, 'registry'>, el: DeepReadonly<ElementNode>, parentType: string): boolean {
-  const spec = tr.registry.node(el.type)
+  const { registry } = tr
+  const spec = registry.node(el.type)
   if (spec) return spec.kind === 'inline' && spec.atom === true
-  const parent = tr.registry.node(parentType)
-  return !!parent && !parent.atom && (parent.kind === 'inline' || parent.content === 'inline')
+  const parent = registry.node(parentType)
+  return !!parent && !parent.atom && (parent.kind === 'inline' || registry.isTextblock(parentType))
 }
 
 /** The inline opaque elements whose paths lie strictly between `start` and `end` (text paths), in document order. */
