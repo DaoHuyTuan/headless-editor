@@ -58,3 +58,26 @@ function validElement(node: DeepReadonly<ElementNode>, registry: Registry): bool
   if (!spec || spec.atom) return true
   return validContent(node.type, (node.children ?? []) as readonly DeepReadonly<Node>[], registry)
 }
+
+/**
+ * Whether `nodes` are valid content for `owner` (an element type, or `'doc'`) up to a valid end.
+ * Unknown types fit (rule 7, `matchChild`); an unknown or atom owner holds nothing.
+ */
+export function fits(registry: Registry, owner: string, nodes: readonly DeepReadonly<Node>[]): boolean {
+  let state = registry.contentMatch(owner) ?? null
+  for (const node of nodes) {
+    if (!state) return false
+    state = matchChild(state, node, registry)
+  }
+  return !!state && state.validEnd
+}
+
+/** Whether some direct text of `nodes` has a mark `owner` does not allow. */
+export function bannedMarks(registry: Registry, owner: string, nodes: readonly DeepReadonly<Node>[]): boolean {
+  return nodes.some((n) => isText(n) && n.marks.some((m) => !registry.allowsMark(owner, m.type)))
+}
+
+/** Whether a direct text of `nodes` holds a `\n`, which only text-only content keeps (rule 11). */
+export function hasNewline(nodes: readonly DeepReadonly<Node>[]): boolean {
+  return nodes.some((n) => isText(n) && n.text.includes('\n'))
+}

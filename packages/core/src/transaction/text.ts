@@ -3,7 +3,13 @@ import { editableTextEntries, isNodeSelection, isOpaque, nodeSelection } from '.
 import { getNode, isElement, isText, sameMarkSet } from '../model/node'
 import { comparePath, comparePoint, isAncestorPath, nextPath, parentPath, pathEquals, pointEquals, toRange } from '../model/path'
 import { isNodeRange, rangeEquals, single } from '../model/selection'
-import type { DeepReadonly, ElementNode, Mark, Node, Path, Point, Range, Selection, SelectionRange, TextNode } from '../model/types'
+import type { Data, DeepReadonly, Doc, ElementNode, Mark, Node, Path, Point, Range, Selection, SelectionRange, TextNode } from '../model/types'
+import { textOnly } from '../normalize'
+import { applyOp } from '../ops/apply'
+import { transformPath } from '../ops/transform'
+import type { Operation } from '../ops/types'
+import type { Registry } from '../plugin/registry'
+import { bannedMarks, fits, hasNewline } from '../schema/validate'
 import { marksAtTr, marksOfRange } from './marks'
 import { currentRange, flagSwallowed, forEachRange, inForEachRange, mapSince, setCurrentRange } from './ranges'
 import type { Transaction } from './transaction'
@@ -140,7 +146,7 @@ export function blockPathOf(tr: Transaction, path: Path): Path {
  * Every editable text of the element at `blockPath`, with absolute paths, in document order (none
  * for an opaque element: unknown types and atoms).
  */
-function blockTexts(tr: Transaction, blockPath: Path): [TextNode, Path][] {
+function blockTexts(tr: DocEditor, blockPath: Path): [TextNode, Path][] {
   const block = getNode(tr.doc, blockPath) as ElementNode
   return [...editableTextEntries(block, tr.registry)].map(([t, rel]) => [t, [...blockPath, ...rel]])
 }
@@ -165,7 +171,7 @@ export function insertionMarks(tr: Transaction, point: Point): Mark[] {
  * inside inline content (the parent `parentType` is an inline element or a `content: 'inline'` block).
  * It counts as one character of its inline content: no caret goes inside, edits remove it whole.
  */
-export function isInlineOpaque(tr: Transaction, el: DeepReadonly<ElementNode>, parentType: string): boolean {
+export function isInlineOpaque(tr: Pick<DocEditor, 'registry'>, el: DeepReadonly<ElementNode>, parentType: string): boolean {
   const spec = tr.registry.node(el.type)
   if (spec) return spec.kind === 'inline' && spec.atom === true
   const parent = tr.registry.node(parentType)
@@ -173,7 +179,7 @@ export function isInlineOpaque(tr: Transaction, el: DeepReadonly<ElementNode>, p
 }
 
 /** The inline opaque elements whose paths lie strictly between `start` and `end` (text paths), in document order. */
-function inlineOpaqueBetween(tr: Transaction, start: Point, end: Point): Path[] {
+function inlineOpaqueBetween(tr: DocEditor, start: Point, end: Point): Path[] {
   const out: Path[] = []
   const walk = (nodes: readonly DeepReadonly<Node>[], base: Path, parentType: string) => {
     for (let i = 0; i < nodes.length; i++) {
@@ -212,7 +218,7 @@ function hasContentBetween(tr: Transaction, a: Point, b: Point): boolean {
  * (inline atoms) between them, whole. No other node is removed. Works last to first, so the paths
  * still to be handled (and `start`) stay valid.
  */
-function removeTextBetween(tr: Transaction, start: Point, end: Point): void {
+function removeTextBetween(tr: DocEditor, start: Point, end: Point): void {
   const texts = [...editableTextEntries(tr.doc, tr.registry, { start, end })]
   const edits: { path: Path; text?: TextNode }[] = [
     ...texts.map(([text, path]) => ({ path, text })),
@@ -314,6 +320,11 @@ export function deleteRange(tr: Transaction, range?: SelectionRange | Range): bo
  * sibling blocks the start block keeps its id: its tail and the end block's head are removed, the
  * blocks in between are removed, and the end block is merged into the start block.
  *
+ * Across blocks with different parents (nested content, spec §5.3) it is a replace that produces a
+ * valid document itself (`planNestedDelete`): nodes covered whole at any depth are removed, the end
+ * textblock's content joins the start textblock, containers left empty are removed or refilled, and
+ * isolating nodes (table cells) are never merged or removed.
+ *
  * An opaque edge block (unknown type or atom: no caret can be inside it) counts as fully inside the
  * range: it is removed whole and nothing is merged into or out of it. When the start edge is
  * opaque, the caret lands at the nearest editable point instead. An edge inside an inline opaque
@@ -340,21 +351,33 @@ export function deleteRangeStep(tr: Transaction, range: Range): Point | null {
   const opaqueAt = (p: Path) => isOpaque(getNode(tr.doc, p) as ElementNode, tr.registry)
   const startOpaque = opaqueAt(startBlock)
   const endOpaque = opaqueAt(endBlock)
-  const siblings = pathEquals(parentPath(startBlock), parentPath(endBlock))
+  const parent = parentPath(startBlock)
+  const siblings = pathEquals(parent, parentPath(endBlock))
+  // Where the start block was, for the caret when it is removed (with a container it left empty).
+  let startAt = startBlock
   if (pathEquals(startBlock, endBlock)) {
-    if (startOpaque) tr.removeNode(startBlock)
-    else removeTextBetween(tr, start, end)
+    if (startOpaque) {
+      tr.removeNode(startBlock)
+      if (parent.length > 0) startAt = pruneEmpty(tr, parent) ?? startAt
+    } else removeTextBetween(tr, start, end)
   } else if (!siblings) {
-    // Blocks that are not siblings (no nested containers yet): text-only deletion, then opaque
-    // edges whole (end first: removing it cannot shift the start).
-    removeTextBetween(tr, start, end)
-    if (endOpaque && !isAncestorPath(endBlock, startBlock)) tr.removeNode(endBlock)
-    if (startOpaque && !isAncestorPath(startBlock, endBlock)) tr.removeNode(startBlock)
+    const plan =
+      planNestedDelete(tr, start, end, startBlock, endBlock, startOpaque, endOpaque, true) ??
+      planNestedDelete(tr, start, end, startBlock, endBlock, startOpaque, endOpaque, false)
+    if (plan) {
+      for (const op of plan.ops) tr.apply(op)
+      startAt = plan.startAt
+    } else {
+      // No valid replace (an exotic schema): text-only deletion, then opaque edges whole (end
+      // first: removing it cannot shift the start).
+      removeTextBetween(tr, start, end)
+      if (endOpaque && !isAncestorPath(endBlock, startBlock)) tr.removeNode(endBlock)
+      if (startOpaque && !isAncestorPath(startBlock, endBlock)) tr.removeNode(startBlock)
+    }
   } else {
     if (!startOpaque) removeTextBetween(tr, start, lastPoint(blockTexts(tr, startBlock))!)
     if (!endOpaque) removeTextBetween(tr, firstPoint(blockTexts(tr, endBlock))!, end)
     const k = startBlock.length - 1
-    const parent = parentPath(startBlock)
     const from = startBlock[k]! + (startOpaque ? 0 : 1)
     const to = endBlock[k]! - (endOpaque ? 0 : 1)
     for (let i = to; i >= from; i--) tr.removeNode([...parent, i])
@@ -368,9 +391,299 @@ export function deleteRangeStep(tr: Transaction, range: Range): Point | null {
         position,
         properties: { id: node.id, type: node.type, data: node.data },
       })
+    } else if (startOpaque && endOpaque && parent.length > 0) {
+      startAt = pruneEmpty(tr, parent) ?? startAt
     }
   }
-  return startOpaque ? caretNearRemovedBlock(tr, startBlock) : start
+  return startOpaque ? caretNearRemovedBlock(tr, startAt) : start
+}
+
+// ---- range delete across depths ----
+
+/** What the text helpers read and edit: a transaction, or a `Draft` of one. */
+interface DocEditor {
+  readonly doc: DeepReadonly<Doc>
+  readonly registry: Registry
+  apply(op: Operation): unknown
+  removeNode(path: Path): unknown
+}
+
+/**
+ * A copy of the doc that a plan's ops are applied to before any reaches the transaction, so the
+ * result can be checked against the schema first. Watched paths are mapped through every op (null
+ * once their node is removed).
+ */
+class Draft implements DocEditor {
+  readonly ops: Operation[] = []
+  private readonly watched: (Path | null)[] = []
+
+  constructor(
+    readonly registry: Registry,
+    public doc: DeepReadonly<Doc>,
+  ) {}
+
+  apply(op: Operation): this {
+    this.doc = applyOp(this.doc as Doc, op)
+    this.ops.push(op)
+    for (let i = 0; i < this.watched.length; i++) {
+      const p = this.watched[i]
+      if (p) this.watched[i] = transformPath(p, op)
+    }
+    return this
+  }
+
+  removeNode(path: Path): this {
+    return this.apply({ type: 'remove_node', path, node: getNode(this.doc, path) as Node })
+  }
+
+  watch(path: Path): number {
+    return this.watched.push(path) - 1
+  }
+
+  at(i: number | null): Path | null {
+    return i === null ? null : (this.watched[i] ?? null)
+  }
+}
+
+function childrenOf(doc: DeepReadonly<Doc>, path: Path): readonly DeepReadonly<Node>[] {
+  if (path.length === 0) return doc.children
+  return (getNode(doc, path) as DeepReadonly<ElementNode>).children ?? []
+}
+
+function typeOf(doc: DeepReadonly<Doc>, path: Path): string {
+  return path.length === 0 ? 'doc' : (getNode(doc, path) as DeepReadonly<ElementNode>).type
+}
+
+const onlyIsolating = new WeakMap<Registry, Map<string, boolean>>()
+
+/**
+ * Whether everything `type`'s content can hold is isolating, or such a node itself (a table row of
+ * cells, a table of rows): the parts of one a range only partly covers are emptied, never removed.
+ */
+function holdsOnlyIsolating(registry: Registry, type: string): boolean {
+  let cache = onlyIsolating.get(registry)
+  if (!cache) onlyIsolating.set(registry, (cache = new Map()))
+  const cached = cache.get(type)
+  if (cached !== undefined) return cached
+  cache.set(type, false) // a cycle: it holds something else too
+  const match = type === 'doc' ? undefined : registry.contentMatch(type)
+  const types = new Set<string>()
+  if (match) {
+    const seen = new Set([match])
+    const queue = [match]
+    for (let state = queue.pop(); state; state = queue.pop()) {
+      for (const e of state.edges) {
+        types.add(e.type)
+        if (!seen.has(e.next)) {
+          seen.add(e.next)
+          queue.push(e.next)
+        }
+      }
+    }
+  }
+  const out = types.size > 0 && [...types].every((t) => registry.isIsolating(t) || holdsOnlyIsolating(registry, t))
+  cache.set(type, out)
+  return out
+}
+
+/**
+ * Empties a node covered whole that must stay: an isolating node gets the content `createAndFill`
+ * gives its type (only its texts are emptied when there is none); any other node (a row) is emptied
+ * child by child.
+ */
+function emptyKept(d: Draft, path: Path): void {
+  const node = getNode(d.doc, path) as DeepReadonly<ElementNode>
+  const kids = node.children ?? []
+  if (!d.registry.isIsolating(node.type)) {
+    for (let i = 0; i < kids.length; i++) if (isElement(kids[i]!)) emptyKept(d, [...path, i])
+    return
+  }
+  const filled = d.registry.createAndFill(node.type, node.data as Data)
+  if (!filled?.children) {
+    const texts = blockTexts(d, path)
+    if (texts.length) removeTextBetween(d, firstPoint(texts)!, lastPoint(texts)!)
+    return
+  }
+  for (let i = kids.length - 1; i >= 0; i--) d.removeNode([...path, i])
+  filled.children.forEach((child, i) => d.apply({ type: 'insert_node', path: [...path, i], node: child }))
+}
+
+/** Removes the node at `path`, covered whole; in a node holding only isolating nodes, it is emptied instead. */
+function removeCovered(d: Draft, path: Path): void {
+  if (holdsOnlyIsolating(d.registry, typeOf(d.doc, parentPath(path)))) emptyKept(d, path)
+  else d.removeNode(path)
+}
+
+/**
+ * When the element at `path` was left empty: removes it, or the outermost of its ancestors left
+ * holding only it, whose parent stays valid without it (never an isolating node, never the doc);
+ * when none can go, fills it with what its content needs (`createAndFill`). Returns the path of the
+ * removed node (null when nothing was removed).
+ */
+function pruneEmpty(t: DocEditor, path: Path | null): Path | null {
+  if (!path || path.length === 0 || childrenOf(t.doc, path).length > 0) return null
+  const { registry } = t
+  let top = path
+  while (top.length > 1) {
+    const up = parentPath(top)
+    if (registry.isIsolating(typeOf(t.doc, up)) || childrenOf(t.doc, up).length !== 1) break
+    top = up
+  }
+  // Each node of the chain holds only the next one, at index 0.
+  for (let p = top; p.length <= path.length; p = [...p, 0]) {
+    if (registry.isIsolating(typeOf(t.doc, p))) continue
+    const parent = parentPath(p)
+    const siblings = childrenOf(t.doc, parent)
+    const i = p[p.length - 1]!
+    if (fits(registry, typeOf(t.doc, parent), [...siblings.slice(0, i), ...siblings.slice(i + 1)])) {
+      t.removeNode(p)
+      return p
+    }
+  }
+  const node = getNode(t.doc, path) as DeepReadonly<ElementNode>
+  const filled = registry.createAndFill(node.type, node.data as Data)
+  filled?.children?.forEach((child, i) => t.apply({ type: 'insert_node', path: [...path, i], node: child }))
+  return null
+}
+
+/**
+ * Fills in what the content of the element at `path` lacks (`fillBefore`, `createAndFill`): before
+ * its children (the rest of a container whose head was cut off), else after them (one whose tail
+ * was). Nothing when it is valid or cannot be completed.
+ */
+function fillMissing(d: Draft, path: Path): void {
+  const { registry } = d
+  const type = typeOf(d.doc, path)
+  const match = registry.contentMatch(type)
+  const kids = childrenOf(d.doc, path)
+  if (!match || fits(registry, type, kids)) return
+  const known = (t: string) => t === 'text' || !!registry.node(t)
+  const types = kids.map((k) => (isText(k) ? 'text' : k.type))
+  let at = 0
+  let fill = match.fillBefore(types, true, known)
+  if (!fill) {
+    fill = match.matchTypes(types, known)?.fillBefore([], true, known) ?? null
+    at = kids.length
+  }
+  if (!fill) return
+  const nodes: Node[] = []
+  for (const t of fill) {
+    const n = t === 'text' ? { text: '', marks: [] } : registry.createAndFill(t)
+    if (!n) return
+    nodes.push(n)
+  }
+  nodes.forEach((node, k) => d.apply({ type: 'insert_node', path: [...path, at + k], node }))
+}
+
+/** Whether the element (or doc) at `path` holds valid content: its content match, the marks and `\n` of its texts. */
+function validAt(d: Draft, path: Path): boolean {
+  const { registry } = d
+  const owner = typeOf(d.doc, path)
+  if (!registry.contentMatch(owner)) return true // unknown or atom: opaque
+  const kids = childrenOf(d.doc, path)
+  return (
+    fits(registry, owner, kids) &&
+    !bannedMarks(registry, owner, kids) &&
+    (textOnly(owner, registry) || !hasNewline(kids))
+  )
+}
+
+/** Whether textblock `a` can take the children of textblock `b` (content, marks and `\n`). */
+function joinsInto(registry: Registry, doc: DeepReadonly<Doc>, a: Path, b: Path): boolean {
+  const left = getNode(doc, a) as DeepReadonly<ElementNode>
+  const right = getNode(doc, b) as DeepReadonly<ElementNode>
+  if (!registry.isTextblock(left.type) || !registry.isTextblock(right.type)) return false
+  const moved = right.children ?? []
+  return (
+    fits(registry, left.type, [...(left.children ?? []), ...moved]) &&
+    !bannedMarks(registry, left.type, moved) &&
+    (textOnly(left.type, registry) || !hasNewline(moved))
+  )
+}
+
+/**
+ * The delete of `start`..`end` between edge blocks `a` and `b` that have different parents (spec
+ * §5.3), planned on a `Draft` of `tr.doc`. Below their deepest common ancestor:
+ * 1. the start block's tail and the end block's head are removed (texts and inline atoms);
+ * 2. the nodes covered whole are removed: before the end's path at each level (deepest first),
+ *    between the two at the common ancestor, after the start's path at each level. Inside a node
+ *    holding only isolating nodes (a table row, a table) they are emptied instead (`emptyKept`);
+ * 3. an opaque edge is removed whole. Else, with `join`, when no isolating node lies on either path
+ *    (the range would cross its boundary) and the start textblock allows the end one's content
+ *    (`joinsInto`), the end textblock is moved after the start one and merged into it;
+ * 4. a container left empty goes, or is refilled (`pruneEmpty`), and the containers cut open get
+ *    what their content lacks (`fillMissing`).
+ * Returns the ops and where the start block was (for the caret, when it was opaque), or null when
+ * a node it touched would not be valid.
+ */
+function planNestedDelete(
+  tr: Transaction,
+  start: Point,
+  end: Point,
+  a: Path,
+  b: Path,
+  aOpaque: boolean,
+  bOpaque: boolean,
+  join: boolean,
+): { ops: Operation[]; startAt: Path } | null {
+  if (isAncestorPath(a, b) || isAncestorPath(b, a)) return null
+  const d = new Draft(tr.registry, tr.doc)
+  const { registry } = d
+  let c = 0
+  while (a[c] === b[c]) c++
+  const ca = a.slice(0, c)
+  /** The ancestors of `edge` below the common ancestor, outermost first. */
+  const chain = (edge: Path) => edge.slice(c + 1).map((_, k) => edge.slice(0, c + 1 + k))
+  const isolated = [...chain(a), ...chain(b)].some((p) => registry.isIsolating(typeOf(d.doc, p)))
+  const cut = [...chain(a), ...chain(b)].map((p) => d.watch(p))
+  const checked = [d.watch(ca), d.watch(a), ...cut]
+  const wb = d.watch(b)
+  const aParent = a.length - 1 > c ? d.watch(parentPath(a)) : null
+  const bParent = b.length - 1 > c ? d.watch(parentPath(b)) : null
+
+  if (!aOpaque) removeTextBetween(d, start, lastPoint(blockTexts(d, a))!)
+  if (!bOpaque) removeTextBetween(d, firstPoint(blockTexts(d, b))!, end)
+  for (let k = b.length - 1; k > c; k--) {
+    const at = d.at(wb)!
+    for (let i = at[k]! - 1; i >= 0; i--) removeCovered(d, [...at.slice(0, k), i])
+  }
+  for (let i = d.at(wb)![c]! - 1; i > a[c]!; i--) removeCovered(d, [...ca, i])
+  for (let k = a.length - 1; k > c; k--) {
+    const parent = a.slice(0, k)
+    for (let i = childrenOf(d.doc, parent).length - 1; i > a[k]!; i--) removeCovered(d, [...parent, i])
+  }
+
+  let startAt = a
+  if (bOpaque) {
+    d.removeNode(d.at(wb)!)
+    pruneEmpty(d, d.at(bParent))
+  } else if (join && !aOpaque && !isolated && joinsInto(registry, d.doc, a, d.at(wb)!)) {
+    const at = nextPath(a)
+    const from = d.at(wb)!
+    if (!pathEquals(from, at)) d.apply({ type: 'move_node', path: from, newPath: at })
+    const node = getNode(d.doc, at) as DeepReadonly<ElementNode>
+    d.apply({
+      type: 'merge_node',
+      path: at,
+      position: childrenOf(d.doc, a).length,
+      properties: { id: node.id, type: node.type, data: node.data as Data },
+    })
+    pruneEmpty(d, d.at(bParent))
+  }
+  if (aOpaque) {
+    d.removeNode(a)
+    startAt = pruneEmpty(d, d.at(aParent)) ?? a
+  }
+  const deepestFirst = cut
+    .map((i) => d.at(i))
+    .filter((p): p is Path => p !== null)
+    .sort((x, y) => y.length - x.length)
+  for (const p of deepestFirst) fillMissing(d, p)
+  for (const i of checked) {
+    const p = d.at(i)
+    if (p && !validAt(d, p)) return null
+  }
+  return { ops: d.ops, startAt }
 }
 
 function emptyDefaultBlock(tr: Transaction, text = '', marks: Mark[] = []): ElementNode {

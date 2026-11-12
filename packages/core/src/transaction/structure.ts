@@ -4,7 +4,7 @@ import { comparePath, nextPath, parentPath, pathEquals, previousPath, toRange } 
 import type { Data, DeepReadonly, Doc, ElementNode, Mark, Node, Path, Point, Range, SelectionRange, TextNode } from '../model/types'
 import { textOnly } from '../normalize'
 import type { Registry } from '../plugin/registry'
-import { matchChild } from '../schema/validate'
+import { bannedMarks, fits, hasNewline } from '../schema/validate'
 import { mapSince } from './ranges'
 import { runStep, splitBlockAt } from './text'
 import type { Transaction } from './transaction'
@@ -41,29 +41,6 @@ function childrenAt(doc: ReadDoc, path: Path): readonly ReadNode[] {
 
 function typeAt(doc: ReadDoc, path: Path): string {
   return path.length === 0 ? 'doc' : (getNode(doc, path) as DeepReadonly<ElementNode>).type
-}
-
-/**
- * Whether `nodes` are valid content for `owner` (an element type, or `'doc'`) up to a valid end.
- * Unknown types fit (rule 7, `matchChild`); an unknown or atom owner holds nothing.
- */
-function fits(registry: Registry, owner: string, nodes: readonly ReadNode[]): boolean {
-  let state = registry.contentMatch(owner) ?? null
-  for (const node of nodes) {
-    if (!state) return false
-    state = matchChild(state, node, registry)
-  }
-  return !!state && state.validEnd
-}
-
-/** Whether some direct text of `nodes` has a mark `owner` does not allow. */
-function bannedMarks(registry: Registry, owner: string, nodes: readonly ReadNode[]): boolean {
-  return nodes.some((n) => isText(n) && n.marks.some((m) => !registry.allowsMark(owner, m.type)))
-}
-
-/** Whether a direct text of `nodes` holds a `\n`, which only text-only content keeps (rule 11). */
-function hasNewline(nodes: readonly ReadNode[]): boolean {
-  return nodes.some((n) => isText(n) && n.text.includes('\n'))
 }
 
 /**

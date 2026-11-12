@@ -366,23 +366,26 @@ describe('coverage gaps (3.16)', () => {
     const load = (content: ReturnType<typeof doc>) =>
       createTestEditor({ plugins: [testParagraph, testBold, quote], doc: content })
 
-    it('an opaque end block nested in a container is removed whole; the texts before it are trimmed', () => {
+    it('an opaque end block nested in a container is removed whole; the container left empty goes', () => {
       const ed = load(doc(p('ab'), el('quote', p('cd'), el('weird', txt('zz'))), p('ef')))
       const tr = ed.createTransaction()
       // From inside "ab" to inside the unknown block (a raw range: no caret can be inside it).
       tr.deleteRange({ anchor: { path: [0, 0], offset: 1 }, focus: { path: [1, 1, 0], offset: 1 } })
+      // The tr's own result, before normalization.
+      expect(stripIds(tr.doc)).toEqual(stripIds(doc(p('a'), p('ef'))))
       ed.dispatch(tr)
-      expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p('a'), el('quote', p('')), p('ef'))))
+      expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p('a'), p('ef'))))
       expect(ed.state.selection).toEqual(sel([0, 0], 1))
     })
 
-    it('an opaque start block nested in a container is removed whole; the caret goes to the nearest editable point', () => {
+    it('an opaque start block nested in a container is removed whole with the emptied container; the caret goes to the nearest editable point', () => {
       const ed = load(doc(p('ab'), el('quote', el('weird', txt('zz')), p('cd')), p('ef')))
       const tr = ed.createTransaction()
       tr.deleteRange({ anchor: { path: [1, 0, 0], offset: 1 }, focus: { path: [2, 0], offset: 1 } })
+      expect(stripIds(tr.doc)).toEqual(stripIds(doc(p('ab'), p('f'))))
       ed.dispatch(tr)
-      expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p('ab'), el('quote', p('')), p('f'))))
-      expect(ed.state.selection).toEqual(sel([1, 0, 0], 0))
+      expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p('ab'), p('f'))))
+      expect(ed.state.selection).toEqual(sel([1, 0], 0))
     })
   })
 })
