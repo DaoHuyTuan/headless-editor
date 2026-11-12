@@ -1,6 +1,6 @@
 import { useEffect, useInsertionEffect, useRef } from 'react'
-import { Editor, type AnyPlugin, type EditorEvent, type EditorOptions, type NodeViewFactory } from '@penline/core'
-import { createPortalStore, setPortalStore, toNodeViewFactory, type PortalStore, type ReactNodeView } from './node-views'
+import { Editor, type AnyPlugin, type EditorEvent, type EditorOptions, type NodeViewFactory, type NodeViewSpec } from '@penline/core'
+import { createPortalStore, setPortalStore, toNodeViewSpec, type PortalStore, type ReactNodeView, type ReactNodeViewSpec } from './node-views'
 
 export type UseEditorOptions<P extends readonly AnyPlugin[]> = Omit<EditorOptions<P>, 'nodeViews'> & {
   /**
@@ -12,9 +12,12 @@ export type UseEditorOptions<P extends readonly AnyPlugin[]> = Omit<EditorOption
    * one called. A `listeners.update` given as well is kept and runs first.
    */
   onUpdate?: (e: { editor: Editor<P> }) => void
-  /** React components rendered as node views, keyed by (atom) node type. Read on the first render only. */
+  /**
+   * React components rendered as node views, keyed by node type. Read on the first render only. A
+   * `ReactNodeViewSpec` in place of a component also sets the tags of its container and `contentDOM`.
+   */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  nodeViews?: Record<string, ReactNodeView<any, any, any, any>>
+  nodeViews?: Record<string, ReactNodeView<any, any, any, any> | ReactNodeViewSpec<any, any, any, any>>
   /**
    * Plugin options kept in sync with the editor, keyed by plugin name. On every render each entry is
    * shallow-compared with the last value applied, and `editor.setPluginOptions(name, value)` is called
@@ -71,8 +74,8 @@ export function useEditor<const P extends readonly AnyPlugin[]>(options: UseEdit
     const { onUpdate: _onUpdate, nodeViews, pluginOptions, listeners, ...editorOptions } = options
     const store = createPortalStore()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const factories: Record<string, NodeViewFactory<any, any>> = {}
-    for (const [type, Component] of Object.entries(nodeViews ?? {})) factories[type] = toNodeViewFactory(Component, store)
+    const factories: Record<string, NodeViewFactory<any, any> | NodeViewSpec<any, any>> = {}
+    for (const [type, view] of Object.entries(nodeViews ?? {})) factories[type] = toNodeViewSpec(view, store)
     // `onUpdate` is registered through `listeners`, before the plugins' `onCreate` hooks run, so their
     // dispatches are reported too, as are those of children's layout effects and `onMount` (run when
     // `EditorContent` mounts, in a layout effect), which come before this hook's effects. Once per

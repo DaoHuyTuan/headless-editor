@@ -63,6 +63,7 @@ export type {
   NodeViewInstance,
   NodeViewProps,
   NodeViewPropsOf,
+  NodeViewSpec,
   NoOptions,
   OptionsOf,
   ParseRule,

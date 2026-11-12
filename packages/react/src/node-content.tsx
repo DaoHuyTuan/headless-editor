@@ -1,4 +1,4 @@
-import { createContext, useContext, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react'
+import { createContext, createElement, useContext, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react'
 
 /** What a node view's subtree knows about its view (every React node view, atoms included). */
 interface NodeContentContextValue {
@@ -47,8 +47,13 @@ export function NodeViewScope({
 }
 
 export interface NodeContentProps {
-  /** The placeholder element (default `div`; use `span` in an inline node view). */
-  as?: 'div' | 'span'
+  /**
+   * The placeholder element's tag (default `div`; use `span` in an inline node view, or the tag the
+   * view's markup needs there, e.g. `tbody` in a `table` container).
+   *
+   * Tags other than `div` and `span` are `@experimental`.
+   */
+  as?: string
   className?: string
 }
 
@@ -99,5 +104,5 @@ export function NodeContent({ as: Tag = 'div', className }: NodeContentProps) {
     }
     // `Tag`: another tag is another placeholder element, which must take contentDOM.
   }, [ctx, contentDOM, Tag])
-  return <Tag ref={ref as never} className={className} />
+  return createElement(Tag, { ref, className })
 }
