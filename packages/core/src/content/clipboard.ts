@@ -9,7 +9,7 @@ import type { Data, DeepReadonly, Doc, ElementNode, Mark, Node, Path, Range, Sel
 import type { Registry } from '../plugin/registry'
 import type { DropHandler } from '../load'
 import type { Fragment } from '../transaction/fragment'
-import { clampSlice, fragmentSlice, hasFragmentDepths, sliceAt, type Slice } from '../transaction/slice'
+import { clampSlice, fragmentSlice, hasFragmentDepths, maxOpenSlice, sliceAt, type Slice } from '../transaction/slice'
 import { fits } from '../schema/validate'
 import { marksAt, marksOfRange } from '../transaction/marks'
 
@@ -69,20 +69,20 @@ function wrapInAncestors(doc: DeepReadonly<Doc>, registry: Registry, blocks: Ele
 /**
  * The slice of a `FRAGMENT_MIME` payload, sanitized; null when it is malformed. A slice object keeps
  * its open depths (clamped to its sanitized content); a bare array (0.1 / 0.2, or a slice with a
- * fragment's depths) is a fragment, with no open depths of its own (`depths: false`).
+ * fragment's depths) is a fragment, with no open depths of its own (`depths: 'fragment'`).
  */
-function fromJson(json: string, registry: Registry, onDrop: DropHandler): { slice: Slice; depths: boolean } | null {
+function fromJson(json: string, registry: Registry, onDrop: DropHandler): PastedSlice | null {
   let raw: unknown
   try {
     raw = JSON.parse(json)
   } catch {
     return null
   }
-  if (Array.isArray(raw)) return { slice: fragmentSlice(sanitizeFragment(raw, registry, onDrop), registry), depths: false }
+  if (Array.isArray(raw)) return { slice: fragmentSlice(sanitizeFragment(raw, registry, onDrop), registry), depths: 'fragment' }
   if (typeof raw !== 'object' || raw === null || !Array.isArray((raw as { content?: unknown }).content)) return null
   const { content, openStart, openEnd } = raw as { content: unknown[]; openStart?: unknown; openEnd?: unknown }
   const slice = { content: sanitizeFragment(content, registry, onDrop), openStart, openEnd } as Slice
-  return { slice: clampSlice(slice, registry), depths: true }
+  return { slice: clampSlice(slice, registry), depths: 'own' }
 }
 
 function fromText(text: string, registry: Registry, marks: Mark[]): Fragment {
@@ -104,12 +104,15 @@ function pasteMarks(editor: Editor, at: SelectionRange | null): Mark[] {
 }
 
 /**
- * A parsed paste: the slice, and whether its open depths came with it (a `FRAGMENT_MIME` slice
- * object). Without them, the slice has a fragment's open depths, recomputed after `transformPasted`.
+ * A parsed paste: the slice, and where its open depths come from: `'own'`, with it (a
+ * `FRAGMENT_MIME` slice object; clamped after `transformPasted`); `'max'`, as open as its content
+ * allows (HTML, as ProseMirror opens a parsed slice: `maxOpenSlice`); `'fragment'`, a fragment's
+ * (an old JSON array, plain text: `fragmentSlice`). The last two are recomputed after `transformPasted`.
+ * For flat content (no container) `'max'` and `'fragment'` give the same depths.
  */
 export interface PastedSlice {
   slice: Slice
-  depths: boolean
+  depths: 'own' | 'max' | 'fragment'
 }
 
 /**
@@ -129,8 +132,9 @@ export function parseFromClipboard(
  * `application/x-penline-fragment` flavor), then `html`, then `text`, moving on when a flavor is
  * missing, malformed or yields nothing. JSON and HTML are untrusted: data is validated and unknown
  * types are dropped. Text lines become default blocks (one trailing newline is dropped); a single
- * line is inline text. Text takes the marks typing at the target would get. Only a JSON slice has
- * open depths of its own; anything else has a fragment's (`fragmentSlice`).
+ * line is inline text. Text takes the marks typing at the target would get. A JSON slice has open
+ * depths of its own; HTML is open as far as its content allows (`maxOpenSlice`: a pasted `<ul>` merges
+ * into the list around the caret); an old JSON array and text have a fragment's (`fragmentSlice`).
  * Finally every plugin's `transformPasted` runs on the slice's content (`transformPastedSlice`), in
  * priority order, with `options.at`: where the slice will be inserted (a drop's drop point, or one
  * range of a multi-range paste); omitted or null, at the selection.
@@ -143,21 +147,20 @@ export function parseSliceFromClipboard(
   let pasted = parseRichSlice(editor, data)
   if (pasted.slice.content.length === 0 && data.text) {
     const fragment = fromText(data.text, editor.registry, pasteMarks(editor, options.at ?? null))
-    pasted = { slice: fragmentSlice(fragment, editor.registry), depths: false }
+    pasted = { slice: fragmentSlice(fragment, editor.registry), depths: 'fragment' }
   }
   return transformPastedSlice(editor, pasted, options.at ?? null)
 }
 
 /**
  * `editor.transformPasted` on the content of `pasted.slice`: a slice with depths of its own keeps
- * them, clamped to what the returned content supports; one without gets a fragment's depths for
- * the returned content.
+ * them, clamped to what the returned content supports; the others get their kind of depths
+ * (`PastedSlice`) for the returned content.
  */
 export function transformPastedSlice(editor: Editor, pasted: PastedSlice, at: SelectionRange | null): Slice {
   const content = editor.transformPasted(pasted.slice.content, at)
-  return pasted.depths
-    ? clampSlice({ ...pasted.slice, content }, editor.registry)
-    : fragmentSlice(content, editor.registry)
+  if (pasted.depths === 'own') return clampSlice({ ...pasted.slice, content }, editor.registry)
+  return pasted.depths === 'max' ? maxOpenSlice(content, editor.registry) : fragmentSlice(content, editor.registry)
 }
 
 /**
@@ -170,7 +173,7 @@ export function parseRichClipboard(editor: Editor, data: { json?: string; html?:
   return parseRichSlice(editor, data).slice.content
 }
 
-/** `parseRichClipboard` as a slice: a JSON slice keeps its open depths (`fromJson`). */
+/** `parseRichClipboard` as a slice: a JSON slice keeps its open depths (`fromJson`), HTML is open as far as it can be. */
 export function parseRichSlice(editor: Editor, data: { json?: string; html?: string }): PastedSlice {
   const { registry } = editor
   let pasted: PastedSlice | null = null
@@ -178,8 +181,8 @@ export function parseRichSlice(editor: Editor, data: { json?: string; html?: str
   if (data.json) pasted = fromJson(data.json, registry, drops.onDrop)
   if ((!pasted || pasted.slice.content.length === 0) && data.html) {
     const fragment = sanitizeFragment(parseHTML(data.html, registry), registry, drops.onDrop)
-    pasted = { slice: fragmentSlice(fragment, registry), depths: false }
+    pasted = { slice: maxOpenSlice(fragment, registry), depths: 'max' }
   }
   drops.warn('pasted content')
-  return pasted ?? { slice: { content: [], openStart: 0, openEnd: 0 }, depths: false }
+  return pasted ?? { slice: { content: [], openStart: 0, openEnd: 0 }, depths: 'fragment' }
 }

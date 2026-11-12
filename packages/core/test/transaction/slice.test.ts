@@ -9,6 +9,9 @@ import { isValidDoc } from '../../src/schema/validate'
 import { createTestEditor, doc, el, sel, stripIds, txt } from '../../src/testing/index'
 import type { Slice } from '../../src/index'
 import type { Transaction } from '../../src/transaction/transaction'
+import { insertFragment, insertFragmentStep } from '../../src/transaction/fragment'
+import { runStep } from '../../src/transaction/text'
+import { single } from '../../src/model/selection'
 import { nested, testBold, testParagraph } from '../fixtures'
 
 const p = (...children: (Node | string)[]): ElementNode =>
@@ -168,6 +171,16 @@ describe('tr.insertSlice (spec §5.4)', () => {
     expect(ed.state.selection!.ranges).toHaveLength(2)
   })
 
+  it('whole list items pasted into a list item paragraph become sibling items of that list, not a nested list', () => {
+    expectEdit(
+      doc(ul(li(p('xy')))),
+      sel([0, 0, 0, 0], 1),
+      (tr) => insertFragment(tr, [li(p('c')), li(p('d'))]),
+      doc(ul(li(p('x')), li(p('c')), li(p('d')), li(p('y')))),
+      sel([0, 2, 0, 0], 1),
+    )
+  })
+
   it('valid result or no ops: a slice that fits nowhere changes nothing, not even the range', () => {
     const slice: Slice = { content: [el('caption', txt('z'))], openStart: 0, openEnd: 0 }
     const ed = setup(doc(p('abc')), sel([0, 0], 1, [0, 0], 2))
@@ -203,6 +216,38 @@ describe('insertFragment is insertSlice with the open depths of a fragment', () 
     const depth = 'type' in first ? 1 : 0
     t2.insertSlice({ content: fragment, openStart: depth, openEnd: depth })
     expect(t2.ops).toEqual(t1.ops)
+  })
+})
+
+describe('a node-selected inline atom keeps the flat path', () => {
+  const chip = definePlugin({ name: 'chip', node: { kind: 'inline', atom: true } })
+  const run = (edit: (tr: Transaction) => boolean) => {
+    let n = 0
+    setIdGenerator(() => `id${++n}`)
+    const content = doc({ ...p('ab', { id: 'c', type: 'chip', data: {} }, 'cd'), id: 'p0' })
+    const ed = createTestEditor({ plugins: [testParagraph, testBold, chip], doc: content, selection: sel([0, 0], 0) })
+    const tr = ed.createTransaction()
+    tr.setSelection(single({ anchor: { path: [0, 2], offset: 0 }, focus: { path: [0, 2], offset: 0 }, node: [0, 1] }))
+    const from = tr.ops.length
+    return { did: edit(tr), ops: tr.ops.slice(from) }
+  }
+
+  it('insertFragment of blocks over it does what the fragment insert always did', () => {
+    const fragment = () => [{ ...p('1'), id: 'f1' }, { ...p('2'), id: 'f2' }]
+    const now = run((tr) => insertFragment(tr, fragment()))
+    // Today's fragment insert, called directly: the behaviour before slices.
+    const base = run((tr) => {
+      let failed = false
+      const did = runStep(tr, undefined, (range) => {
+        const step = insertFragmentStep(tr, fragment(), range, true)
+        if (step.failed) failed = true
+        return step.out
+      })
+      return did && !failed
+    })
+    expect(base.did).toBe(true)
+    expect(now.did).toBe(base.did)
+    expect(now.ops).toEqual(base.ops)
   })
 })
 

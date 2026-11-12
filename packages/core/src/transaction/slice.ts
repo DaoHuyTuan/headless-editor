@@ -87,6 +87,15 @@ export function fragmentSlice(content: Fragment, registry: Registry): Slice {
   return { content, openStart: edge(content[0]!), openEnd: edge(content[content.length - 1]!) }
 }
 
+/**
+ * `content` as open at each end as it can be (`clampSlice` of the largest depths): every container
+ * down the edge to a textblock. For flat content (textblocks and opaque blocks) the depths of
+ * `fragmentSlice`.
+ */
+export function maxOpenSlice(content: Fragment, registry: Registry): Slice {
+  return clampSlice({ content, openStart: Number.MAX_SAFE_INTEGER, openEnd: Number.MAX_SAFE_INTEGER }, registry)
+}
+
 /** Whether `slice` has the open depths of its content as a plain fragment (`fragmentSlice`). */
 export function hasFragmentDepths(slice: Slice, registry: Registry): boolean {
   const plain = fragmentSlice(slice.content, registry)
@@ -154,7 +163,12 @@ function flatFits(tr: Transaction, slice: Slice, sel: SelectionRange, nodeEdit: 
   const { content } = slice
   if (!isBlockNode(content[0], registry)) return true
   if (!hasFragmentDepths(slice, registry) || content.some((n) => isContainer(n, registry))) return false
-  const node = nodeEdit && isNodeRange(sel) ? sel.node : blockPathOf(tr, toRange(sel).start.path)
+  // A node-selected inline atom is replaced inside its block: that block is the target.
+  const selected = nodeEdit && isNodeRange(sel) ? sel.node : null
+  const node =
+    selected && registry.node(typeOf(tr.doc, selected))?.kind !== 'inline'
+      ? selected
+      : blockPathOf(tr, selected ?? toRange(sel).start.path)
   if (node.length !== 1) return false
   const kids = tr.doc.children
   const i = node[0]!
@@ -162,11 +176,15 @@ function flatFits(tr: Transaction, slice: Slice, sel: SelectionRange, nodeEdit: 
   return !fits(registry, 'doc', kids) || fits(registry, 'doc', [...kids.slice(0, i), stub, ...content, stub, ...kids.slice(i + 1)])
 }
 
-/** One way to fit a slice at a caret: merge depth at the start and at the end, and how many levels are split. */
+/**
+ * One way to fit a slice at a caret: merge depth at the start and at the end, how many levels are
+ * split, and whether `place` may wrap or unwrap nodes.
+ */
 interface Fit {
   s: number
   e: number
   k: number
+  wrap: boolean
 }
 
 /**
@@ -175,7 +193,10 @@ interface Fit {
  * innermost open node is a textblock and every open node above it has the type of the ancestor at
  * its level, none isolating (two list items merge into a list item, not into a root paragraph).
  * Then: both ends merged (same depth), the start only, the end only, and last both ends closed,
- * splitting 1, 2, … levels (never an isolating node), the nearest level first.
+ * splitting 1, 2, … levels (never an isolating node), the nearest level first: first with every
+ * node placed as it is, then with wrapping and unwrapping. So a direct fit at any level wins over a
+ * wrapped one (whole list items pasted into a list item's paragraph become items of that list, as
+ * in ProseMirror's fitter, not a list nested in the item).
  */
 function fitsToTry(tr: Transaction, slice: Slice, blockPath: Path): Fit[] {
   const { registry, doc } = tr
@@ -196,16 +217,18 @@ function fitsToTry(tr: Transaction, slice: Slice, blockPath: Path): Fit[] {
   const s = aligned('start')
   const e = aligned('end')
   const out: Fit[] = []
-  if (s && e && s === e) out.push({ s, e, k: s })
-  if (s) out.push({ s, e: 0, k: s })
-  if (e) out.push({ s: 0, e, k: e })
+  if (s && e && s === e) out.push({ s, e, k: s, wrap: true })
+  if (s) out.push({ s, e: 0, k: s, wrap: true })
+  if (e) out.push({ s: 0, e, k: e, wrap: true })
+  let levels = 0
   for (let k = 1; k <= D; k++) {
     if (k > 1) {
       const type = typeOf(doc, blockPath.slice(0, D - k + 1))
       if (registry.isIsolating(type) || !registry.contentMatch(type)) break
     }
-    out.push({ s: 0, e: 0, k })
+    levels = k
   }
+  for (const wrap of [false, true]) for (let k = 1; k <= levels; k++) out.push({ s: 0, e: 0, k, wrap })
   return out
 }
 
@@ -305,9 +328,10 @@ function wrapRun(registry: Registry, state: ContentMatch, first: ElementNode, qu
  * `nodes` as they can go at child `index` of the element (or doc) at `parent`: each node its
  * content match accepts there as is; else wrapped, with the nodes after it that fit along
  * (`wrapRun`: two list items become a list); else, for a container, its children instead
- * (unwrapped one level, then retried). Null when a node fits in none of these ways.
+ * (unwrapped one level, then retried); without `wrap`, as is only. Null when a node fits in none of
+ * these ways.
  */
-function place(tr: Transaction, parent: Path, index: number, nodes: Node[]): Node[] | null {
+function place(tr: Transaction, parent: Path, index: number, nodes: Node[], wrap: boolean): Node[] | null {
   const { registry } = tr
   let state: ContentMatch | null = registry.contentMatch(typeOf(tr.doc, parent)) ?? null
   for (const k of childrenOf(tr.doc, parent).slice(0, index)) state = state && matchChild(state, k, registry)
@@ -322,6 +346,7 @@ function place(tr: Transaction, parent: Path, index: number, nodes: Node[]): Nod
       state = next
       continue
     }
+    if (!wrap) return null
     const wrapped: ElementNode | null = isElement(n) ? wrapRun(registry, state, n, queue) : null
     if (wrapped) {
       out.push(wrapped)
@@ -386,7 +411,7 @@ function fitAt(tr: Transaction, slice: Slice, point: Point, blockPath: Path, fit
   if (e) ({ path: rightInner, kids: lastKids } = mergeFront(tr, rightTop, last, k))
   if (s) mergeBack(tr, leftTop, first, k)
   const middle = nodes.slice(s ? 1 : 0, e ? nodes.length - 1 : nodes.length)
-  const placed = place(tr, parent, i + 1, middle)
+  const placed = place(tr, parent, i + 1, middle, fit.wrap)
   if (!placed) return null
   placed.forEach((n, j) => tr.insertNode([...parent, i + 1 + j], n))
   if (tr.rejected !== null) return null

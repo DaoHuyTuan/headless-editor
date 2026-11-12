@@ -64,12 +64,19 @@ describe('clipboard flavors of a slice', () => {
     expect(flat.state.selection).toEqual(sel([1, 0], 1))
   })
 
-  it('an old payload of whole list items pasted into a list item nests them as a list (closed edges)', () => {
+  it('an old payload of whole list items pasted into a list item becomes sibling items of that list (closed edges)', () => {
     const json = JSON.stringify([li(p('c')), li(p('d'))])
     const ed = setup(doc(ul(li(p('xy')))), sel([0, 0, 0, 0], 1))
     expect(paste(ed, { [FRAGMENT_MIME]: json })).toBe(true)
     expect(isValidDoc(ed.state.doc, ed.registry)).toBe(true)
-    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(ul(li(p('x'), ul(li(p('c')), li(p('d'))), p('y'))))))
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(ul(li(p('x')), li(p('c')), li(p('d')), li(p('y'))))))
+  })
+
+  it('pasting the HTML of a list into a list item merges with the list around the caret, not nested (open as far as it can be)', () => {
+    const ed = setup(doc(ul(li(p('xy')))), sel([0, 0, 0, 0], 1))
+    expect(paste(ed, { 'text/html': '<ul><li><p>c</p></li><li><p>d</p></li></ul>' })).toBe(true)
+    expect(isValidDoc(ed.state.doc, ed.registry)).toBe(true)
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(ul(li(p('xc')), li(p('dy'))))))
   })
 
   it('pasting HTML with a loose run in a list into a root paragraph gives a valid list with all three texts (Review Focus 3)', () => {
