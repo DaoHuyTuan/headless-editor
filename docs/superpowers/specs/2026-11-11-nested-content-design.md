@@ -178,8 +178,9 @@ explicit range, and returns its caret):
   false, no ops) if the schema does not allow it.
 - `lift(range?)`: move the covered blocks out of their parent container, splitting the container if
   the blocks are in its middle. Removes the container if it is left empty. **Core transforms never
-  rely on normalization to repair what they produce:** `lift` finds the nearest ancestor depth where
-  the result is valid (ProseMirror's `liftTarget`), and returns false with no ops when there is none.
+  rely on normalization to repair what they produce:** `lift` moves the blocks into the container's parent only,
+  when the parent accepts them there (unlike ProseMirror's `liftTarget`, it never carries blocks past an
+  ancestor that rejects them), and returns false with no ops otherwise.
   A paragraph that is the first child of a `listItem` cannot be lifted alone into `bulletList`, so the
   generic Backspace below falls through; the list plugin's `liftListItem` handles it.
 - `setBlockType(type, data?, range?)`: change textblocks in the range to another textblock type
