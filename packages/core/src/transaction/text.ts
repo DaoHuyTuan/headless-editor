@@ -8,7 +8,7 @@ import { applyOp } from '../ops/apply'
 import { transformPath } from '../ops/transform'
 import type { Operation } from '../ops/types'
 import type { Registry } from '../plugin/registry'
-import { bannedMarks, fits, hasNewline, missingContent } from '../schema/validate'
+import { bannedMarks, fits, hasNewline, missingContent, repeatedTypes } from '../schema/validate'
 import { marksAtTr, marksOfRange } from './marks'
 import { currentRange, flagSwallowed, forEachRange, inForEachRange, mapSince, setCurrentRange } from './ranges'
 import { liftStep, split } from './structure'
@@ -757,8 +757,22 @@ function firstTextPath(node: DeepReadonly<Node>): Path | null {
  * or its content is not valid already, so documents the schema does not describe keep today's edits.
  */
 function acceptsAt(tr: Transaction, parent: Path, index: number, removed: number, nodes: readonly Node[]): boolean {
+  const { registry } = tr
   const type = typeOf(tr.doc, parent)
-  if (!tr.registry.contentMatch(type) || !fits(tr.registry, type, childrenOf(tr.doc, parent))) return true
+  const match = registry.contentMatch(type)
+  if (!match) return true
+  // Content repeating one set of types (the doc's `block+`): nodes of that set keep valid content
+  // valid wherever they go, and invalid content is accepted anyway, so the children need no
+  // reading. Keeps a split or an insert at the root of a large flat doc O(1).
+  const repeated = repeatedTypes(match)
+  const kids = childrenOf(tr.doc, parent)
+  if (
+    repeated &&
+    (match.validEnd || kids.length - removed + nodes.length > 0) &&
+    nodes.every((n) => (isText(n) ? repeated.has('text') : !registry.node(n.type) || repeated.has(n.type)))
+  )
+    return true
+  if (!fits(registry, type, kids)) return true
   return fitsWith(tr, parent, index, removed, nodes)
 }
 

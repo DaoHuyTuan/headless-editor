@@ -11,7 +11,7 @@ import type { AnyPlugin, PluginContext } from './plugin/types'
 import type { ContentMatch } from './schema/content-match'
 import { inlineWrapping, matchChild } from './schema/validate'
 import { splitBlockAt } from './transaction/text'
-import { touchedElements } from './transaction/touched'
+import { touchedElements, touchedRoot } from './transaction/touched'
 import type { Transaction } from './transaction/transaction'
 
 const MAX_PASSES = 100
@@ -24,15 +24,18 @@ type Check = (node: ElementNode | null) => boolean
  * Normalizes `tr.doc` in place by appending operations to `tr`: core rules first, then every
  * plugin's `normalize` hook on every node entry. Passes repeat until one adds no operations.
  *
- * The content rule (children matching the schema) runs on the doc and on the elements the tr's ops
- * touched, with their ancestors (`recordTouched`), including those its own fixes touch; on every
- * element when the tr has no doc op yet (a direct call on a doc to normalize, as on load). The
- * other core rules run on the whole doc.
+ * The content rule (children matching the schema), rule 8 (allowed marks and inline elements) and
+ * rule 11 (`\n` in rich inline content) run on the elements the tr's ops touched, with their
+ * ancestors (`recordTouched`), including those its own fixes touch, and on the doc when an op
+ * changed its children (`touchedRoot`); on everything when the tr has no doc op yet (a direct call
+ * on a doc to normalize, as on load). The other core rules run on the whole doc.
  */
 export function normalize(tr: Transaction, getContext: (plugin: AnyPlugin) => PluginContext<any, any>): void {
   const options: OptionsLookup = (plugin) => getContext(plugin).options
   const full = !tr.docChanged
-  const check: Check = (node) => full || node === null || touchedElements(tr).has(node.id)
+  // The tr has a doc op, so its touched set exists: read it once (it grows with the fixes' own ops).
+  const touched = touchedElements(tr)
+  const check: Check = (node) => full || (node === null ? touchedRoot(tr) : touched.has(node.id))
   for (let pass = 0; ; pass++) {
     if (pass >= MAX_PASSES) throw new Error('Normalization did not converge')
     const before = tr.ops.length
@@ -96,8 +99,9 @@ function fixElement(tr: Transaction, node: ElementNode, path: Path, options: Opt
   const children = node.children ?? []
   if (children.length === 0 && spec.kind !== 'block') return false
   const inline = holdsInline(node.type, registry)
+  const checked = check(node)
 
-  if (check(node)) {
+  if (checked) {
     if (!inline) {
       // The content rule for containers (rules 2 and 5 at any depth).
       if (fixContent(tr, node, path, children, options)) return true
@@ -134,7 +138,9 @@ function fixElement(tr: Transaction, node: ElementNode, path: Path, options: Opt
     }
   }
 
-  if (inline) {
+  // Rules 8 and 11 only read the element's own children: like the content rule, they run on the
+  // elements the tr touched (`check`; the doc was normal before it).
+  if (inline && checked) {
     // Rule 8: inline content keeps only the marks its element allows (`marks`; none in a
     // `content: 'text'` block) and the inline elements its content allows. Others are unwrapped,
     // except an inline atom with `renderText`, which becomes that text (so a mention keeps its `@label`).
@@ -162,7 +168,7 @@ function fixElement(tr: Transaction, node: ElementNode, path: Path, options: Opt
   // its type with a fresh id, and the `\n` removed. Every `\n` of the block is split in this one fix
   // (see `splitAtNewlines`), so a many-line text costs one fix, not one restart from the root per line.
   const richInline = inline && !registry.isTextOnly(node.type)
-  if (richInline && spec.kind === 'block') {
+  if (richInline && spec.kind === 'block' && checked) {
     const at = newlines(node, path, registry)
     if (at.length > 0) {
       splitAtNewlines(tr, node, path, at)

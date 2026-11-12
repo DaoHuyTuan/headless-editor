@@ -15,6 +15,37 @@ export function matchChild(state: ContentMatch, node: DeepReadonly<Node>, regist
   return state.edges[0]?.next ?? state
 }
 
+const repeats = new WeakMap<ContentMatch, ReadonlySet<string> | null>()
+
+/**
+ * For content that repeats one set of types in any order (`(a | b)*`, `block+`: the doc's
+ * content), that set; null for any other content. Read from the automaton: every state reachable
+ * from `match` has edges for exactly those types, and every state after the first node is a valid
+ * end. With it, a check of nodes added to valid content does not read the content (O(1) in the
+ * doc's size): any of those types fits anywhere, and only an empty `+` content is invalid.
+ */
+export function repeatedTypes(match: ContentMatch): ReadonlySet<string> | null {
+  const cached = repeats.get(match)
+  if (cached !== undefined) return cached
+  const types = new Set(match.edges.map((e) => e.type))
+  let out: ReadonlySet<string> | null = types.size > 0 ? types : null
+  const seen = new Set<ContentMatch>([match])
+  const queue = [match]
+  for (let state = queue.pop(); state && out; state = queue.pop()) {
+    if (state.edges.length !== types.size || state.edges.some((e) => !types.has(e.type))) out = null
+    for (const e of state.edges) {
+      // Back at the start (or anywhere after a node) the content must be a valid end.
+      if (!e.next.validEnd) out = null
+      if (!seen.has(e.next)) {
+        seen.add(e.next)
+        queue.push(e.next)
+      }
+    }
+  }
+  repeats.set(match, out)
+  return out
+}
+
 /** The types to wrap an inline run in at `state`, outermost first, ending with a textblock; null if none. */
 export function inlineWrapping(state: ContentMatch, registry: Registry): string[] | null {
   const type = state.defaultType
