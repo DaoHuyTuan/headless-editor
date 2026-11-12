@@ -223,6 +223,17 @@ export const corePlugin = definePlugin({
         tr.setNodeData(path, partial)
         return tr.rejected === null
       },
+    // Structural transforms at every selection range; false (and so `can()` false) when the schema
+    // does not allow them.
+    wrapIn:
+      (type: string, data?: Data): Command =>
+      ({ tr }) =>
+        tr.wrap(type, data) && tr.rejected === null,
+    lift: (): Command => ({ tr }) => tr.lift(),
+    setBlockType:
+      (type: string, data?: Data): Command =>
+      ({ tr }) =>
+        tr.setBlockType(type, data) && tr.rejected === null,
     // Stored-mark-only changes (caret) dispatch too: the Editor dispatches when storedMarks changed.
     toggleMark:
       (type: string, data?: Data): Command =>

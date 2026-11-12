@@ -11,6 +11,7 @@ import type { EditorState } from '../state'
 import * as fragmentEdit from './fragment'
 import type { Fragment } from './fragment'
 import * as markEdit from './marks'
+import * as structureEdit from './structure'
 import { forEachRange, inForEachRange, mapRun, selectionLock } from './ranges'
 import type { RangeStep } from './ranges'
 import * as textEdit from './text'
@@ -319,6 +320,48 @@ export class Transaction {
   toggleMark(type: string, data?: Data): this {
     markEdit.toggleMark(this, type, data)
     return this
+  }
+
+  /**
+   * Wraps the blocks of every selection range (or only `range`) into `type` with `data`, adding the
+   * inner wrappers the schema needs (a paragraph wrapped in a list gets a list item). Returns whether
+   * anything changed: false, with no ops, when the schema does not allow it (see `./structure`).
+   */
+  wrap(type: string, data?: Data, range?: SelectionRange): boolean {
+    return structureEdit.wrap(this, type, data, range)
+  }
+
+  /**
+   * Moves the blocks of every selection range (or only `range`) out of their container into its
+   * parent, splitting the container around them and removing it when left empty. False, with no
+   * ops, when the result would not be valid (`liftTarget`).
+   */
+  lift(range?: SelectionRange): boolean {
+    return structureEdit.lift(this, range)
+  }
+
+  /**
+   * Changes the textblocks of every selection range (or only `range`) to the textblock `type` with
+   * `data`, keeping their children (marks `type` does not allow are removed). False, with no ops,
+   * when no textblock changed.
+   */
+  setBlockType(type: string, data?: Data, range?: SelectionRange): boolean {
+    return structureEdit.setBlockType(this, type, data, range)
+  }
+
+  /**
+   * Splits the textblock at `point` and its `depth - 1` nearest ancestors; `typesAfter` (outermost
+   * first) gives the new nodes' types, a null entry keeping the split node's. Returns the start of
+   * the new innermost block, or null with no ops when the result would not be valid. Ranges are
+   * mapped through the split; the selection is not set.
+   */
+  split(point: Point, depth = 1, typesAfter?: ({ type: string; data?: Data } | null)[]): Point | null {
+    return structureEdit.split(this, point, depth, typesAfter)
+  }
+
+  /** Joins the node at `path` into its previous sibling. False, with no ops, when they are not compatible. */
+  join(path: Path): boolean {
+    return structureEdit.join(this, path)
   }
 
   setNodeData(path: Path, partial: Data): this {

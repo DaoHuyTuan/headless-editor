@@ -476,7 +476,7 @@ const textOnlyTypes = new WeakMap<RegisteredNode, boolean>()
  * content is plain text, where `\n` is a line break and no inline element goes. Read from the
  * expression, not the compiled match: with no inline plugin registered, `inline*` reaches only text too.
  */
-function textOnly(type: string, registry: Registry): boolean {
+export function textOnly(type: string, registry: Registry): boolean {
   const spec = registry.node(type)
   if (!spec) return false
   let out = textOnlyTypes.get(spec)
