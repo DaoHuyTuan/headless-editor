@@ -85,6 +85,14 @@ describe('clipboard flavors of a slice', () => {
     expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(ul(li(p('xc')), li(p('dy'))))))
   })
 
+  it('pasting the HTML of a list ending in a nested list into a list item keeps one list (only the start lines up)', () => {
+    const ed = setup(doc(ul(li(p('xy')))), sel([0, 0, 0, 0], 1))
+    const html = '<ul><li><p>a</p></li><li><p>b</p><ul><li><p>c</p></li></ul></li></ul>'
+    expect(paste(ed, { 'text/html': html })).toBe(true)
+    expect(isValidDoc(ed.state.doc, ed.registry)).toBe(true)
+    expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(ul(li(p('xa')), li(p('b'), ul(li(p('c')))), li(p('y'))))))
+  })
+
   describe('a lone pasted container is kept when the root takes it (open ends that do not line up are closed)', () => {
     const quote = (...children: ElementNode[]): ElementNode => el('quote', ...children)
     const table = (...rows: ElementNode[]): ElementNode => el('table', ...rows)

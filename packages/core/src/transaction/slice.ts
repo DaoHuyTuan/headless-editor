@@ -95,7 +95,7 @@ export function fragmentSlice(content: Fragment, registry: Registry): Slice {
  * `content` as open at each end as it can be: every container down the edge to a textblock, but
  * never an isolating node (a table cell) or anything inside one, so a pasted table is never opened
  * past its rows. For flat content (textblocks and opaque blocks) the depths of `fragmentSlice`.
- * `insertSlice` keeps such a depth only where it lines up with the target (`closeUnaligned`).
+ * `insertSlice` closes both ends when neither lines up with the target (`closeUnaligned`).
  */
 export function maxOpenSlice(content: Fragment, registry: Registry): Slice {
   if (!isBlockNode(content[0], registry)) return { content, openStart: 0, openEnd: 0 }
@@ -207,19 +207,16 @@ function alignedDepth(tr: Transaction, slice: Slice, side: 'start' | 'end', bloc
 }
 
 /**
- * `slice` with each open end that cannot line up with the target block (`alignedDepth`) closed, so
- * a lone container open at both ends (pasted HTML: a quote, a one-item list) is placed whole instead
- * of being reduced to its paragraphs. An end open at depth 1 on a textblock stays (it merges, as a
- * fragment's does).
+ * `slice` closed at both ends when neither end lines up with the target block (`alignedDepth`), so a
+ * lone container open at both ends (pasted HTML: a quote, a one-item list, a table) is placed whole
+ * instead of being reduced to its paragraphs. When either end lines up, the slice stays as it is: a
+ * lone wrapper reduced away then has the type of the caret's ancestor at its level (a pasted list
+ * ending in a nested list merges into the caret's list, which is not split). An end open at depth 1
+ * on a textblock always lines up, so a fragment's depths are kept.
  */
 function closeUnaligned(tr: Transaction, slice: Slice, blockPath: Path): Slice {
-  const { content } = slice
-  const keep = (side: 'start' | 'end', depth: number) => {
-    const edge = side === 'start' ? content[0] : content[content.length - 1]
-    if (depth === 1 && isElement(edge!) && tr.registry.isTextblock(edge.type)) return 1
-    return alignedDepth(tr, slice, side, blockPath)
-  }
-  return { content, openStart: keep('start', slice.openStart), openEnd: keep('end', slice.openEnd) }
+  if (alignedDepth(tr, slice, 'start', blockPath) || alignedDepth(tr, slice, 'end', blockPath)) return slice
+  return { content: slice.content, openStart: 0, openEnd: 0 }
 }
 
 /**
