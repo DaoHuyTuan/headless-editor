@@ -1,6 +1,6 @@
 {
   "name": "@penline/paragraph",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Paragraph block for penline.",
   "license": "MIT",
   "type": "module",

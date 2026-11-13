@@ -1,6 +1,6 @@
 {
   "name": "@penline/font-size",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Font size mark for penline.",
   "license": "MIT",
   "type": "module",

@@ -1,6 +1,6 @@
 {
   "name": "@penline/mention",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Mentions for penline: an inline atom and a suggestion popup.",
   "license": "MIT",
   "type": "module",

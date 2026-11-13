@@ -1,6 +1,6 @@
 {
   "name": "@penline/core",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Headless rich-text editor engine: model, invertible ops, transactions, history, plugins and a DOM view. Framework-free.",
   "license": "MIT",
   "type": "module",

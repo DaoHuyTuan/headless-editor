@@ -1,6 +1,6 @@
 {
   "name": "@penline/image",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Image block for penline: uploads, resize, React node view.",
   "license": "MIT",
   "type": "module",

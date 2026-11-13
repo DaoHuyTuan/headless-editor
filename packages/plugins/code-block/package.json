@@ -1,6 +1,6 @@
 {
   "name": "@penline/code-block",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Code block for penline: plain-text blocks with syntax highlighting.",
   "license": "MIT",
   "type": "module",
