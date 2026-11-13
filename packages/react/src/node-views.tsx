@@ -1,5 +1,5 @@
 import type { ComponentType } from 'react'
-import type { AnyPlugin, Data, Editor, NodeViewFactory, NodeViewProps } from '@penline/core'
+import type { AnyPlugin, Data, Editor, NodeViewFactory, NodeViewProps, NodeViewSpec } from '@penline/core'
 
 /**
  * A React component rendered as a node view (a non-atom one shows its content with
@@ -11,6 +11,19 @@ import type { AnyPlugin, Data, Editor, NodeViewFactory, NodeViewProps } from '@p
  * plugin state from `usePluginState(props.editor, plugin)` instead.
  */
 export type ReactNodeView<D = Data, O = unknown, T = unknown, S = unknown> = ComponentType<NodeViewProps<D, O, T, S>>
+
+/**
+ * A React node view with the tags of the elements the core creates for it (see `NodeViewSpec`):
+ * `as` for the container the component is portaled into, `contentAs` for its `contentDOM`. Defaults
+ * are `div` for a block, `span` for an inline node.
+ *
+ * @experimental Part of the node-view customization levels; the shape may change.
+ */
+export interface ReactNodeViewSpec<D = Data, O = unknown, T = unknown, S = unknown> {
+  component: ReactNodeView<D, O, T, S>
+  as?: string
+  contentAs?: string
+}
 
 export interface PortalEntry {
   id: string
@@ -83,6 +96,26 @@ export function toNodeViewFactory<D = Data, O = unknown, T = unknown, S = unknow
       destroy: () => store.remove(id),
     }
   }
+}
+
+/**
+ * The core node view for a `useEditor` entry: a component becomes a bare factory (default tags), a
+ * `ReactNodeViewSpec` a `NodeViewSpec` with its `as` and `contentAs`.
+ */
+export function toNodeViewSpec(
+  view: ReactNodeView<any, any, any, any> | ReactNodeViewSpec<any, any, any, any>,
+  store: PortalStore,
+): NodeViewFactory<any, any, any, any> | NodeViewSpec<any, any, any, any> {
+  // A component is a function or (memo, forwardRef, lazy) an object without `component`.
+  if (typeof view === 'object' && view !== null && 'component' in view) {
+    const { component, as, contentAs } = view
+    return {
+      factory: toNodeViewFactory(component, store),
+      ...(as !== undefined ? { as } : {}),
+      ...(contentAs !== undefined ? { contentAs } : {}),
+    }
+  }
+  return toNodeViewFactory(view as ReactNodeView<any, any, any, any>, store)
 }
 
 /** Keyed by editor instance (any plugin list). */

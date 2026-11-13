@@ -1,17 +1,8 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createSelection, mainRange } from '@penline/core'
-import {
-  clearHistory,
-  FRAGMENT_MIME,
-  nodeSelection,
-  serializeForClipboard,
-  serializeHTML,
-  toRange,
-  type Doc,
-  type ElementNode,
-  type InputIntent,
-} from '@penline/core'
+import { clearHistory, nodeSelection, toRange, type Doc, type ElementNode, type InputIntent } from '@penline/core'
+import { FRAGMENT_MIME, serializeForClipboard, serializeHTML } from '@penline/core/internal'
 import { createTestEditor, doc, el, sel, stripIds, txt } from '@penline/core/testing'
 import { paragraph } from '@penline/paragraph'
 import { image, safeSrc } from '../src/index'

@@ -1,3 +1,7 @@
+/**
+ * `@penline/core`: the public API, covered by semver. Engine and view internals are in
+ * `@penline/core/internal` (no semver guarantee).
+ */
 export type {
   Data,
   DeepReadonly,
@@ -14,13 +18,11 @@ export type {
   TextNode,
 } from './model/types'
 export {
-  deepEqualJson,
   getNode,
   getParent,
   isElement,
   isText,
   nodeEntries,
-  sameMarkSet,
   textEntries,
 } from './model/node'
 export {
@@ -39,9 +41,7 @@ export { isNodeSelection, nodeSelection } from './model/editable'
 export { createSelection, isNodeRange, mainRange, rangeEquals, selectionEquals, single } from './model/selection'
 export { findPathById } from './model/find'
 export type { Operation } from './ops/types'
-export { applyOp } from './ops/apply'
-export { invertOp } from './ops/invert'
-export { transformPath, transformPoint, transformSelection, transformSelectionStrict } from './ops/transform'
+export { transformPoint, transformSelection } from './ops/transform'
 export type {
   AnyPlugin,
   AnyPluginSpec,
@@ -63,6 +63,7 @@ export type {
   NodeViewInstance,
   NodeViewProps,
   NodeViewPropsOf,
+  NodeViewSpec,
   NoOptions,
   OptionsOf,
   ParseRule,
@@ -79,21 +80,16 @@ export type { RangeStep } from './transaction/ranges'
 export { definePlugin } from './plugin/define'
 export { mergeAttrs } from './plugin/attrs'
 export { nodeText } from './content/text'
+// Types the public API exposes (`tr.registry`, `nodeText`); creating a Registry is internal.
 export type { OptionsLookup } from './content/text'
+export type { Registry, RegisteredMark, RegisteredNode, ValidateResult } from './plugin/registry'
 export type { Attrs, HTMLAttributes } from './plugin/attrs'
-export { DEFAULT_PRIORITY, Registry } from './plugin/registry'
-export type { RegisteredMark, RegisteredNode, ValidateResult } from './plugin/registry'
 export type { EditorState } from './state'
 export { Transaction } from './transaction/transaction'
 export type { TransactionMeta } from './transaction/transaction'
 export type { Fragment } from './transaction/fragment'
-export { getFragment } from './transaction/fragment'
-export { isMarkActive, marksAt } from './transaction/marks'
-export type { MarkStateView } from './transaction/marks'
-export { normalize } from './normalize'
-export { coerceDoc } from './load'
+export type { Slice } from './transaction/slice'
 export { parseHTML } from './html/parse'
-export { serializeHTML } from './html/serialize'
 export { Editor } from './editor'
 export type {
   BoundCommands,
@@ -106,17 +102,10 @@ export type {
   EditorPlugins,
   EditorStorage,
 } from './editor'
-export { eventToKeyName, normalizeKeyName } from './keymap'
 export type { Platform } from './keymap'
-export { corePlugin } from './core-plugin'
 export { findTrigger } from './suggestion'
 export type { FindTriggerOptions, TriggerMatch } from './suggestion'
-export { clearHistory, historyPlugin, rewriteHistoryData } from './history'
-export { Renderer } from './view/renderer'
-export { domToModel, modelToDom, readDomSelection, writeDomSelection } from './view/dom-selection'
-export { EditorView } from './view/view'
+export { clearHistory, rewriteHistoryData } from './history'
 export type { Decoration, DecorationAttrs, InlineDecoration, WidgetDecoration } from './view/decorations'
 export { DECO_ATTR, WIDGET_ATTR } from './view/decorations'
-export { IGNORE_ATTR, isIgnoredTarget } from './view/ignore'
-export { FRAGMENT_MIME, parseFromClipboard, serializeForClipboard } from './content/clipboard'
-export type { CompositionTarget, InputRecord, ViewModule } from './view/view'
+export { IGNORE_ATTR } from './view/ignore'

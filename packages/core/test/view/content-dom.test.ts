@@ -1,21 +1,8 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { single } from '../../src/model/selection'
-import {
-  definePlugin,
-  modelToDom,
-  readDomSelection,
-  writeDomSelection,
-  type AnyPlugin,
-  type Doc,
-  type Editor,
-  type ElementNode,
-  type Node,
-  type NodeViewFactory,
-  type NodeViewProps,
-  type Selection,
-  type TextNode,
-} from '../../src/index'
+import { definePlugin, type AnyPlugin, type Doc, type Editor, type ElementNode, type Node, type NodeViewFactory, type NodeViewProps, type Selection, type TextNode } from '../../src/index'
+import { modelToDom, readDomSelection, writeDomSelection } from '../../src/internal'
 import { createTestEditor, doc, el, sel, txt } from '../../src/testing/index'
 import { testBold, testParagraph } from '../fixtures'
 

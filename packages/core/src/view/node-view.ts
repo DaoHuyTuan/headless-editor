@@ -13,9 +13,10 @@ interface HostedView {
 
 /**
  * The node views of one renderer, keyed by element id: creates each instance once, updates it when
- * its node's data, its selected state or its plugin's options change, and destroys it when the
- * element leaves the doc. Owned by the renderer, which creates the containers. A plugin state change
- * alone does not update a view: `props.state` is a getter that reads the current state.
+ * its node's data, its selected state or its plugin's options change (a container's view: on any
+ * change of its node, children included), and destroys it when the element leaves the doc. Owned
+ * by the renderer, which creates the containers. A plugin state change alone does not update a view:
+ * `props.state` is a getter that reads the current state.
  */
 export class NodeViewHost {
   private readonly views = new Map<string, HostedView>()
@@ -65,20 +66,30 @@ export class NodeViewHost {
 
   /**
    * Gives the view of `node` new props (`node`, `selected`, fresh options) when its data, its selected
-   * state or (with `force`, after an options change) its options changed. Any other change (a new node
-   * object with equal data, e.g. new children or a moved node) calls nothing and keeps the props as
-   * they were: `props.node` stays the node last given, so it can be older than the doc's (equal
-   * data). Read the current node through `getPos()` and the editor state when that matters.
+   * state or (with `force`, after an options change) its options changed. The view of a container (a
+   * non-atom block that is not a textblock) also gets them for any new node object, e.g. new children.
+   * For other views any other change (a new node object with equal data, e.g. new text or a moved
+   * node) calls nothing and keeps the props as they were: `props.node` stays the node last given, so
+   * it can be older than the doc's (equal data). Read the current node through `getPos()` and the
+   * editor state when that matters.
    */
   update(node: ElementNode, selected: boolean, force: boolean): void {
     const view = this.views.get(node.id)
     if (!view) return
     const prev = view.props
     const changed =
-      force || prev.selected !== selected || (prev.node !== node && !deepEqualJson(prev.node.data as Data, node.data))
+      force ||
+      prev.selected !== selected ||
+      (prev.node !== node && (this.isContainer(node.type) || !deepEqualJson(prev.node.data as Data, node.data)))
     if (!changed) return
     view.props = this.props(node, selected, prev.contentDOM)
     view.instance.update(view.props)
+  }
+
+  /** A non-atom block whose content is not inline only (a list, a quote, a table). */
+  private isContainer(type: string): boolean {
+    const registered = this.editor.registry.node(type)
+    return !!registered && registered.kind === 'block' && !registered.atom && !this.editor.registry.isTextblock(type)
   }
 
   /** Destroys the view of the element `id` (no-op when there is none). */

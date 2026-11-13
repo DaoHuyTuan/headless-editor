@@ -191,8 +191,11 @@ function triggerAt(doc: DeepReadonly<Doc>, range: Range | null, trigger: string)
   }
 }
 
-/** Whether the nearest block around `path` takes text only (a code block): no mentions there. */
-function inTextOnlyBlock(doc: DeepReadonly<Doc>, registry: Registry, path: readonly number[]): boolean {
+/**
+ * Whether the nearest block around `path` does not allow `type` (this plugin's node): a code block,
+ * any text-only block, or a textblock whose content leaves mentions out. No mentions there.
+ */
+function inTextOnlyBlock(doc: DeepReadonly<Doc>, registry: Registry, path: readonly number[], type: string): boolean {
   for (let depth = path.length - 1; depth >= 1; depth--) {
     let node
     try {
@@ -203,7 +206,7 @@ function inTextOnlyBlock(doc: DeepReadonly<Doc>, registry: Registry, path: reado
     if (!isElement(node)) continue
     const spec = registry.node(node.type)
     if (spec?.kind === 'inline') continue
-    return spec?.content === 'text'
+    return !!spec && !registry.allowsInline(node.type, type)
   }
   return false
 }
@@ -309,7 +312,7 @@ function insertAtTriggers(ctx: Ctx, tr: Transaction, user: User, query: string):
     // `findTrigger` the popup runs at the main caret, asked at this caret.
     const at: EditorState = { ...t.before, doc: t.doc, selection: single(range) }
     const match = findTrigger(at, { char: ctx.options.trigger, registry: t.registry })
-    if (!match || match.query !== query || inTextOnlyBlock(t.doc, t.registry, match.range.start.path)) return
+    if (!match || match.query !== query || inTextOnlyBlock(t.doc, t.registry, match.range.start.path, ctx.name)) return
     // The space takes the trigger text's marks, as the single-range path's insertText takes the caret's.
     const lead = getNode(t.doc, match.range.start.path)
     const marks = isText(lead) ? lead.marks.map((m) => ({ ...m, data: JSON.parse(JSON.stringify(m.data)) })) : []
@@ -393,7 +396,7 @@ function refresh(ctx: Ctx, rt: Runtime): void {
     editor.view && typeof ctx.options.fetchUsers === 'function' && typeof trigger === 'string' && trigger.length > 0
       ? findTrigger(state, { char: trigger, registry: editor.registry })
       : null
-  if (match && inTextOnlyBlock(state.doc, editor.registry, match.range.start.path)) match = null
+  if (match && inTextOnlyBlock(state.doc, editor.registry, match.range.start.path, ctx.name)) match = null
   if (match && isDismissed(st.dismissed, match.range.start)) match = null
 
   if (!match) {

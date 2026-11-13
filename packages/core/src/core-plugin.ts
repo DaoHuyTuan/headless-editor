@@ -10,7 +10,8 @@ import { definePlugin } from './plugin/define'
 import type { Command, InputIntent } from './plugin/types'
 import { insertFragment, type Fragment } from './transaction/fragment'
 import { addMark, removeMark, toggleMark } from './transaction/marks'
-import { FRAGMENT_MIME, parseFromClipboard, parseRichClipboard } from './content/clipboard'
+import { FRAGMENT_MIME, parseRichSlice, parseSliceFromClipboard, transformPastedSlice } from './content/clipboard'
+import { insertSlice } from './transaction/slice'
 import type { Transaction } from './transaction/transaction'
 import { deleteBackward, deleteForward, deleteRange, insertText, selectAll, splitBlock, type DeleteUnit } from './transaction/text'
 
@@ -127,26 +128,30 @@ function insertTransfer(intent: InputIntent, editor: Editor): boolean {
   if (sel && !isNodeSelection(sel) && !at && sel.ranges.length > 1 && intent.inputType === 'insertFromPaste') {
     // The json / html flavor is parsed once (it does not depend on the range); each range then gets its
     // own copy through `transformPasted`. Plain text is read per range: its marks are the range's.
-    const rich = parseRichClipboard(editor, data)
-    const fragments = sel.ranges.map((range) =>
-      rich.length > 0
-        ? editor.transformPasted(cloneJson(rich as unknown as Json) as unknown as Fragment, range)
-        : parseFromClipboard(editor, data, { at: range }),
+    const rich = parseRichSlice(editor, data)
+    const slices = sel.ranges.map((range) =>
+      rich.slice.content.length > 0
+        ? transformPastedSlice(
+            editor,
+            { ...rich, slice: { ...rich.slice, content: cloneJson(rich.slice.content as unknown as Json) as unknown as Fragment } },
+            range,
+          )
+        : parseSliceFromClipboard(editor, data, { at: range }),
     )
-    if (fragments.every((f) => f.length === 0)) return true
+    if (slices.every((s) => s.content.length === 0)) return true
     const tr = editor.createTransaction()
     tr.meta.origin = PASTE_INPUT[intent.inputType]!
     tr.meta.inputType = intent.inputType
     let failed = false
     tr.forEachRange((range, t, i) => {
-      const fragment = fragments[i]!
-      if (fragment.length > 0 && !insertFragment(t, fragment, range)) failed = true
+      const slice = slices[i]!
+      if (slice.content.length > 0 && !insertSlice(t, slice, range)) failed = true
     })
     if (!failed && tr.ops.length > 0) editor.dispatch(tr)
     return true
   }
-  const fragment = parseFromClipboard(editor, data, { at })
-  if (fragment.length === 0) return true
+  const slice = parseSliceFromClipboard(editor, data, { at })
+  if (slice.content.length === 0) return true
   const tr = editor.createTransaction()
   tr.meta.origin = PASTE_INPUT[intent.inputType]!
   tr.meta.inputType = intent.inputType
@@ -155,7 +160,7 @@ function insertTransfer(intent: InputIntent, editor: Editor): boolean {
   if (sel && (sel.ranges.length > 1 || isNodeSelection(sel)) && (at || intent.inputType === 'insertFromDrop'))
     collapseTo(tr, at ?? mainRange(sel))
   if (!sel && !at) caretAtDocEnd(tr)
-  if (insertFragment(tr, fragment, at ?? undefined) && tr.ops.length > 0) editor.dispatch(tr)
+  if (insertSlice(tr, slice, at ?? undefined) && tr.ops.length > 0) editor.dispatch(tr)
   return true
 }
 
@@ -223,6 +228,17 @@ export const corePlugin = definePlugin({
         tr.setNodeData(path, partial)
         return tr.rejected === null
       },
+    // Structural transforms at every selection range; false (and so `can()` false) when the schema
+    // does not allow them.
+    wrapIn:
+      (type: string, data?: Data): Command =>
+      ({ tr }) =>
+        tr.wrap(type, data) && tr.rejected === null,
+    lift: (): Command => ({ tr }) => tr.lift(),
+    setBlockType:
+      (type: string, data?: Data): Command =>
+      ({ tr }) =>
+        tr.setBlockType(type, data) && tr.rejected === null,
     // Stored-mark-only changes (caret) dispatch too: the Editor dispatches when storedMarks changed.
     toggleMark:
       (type: string, data?: Data): Command =>

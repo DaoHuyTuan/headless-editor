@@ -87,7 +87,8 @@ function onCompositionStart(view: EditorView): void {
     editor.dispatch(tr)
   }
   if (isNodeSelection(editor.state.selection)) {
-    // The IME replaces the selected node: swap it for an empty default block holding the caret first.
+    // The IME replaces the selected node: swap it for an empty default block holding the caret first
+    // (`createAndFill` of the default type of that position, e.g. a list item's paragraph).
     const tr = editor.createTransaction()
     if (replaceSelectedNode(tr, { text: '' })) {
       tr.setMeta('origin', 'input').setMeta('inputType', INPUT_TYPE)

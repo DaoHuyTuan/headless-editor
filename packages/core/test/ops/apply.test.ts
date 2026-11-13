@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { applyOp, invertOp, type Doc, type ElementNode, type Operation } from '../../src/index'
+import { type Doc, type ElementNode, type Operation } from '../../src/index'
+import { applyOp, invertOp } from '../../src/internal'
 import { doc, el, sel, txt } from '../../src/testing/builders'
 
 const d: Doc = doc(el('paragraph', {}, txt('abcd')), el('paragraph', txt('ef', 'bold')))

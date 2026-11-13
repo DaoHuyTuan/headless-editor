@@ -30,7 +30,7 @@ Naming: part keys are camelCase (`altInput`, `resizeHandle`, `languageSelect`) a
 | 4 | Your own view from the headless hooks | `@experimental` |
 | 5 | Change behaviour with `extend(parent => ...)` | stable |
 
-"Experimental" means marked `@experimental` in JSDoc: it may change after M3 without a deprecation cycle. Levels 3 and 4 stay experimental until validated on Image, Mention and Code block.
+"Experimental" means marked `@experimental` in JSDoc: it may change in a minor release, without a deprecation cycle, until it is marked stable. Levels 3 and 4 stay experimental in 1.0 (decided 2026-11-10): they are validated on Image, Mention and Code block only, and will graduate from users' feedback. Pin a minor version (`~`) if you build on them.
 
 ### Level 0: the default view
 
@@ -42,7 +42,7 @@ const editor = useEditor({
 return <EditorContent editor={editor} />
 ```
 
-`nodeViews` maps a node type to a React component. It is read on the first render only.
+`nodeViews` maps a node type to a React component. It is read once, on the first render: changing the object later has no effect. To switch a view at runtime, keep one component in `nodeViews` and let it choose what to render, from its props (`props.options`, `props.node.data`) or from React context, as the playground's image story does (`apps/playground/src/image-views.tsx`).
 
 ### Level 1: CSS on `data-*`
 
@@ -373,6 +373,35 @@ Checklist for a new plugin's view:
   - Only **siblings** of that path (headers, toolbars, labels) are marked `contenteditable="false"`; their focusable controls need `data-editor-ignore`.
   - No nested editing hosts: do not put another `contenteditable`, or a second editor, around or inside the content.
   - Render `<NodeContent />` exactly once.
+
+### Container node views
+
+A container is a non-atom block whose `content` holds blocks (a quote, a list, a table; see [`node`](plugin-api.md#node)). Its view differs from a textblock's in two ways.
+
+**Tags.** A view's container and its `contentDOM` are `div`s (`span`s for an inline node) unless the view sets them. Markup with a strict content model needs that: a table view must not put a `div` between `table`, `tbody` and `tr`.
+- In the core, `EditorOptions.nodeViews` takes a `NodeViewSpec` (`{ factory, as?, contentAs? }`) as well as a bare factory. `as` is the container's tag, `contentAs` the `contentDOM`'s.
+- In React (`@experimental`), `useEditor`'s `nodeViews` takes a `ReactNodeViewSpec` (`{ component, as?, contentAs? }`) as well as a bare component.
+- `<NodeContent as="section" />` gives its placeholder any tag.
+- `<NodeContent placeholder={false} />` renders no placeholder: it renders an empty `<template>` marker and places the `contentDOM` itself right after it. Use it when no wrapper element is allowed:
+
+```tsx
+function TableView() {
+  return <NodeContent placeholder={false} /> // table > tbody[data-penline-content] > tr
+}
+const editor = useEditor({
+  plugins: [paragraph, table, tableRow, tableCell],
+  nodeViews: { table: { component: TableView, as: 'table', contentAs: 'tbody' } },
+})
+```
+
+Caveats of `placeholder={false}`:
+- `className` goes on the `<template>` marker, where it has no effect. Style the content through its tag (`contentAs`) or `[data-penline-content]`.
+- Elements the view renders after `<NodeContent>` land after the content element (a `tfoot` rendered after it follows the `tbody`).
+- The content element is placed once, next to the marker. If the view later re-orders its children so the marker moves, the content element stays where it was.
+
+**Updates.** A container view gets `update` on any change of its node, its children included, so it can show an item count or a column count. That means every keystroke inside it, and every IME composition step, re-renders the view (a React container view re-renders on each). Keep container views cheap: render the frame and `<NodeContent>`, and memoize anything derived from the children. Textblock and atom views are updated as before (data, `selected` or options).
+
+Structure-specific editing (Tab in a list, Enter that splits a list item, Tab between cells) belongs to the container's plugin, on top of the core transforms (`tr.wrap`, `tr.lift`, `tr.split(point, depth, typesAfter)`, `tr.join`; see [Structure and slices](plugin-api.md#structure-and-slices)). Bind those keys at a higher priority than the core's generic Backspace and Enter.
 
 ## Lifecycle hooks
 

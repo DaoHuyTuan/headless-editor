@@ -24,6 +24,7 @@ Properties worth keeping:
 - **The model layer has no DOM.** An editor that is never mounted still runs commands, `getJSON()` and `getHTML()`. Content I/O moved out of `view/` into `content/` in M4.
 - **Every change is an invertible op.** History, history rebasing through changes made outside history, and later collaboration all build on this.
 - **Features are plugins.** The core knows no paragraph or bold; it knows only the plugin contract. See [plugin-api.md](plugin-api.md).
+- **Nested content is driven by the schema** (since 2026-11, spec `docs/superpowers/specs/2026-11-11-nested-content-design.md`). Plugins declare ProseMirror-style content expressions (`'block+'`, `'listItem+'`, `'paragraph block*'`), groups, allowed marks and isolating nodes; the registry compiles them into content-match automata (`core/src/schema/`). Normalization, HTML parse, range delete, Backspace/Delete/Enter at container edges, the structural transforms (`wrap`, `lift`, `setBlockType`, `split`, `join` in `transaction/structure.ts`) and slice paste (`transaction/slice.ts`) all follow that schema at every depth, and each transform yields a valid document or no ops. Container node views set their tags (`as`, `contentAs`) and are updated when their children change. Container plugins (blockquote, list, toggle, table) build on this; cell selection, merged cells and node selection of containers are out of scope.
 
 Known coupling in the current code:
 - `Editor.mount(el)` constructs `EditorView` itself.
@@ -155,5 +156,5 @@ Likely candidates once the mechanism exists: i18n strings (for example the code 
 
 ## 7. Open questions
 
-- Should `nodeViews` become updatable at runtime (re-register the factories and invalidate), or be documented as read-once? The playground works around it with React context (`apps/playground/src/image-views.tsx`).
-- Decide whether `@experimental` levels 3–4 (parts, hooks) graduate before a second view arrives.
+- ~~Should `nodeViews` become updatable at runtime?~~ Decided 2026-11-10: read once, documented with the runtime-switch pattern (props or context). A `setNodeViews` can still be added later without breaking anything.
+- ~~Do `@experimental` levels 3–4 graduate before 1.0?~~ Decided 2026-11-10: no, they stay experimental in 1.0 (they may change in a minor release).

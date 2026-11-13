@@ -75,14 +75,36 @@ describe('range delete edges (3.11)', () => {
   })
 })
 
+describe('an unknown element in a textblock that is not declared `content: inline` (final review, finding 2)', () => {
+  // `content` omitted means `inline*`: the unknown element is inline there, one character of its content.
+  const note = definePlugin({ name: 'note', node: { kind: 'block' } })
+  const starred = definePlugin({ name: 'starred', node: { kind: 'block', content: 'inline*' } })
+  it.each([
+    ['content omitted', 'note', note],
+    ['content inline*', 'starred', starred],
+    ['content inline (control)', 'paragraph', testParagraph],
+  ])('with %s, Backspace right after it removes it, not the character before it', (_name, type, plugin) => {
+    const ed = createTestEditor({
+      plugins: plugin === testParagraph ? [testParagraph] : [testParagraph, plugin],
+      doc: doc(el(type, txt('a'), el('weird', {}, txt('q')), txt('b'))),
+      selection: sel([0, 2], 0),
+    })
+    const tr = ed.createTransaction()
+    tr.deleteBackward()
+    ed.dispatch(tr)
+    expect(shape(ed.getJSON())).toEqual(shape(doc(el(type, txt('ab')))))
+  })
+})
+
 describe('selection when its node goes away (3.9, 3.13)', () => {
-  const quote = definePlugin({ name: 'quote', node: { kind: 'block' } })
+  const code = definePlugin({ name: 'code', node: { kind: 'block', content: 'text' } })
   const chip = definePlugin({ name: 'chip', node: { kind: 'inline', atom: true } })
   const bold = { type: 'bold', data: {} }
 
   it('a caret in an empty text that rule 4 drops, with no text beside it, moves to the nearest editable text', () => {
-    // The quote holds an empty text and an atom block: no sibling has a text to re-home to.
-    const ed = createTestEditor({ plugins: [testParagraph, img, quote], doc: doc(p('ab'), el('quote', atomEl('img', {}))) })
+    // The code block holds an empty text and an unknown element: no sibling has a text to re-home to.
+    // (A container no longer holds texts: one put there is wrapped into a paragraph, not dropped.)
+    const ed = createTestEditor({ plugins: [testParagraph, img, code], doc: doc(p('ab'), el('code', el('weird', {}, txt('q')))) })
     const tr = ed.createTransaction()
     tr.apply({ type: 'insert_node', path: [1, 0], node: txt('') })
     tr.setSelection(sel([1, 0], 0))

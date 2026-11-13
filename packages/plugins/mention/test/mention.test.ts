@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createSelection, definePlugin, serializeForClipboard, type Doc, type ElementNode, type Node, type Transaction } from '@penline/core'
+import { createSelection, definePlugin, type Doc, type ElementNode, type Node, type Transaction } from '@penline/core'
+import { serializeForClipboard } from '@penline/core/internal'
 import { createTestEditor, doc, el, sel, stripIds, txt } from '@penline/core/testing'
 import { paragraph } from '@penline/paragraph'
 import { mention, type MentionState, type User } from '../src/index'
@@ -96,6 +97,18 @@ describe('mention suggestion: opening and fetching', () => {
     type('@jo')
     expect(state().open).toBe(false)
     expect(fetchUsers).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['text+', 'text+'],
+    ['text* with marks', 'text*'],
+  ])('does not open in a textblock whose content (%s) does not allow mentions', (_name, content) => {
+    const plain = definePlugin({ name: 'plain', node: { kind: 'block', content } }) as unknown as typeof code
+    const { state, type, fetchUsers, editor } = setup(doc(el('plain', txt(''))), {}, [plain])
+    type('@jo')
+    expect(state().open).toBe(false)
+    expect(fetchUsers).not.toHaveBeenCalled()
+    expect(editor.commands.insertMention(ann)).toBe(false)
   })
 
   it('decorates the open trigger range with penline-mention-query', () => {

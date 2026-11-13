@@ -12,39 +12,8 @@
  * docs/plugin-authoring.md.
  */
 import { z } from 'zod'
-import {
-  applyOp,
-  createId,
-  createSelection,
-  definePlugin,
-  findPathById,
-  getNode,
-  isElement,
-  isNodeRange,
-  isNodeSelection,
-  isText,
-  mainRange,
-  mergeAttrs,
-  nextPath,
-  nodeText,
-  type Command,
-  type Decoration,
-  type DeepReadonly,
-  type Doc,
-  type Editor,
-  type ElementNode,
-  type Fragment,
-  type HTMLAttributes,
-  type Node,
-  type Operation,
-  type OptionsLookup,
-  type Path,
-  type PluginContext,
-  type Point,
-  type Registry,
-  type SelectionRange,
-  type Transaction,
-} from '@penline/core'
+import { createId, createSelection, definePlugin, findPathById, getNode, isElement, isNodeRange, isNodeSelection, isText, mainRange, mergeAttrs, nextPath, nodeText, type Command, type Decoration, type DeepReadonly, type Doc, type Editor, type ElementNode, type Fragment, type HTMLAttributes, type Node, type Operation, type OptionsLookup, type Path, type PluginContext, type Point, type Registry, type SelectionRange, type Transaction } from '@penline/core'
+import { applyOp } from '@penline/core/internal'
 import { defaultHighlighter, type HighlightToken, type Highlighter } from './highlight'
 
 export { defaultHighlighter, type HighlightToken, type Highlighter } from './highlight'
@@ -428,7 +397,9 @@ function toCodeBlock(tr: Transaction, editor: Editor, language: string | undefin
     const blockPath = blockPathOf(tr.doc, tr.registry, range.anchor.path)
     const focusBlock = blockPathOf(tr.doc, tr.registry, range.focus.path)
     const block = blockPath && (getNode(tr.doc, blockPath) as ElementNode)
-    if (!blockPath || !focusBlock || blockPath.join() !== focusBlock.join() || !block || tr.registry.node(block.type)?.content !== 'inline') {
+    // Any textblock with inline content converts, whatever its content expression (`inline`, `inline*`, omitted).
+    const convertible = !!block && tr.registry.isTextblock(block.type) && !tr.registry.isTextOnly(block.type)
+    if (!blockPath || !focusBlock || blockPath.join() !== focusBlock.join() || !convertible) {
       offsets.push(null)
       continue
     }

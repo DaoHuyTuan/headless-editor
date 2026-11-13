@@ -5,6 +5,7 @@ import { addMark, removeMark } from '../../src/transaction/marks'
 import { insertFragment } from '../../src/transaction/fragment'
 import { setIdGenerator } from '../../src/model/id'
 import type { ElementNode, Mark, Node } from '../../src/model/types'
+import { isValidDoc } from '../../src/schema/validate'
 import { createTestEditor, doc, el, sel, stripIds, txt } from '../../src/testing/index'
 import { testBold, testParagraph } from '../fixtures'
 
@@ -130,31 +131,39 @@ describe('toggleMark edge cases (3.4)', () => {
 })
 
 describe('fragments (3.5)', () => {
-  const quote = definePlugin({ name: 'quote', node: { kind: 'block' } })
+  const quote = definePlugin({ name: 'quote', node: { kind: 'block', content: 'block+' } })
   const inl = definePlugin({ name: 'link', node: { kind: 'inline' } })
   const pq = (t: string) => p(t)
   const json = (ed: ReturnType<typeof createTestEditor>) => stripIds(ed.getJSON())
 
-  it('a lone container block goes in whole, splitting the text block', () => {
+  // Spec §8: containers are fitted (`insertSlice` with a fragment's open depths: a container edge is
+  // closed), not pasted as siblings by a heuristic. The fitted results are valid before normalization.
+  const valid = (ed: ReturnType<typeof createTestEditor>) => expect(isValidDoc(ed.state.doc, ed.registry)).toBe(true)
+
+  it('a lone container is closed: it goes between the halves, where the parent of the caret block accepts it', () => {
     const ed = createTestEditor({ plugins: [testParagraph, quote], doc: doc(p('xy')), selection: sel([0, 0], 1) })
-    ed.commands.insertContent([el('quote', pq('a'), pq('b'))])
+    expect(ed.commands.insertContent([el('quote', pq('a'), pq('b'))])).toBe(true)
     expect(json(ed)).toEqual(stripIds(doc(p('x'), el('quote', pq('a'), pq('b')), p('y'))))
     expect(ed.state.selection).toEqual(sel([1, 1, 0], 1))
+    valid(ed)
   })
 
-  it('a container pasted inside a container nests there', () => {
+  it('a container fitted inside a container that accepts it nests there', () => {
     const ed = createTestEditor({ plugins: [testParagraph, quote], doc: doc(el('quote', p('xy'))), selection: sel([0, 0, 0], 1) })
-    ed.commands.insertContent([el('quote', pq('a'), pq('b'))])
+    expect(ed.commands.insertContent([el('quote', pq('a'), pq('b'))])).toBe(true)
     expect(json(ed)).toEqual(stripIds(doc(el('quote', p('x'), el('quote', pq('a'), pq('b')), p('y')))))
+    valid(ed)
   })
 
-  it('a container at an edge of several blocks goes in whole too', () => {
+  it('a container at an edge of several blocks is closed while a textblock edge merges', () => {
     const ed = createTestEditor({ plugins: [testParagraph, quote], doc: doc(p('xy')), selection: sel([0, 0], 1) })
-    ed.commands.insertContent([el('quote', pq('a'), pq('b')), p('2')])
+    expect(ed.commands.insertContent([el('quote', pq('a'), pq('b')), p('2')])).toBe(true)
     expect(json(ed)).toEqual(stripIds(doc(p('x'), el('quote', pq('a'), pq('b')), p('2y'))))
+    valid(ed)
     const ed2 = createTestEditor({ plugins: [testParagraph, quote], doc: doc(p('xy')), selection: sel([0, 0], 1) })
-    ed2.commands.insertContent([p('1'), el('quote', pq('a'), pq('b'))])
+    expect(ed2.commands.insertContent([p('1'), el('quote', pq('a'), pq('b'))])).toBe(true)
     expect(json(ed2)).toEqual(stripIds(doc(p('x1'), el('quote', pq('a'), pq('b')), p('y'))))
+    valid(ed2)
   })
 
   it('an empty-string id gets a fresh one', () => {
@@ -325,7 +334,7 @@ describe('forEachRange and a delete-then-reinsert (3.15, documented)', () => {
 
 describe('coverage gaps (3.16)', () => {
   const italic = definePlugin({ name: 'italic', mark: { render: () => ({ tag: 'em' }) } })
-  const quote = definePlugin({ name: 'quote', node: { kind: 'block' } })
+  const quote = definePlugin({ name: 'quote', node: { kind: 'block', content: 'block+' } })
   const it_: Mark = { type: 'italic', data: {} }
 
   it('Backspace at the start of a second text ([0, 1]:0) deletes the last character of the text before it', () => {
@@ -366,23 +375,26 @@ describe('coverage gaps (3.16)', () => {
     const load = (content: ReturnType<typeof doc>) =>
       createTestEditor({ plugins: [testParagraph, testBold, quote], doc: content })
 
-    it('an opaque end block nested in a container is removed whole; the texts before it are trimmed', () => {
+    it('an opaque end block nested in a container is removed whole; the container left empty goes', () => {
       const ed = load(doc(p('ab'), el('quote', p('cd'), el('weird', txt('zz'))), p('ef')))
       const tr = ed.createTransaction()
       // From inside "ab" to inside the unknown block (a raw range: no caret can be inside it).
       tr.deleteRange({ anchor: { path: [0, 0], offset: 1 }, focus: { path: [1, 1, 0], offset: 1 } })
+      // The tr's own result, before normalization.
+      expect(stripIds(tr.doc)).toEqual(stripIds(doc(p('a'), p('ef'))))
       ed.dispatch(tr)
-      expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p('a'), el('quote', p('')), p('ef'))))
+      expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p('a'), p('ef'))))
       expect(ed.state.selection).toEqual(sel([0, 0], 1))
     })
 
-    it('an opaque start block nested in a container is removed whole; the caret goes to the nearest editable point', () => {
+    it('an opaque start block nested in a container is removed whole with the emptied container; the caret goes to the nearest editable point', () => {
       const ed = load(doc(p('ab'), el('quote', el('weird', txt('zz')), p('cd')), p('ef')))
       const tr = ed.createTransaction()
       tr.deleteRange({ anchor: { path: [1, 0, 0], offset: 1 }, focus: { path: [2, 0], offset: 1 } })
+      expect(stripIds(tr.doc)).toEqual(stripIds(doc(p('ab'), p('f'))))
       ed.dispatch(tr)
-      expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p('ab'), el('quote', p('')), p('f'))))
-      expect(ed.state.selection).toEqual(sel([1, 0, 0], 0))
+      expect(stripIds(ed.getJSON())).toEqual(stripIds(doc(p('ab'), p('f'))))
+      expect(ed.state.selection).toEqual(sel([1, 0], 0))
     })
   })
 })

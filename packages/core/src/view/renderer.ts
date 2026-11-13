@@ -604,19 +604,20 @@ export class Renderer {
       dom.setAttribute('contenteditable', 'false')
       return { dom, node, hole: dom, before: null, anchor: null, kids: [], rendersChildren: false }
     }
-    const nodeView = this.editor.nodeViewFactory(node.type)
-    if (nodeView) {
+    const viewSpec = this.editor.nodeViewSpec(node.type)
+    if (viewSpec) {
+      const nodeView = viewSpec.factory
       // The view owns the container's content; the renderer only manages a non-atom's contentDOM,
-      // which the view places somewhere inside it.
+      // which the view places somewhere inside it. The tags were checked when the editor was created.
       const tag = registered.kind === 'inline' ? 'span' : 'div'
-      const dom = this.doc.createElement(tag)
+      const dom = this.doc.createElement(viewSpec.as ?? tag)
       dom.setAttribute(ID_ATTR, node.id)
       dom.setAttribute(NODE_VIEW_ATTR, '')
       if (registered.atom) {
         dom.setAttribute('contenteditable', 'false')
         return { dom, node, hole: dom, before: null, anchor: null, kids: [], rendersChildren: false, nodeView }
       }
-      const contentDOM = this.doc.createElement(tag)
+      const contentDOM = this.doc.createElement(viewSpec.contentAs ?? tag)
       contentDOM.setAttribute(CONTENT_ATTR, '')
       contentDOM.setAttribute('contenteditable', 'true')
       return { dom, node, hole: contentDOM, before: null, anchor: null, kids: [], rendersChildren: true, nodeView, contentDOM }

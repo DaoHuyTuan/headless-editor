@@ -1,0 +1,145 @@
+import { createId } from '../model/id'
+import { isText } from '../model/node'
+import type { DeepReadonly, Doc, ElementNode, Node } from '../model/types'
+import type { Registry } from '../plugin/registry'
+import type { ContentMatch } from './content-match'
+
+/**
+ * The state after `node` in content at `state`, or null when it does not fit. An unknown element
+ * is a wildcard (rule 7): it takes the state's first edge, or, at a state with no edge left, is
+ * passed over without consuming anything, so a doc with a missing plugin is never repaired around it.
+ */
+export function matchChild(state: ContentMatch, node: DeepReadonly<Node>, registry: Registry): ContentMatch | null {
+  if (isText(node)) return state.matchType('text')
+  if (registry.node(node.type)) return state.matchType(node.type)
+  return state.edges[0]?.next ?? state
+}
+
+const repeats = new WeakMap<ContentMatch, ReadonlySet<string> | null>()
+
+/**
+ * For content that repeats one set of types in any order (`(a | b)*`, `block+`: the doc's
+ * content), that set; null for any other content. Read from the automaton: every state reachable
+ * from `match` has edges for exactly those types, and every state after the first node is a valid
+ * end. With it, a check of nodes added to valid content does not read the content (O(1) in the
+ * doc's size): any of those types fits anywhere, and only an empty `+` content is invalid.
+ */
+export function repeatedTypes(match: ContentMatch): ReadonlySet<string> | null {
+  const cached = repeats.get(match)
+  if (cached !== undefined) return cached
+  const types = new Set(match.edges.map((e) => e.type))
+  let out: ReadonlySet<string> | null = types.size > 0 ? types : null
+  const seen = new Set<ContentMatch>([match])
+  const queue = [match]
+  for (let state = queue.pop(); state && out; state = queue.pop()) {
+    if (state.edges.length !== types.size || state.edges.some((e) => !types.has(e.type))) out = null
+    for (const e of state.edges) {
+      // Back at the start (or anywhere after a node) the content must be a valid end.
+      if (!e.next.validEnd) out = null
+      if (!seen.has(e.next)) {
+        seen.add(e.next)
+        queue.push(e.next)
+      }
+    }
+  }
+  repeats.set(match, out)
+  return out
+}
+
+/** The types to wrap an inline run in at `state`, outermost first, ending with a textblock; null if none. */
+export function inlineWrapping(state: ContentMatch, registry: Registry): string[] | null {
+  const type = state.defaultType
+  if (type && registry.isTextblock(type)) return [type]
+  const wrappers = state.findWrapping(registry.defaultBlock)
+  return wrappers ? [...wrappers, registry.defaultBlock] : null
+}
+
+/** A new element chain of `types` (outermost first, fresh ids, data `{}`) whose innermost element holds `children`. */
+export function wrapChain(types: readonly string[], children: Node[]): ElementNode {
+  let node: ElementNode | null = null
+  for (let k = types.length - 1; k >= 0; k--) {
+    node = { id: createId(), type: types[k]!, data: {}, children: node ? [node] : children }
+  }
+  return node!
+}
+
+/**
+ * Whether `doc` is valid against the schema of `registry`: the children of the doc and of every
+ * known non-atom element match its content expression to a valid end, and texts carry only the
+ * marks their parent allows. Unknown types and atoms are opaque (their subtrees are not checked).
+ */
+export function isValidDoc(doc: DeepReadonly<Doc>, registry: Registry): boolean {
+  return validContent('doc', doc.children as readonly DeepReadonly<Node>[], registry)
+}
+
+function validContent(owner: string, children: readonly DeepReadonly<Node>[], registry: Registry): boolean {
+  let state: ContentMatch | null = registry.contentMatch(owner)!
+  for (const child of children) {
+    state = matchChild(state, child, registry)
+    if (!state) return false
+    if (isText(child)) {
+      if (child.marks.some((m) => !registry.allowsMark(owner, m.type))) return false
+    } else if (!validElement(child as DeepReadonly<ElementNode>, registry)) return false
+  }
+  return state.validEnd
+}
+
+function validElement(node: DeepReadonly<ElementNode>, registry: Registry): boolean {
+  const spec = registry.node(node.type)
+  if (!spec || spec.atom) return true
+  return validContent(node.type, (node.children ?? []) as readonly DeepReadonly<Node>[], registry)
+}
+
+/**
+ * Whether `nodes` are valid content for `owner` (an element type, or `'doc'`) up to a valid end.
+ * Unknown types fit (rule 7, `matchChild`); an unknown or atom owner holds nothing.
+ */
+export function fits(registry: Registry, owner: string, nodes: readonly DeepReadonly<Node>[]): boolean {
+  let state = registry.contentMatch(owner) ?? null
+  for (const node of nodes) {
+    if (!state) return false
+    state = matchChild(state, node, registry)
+  }
+  return !!state && state.validEnd
+}
+
+/**
+ * What the content of `type` holding `kids` lacks to be valid (`fillBefore`, `createAndFill`): the
+ * nodes to insert before the children (the rest of a container whose head was cut off), else after
+ * them (one whose tail was), with the index they go at. Null when the content is valid already, when
+ * it cannot be completed that way, and for an unknown or atom type.
+ */
+export function missingContent(
+  registry: Registry,
+  type: string,
+  kids: readonly DeepReadonly<Node>[],
+): { at: number; nodes: Node[] } | null {
+  const match = registry.contentMatch(type)
+  if (!match || fits(registry, type, kids)) return null
+  const known = (t: string) => t === 'text' || !!registry.node(t)
+  const types = kids.map((k) => (isText(k) ? 'text' : k.type))
+  let at = 0
+  let fill = match.fillBefore(types, true, known)
+  if (!fill) {
+    fill = match.matchTypes(types, known)?.fillBefore([], true, known) ?? null
+    at = kids.length
+  }
+  if (!fill) return null
+  const nodes: Node[] = []
+  for (const t of fill) {
+    const n = t === 'text' ? { text: '', marks: [] } : registry.createAndFill(t)
+    if (!n) return null
+    nodes.push(n)
+  }
+  return { at, nodes }
+}
+
+/** Whether some direct text of `nodes` has a mark `owner` does not allow. */
+export function bannedMarks(registry: Registry, owner: string, nodes: readonly DeepReadonly<Node>[]): boolean {
+  return nodes.some((n) => isText(n) && n.marks.some((m) => !registry.allowsMark(owner, m.type)))
+}
+
+/** Whether a direct text of `nodes` holds a `\n`, which only text-only content keeps (rule 11). */
+export function hasNewline(nodes: readonly DeepReadonly<Node>[]): boolean {
+  return nodes.some((n) => isText(n) && n.text.includes('\n'))
+}

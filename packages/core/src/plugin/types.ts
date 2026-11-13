@@ -104,7 +104,22 @@ export interface NodeSpec {
   kind: 'block' | 'inline'
   atom?: boolean
   default?: boolean
-  content?: 'inline' | 'text'
+  /**
+   * Content expression, e.g. `'paragraph block*'` or `'listItem+'`: node and group names, sequence
+   * by spaces, `|`, parentheses and `* + ? {n} {n,} {n,m}`. `'inline'` means `inline*` and `'text'`
+   * means `text*` with `marks: ''`. Omitted on a non-atom node: `inline*` (a textblock), so a block
+   * holding blocks must declare it (`'block+'`).
+   */
+  content?: string
+  /**
+   * Groups this node belongs to, usable in content expressions. Default: `block` for a block,
+   * `inline` for an inline node. A node that sets it is only in the groups it lists (`[]`: none).
+   */
+  group?: string | string[]
+  /** Marks allowed in this node's inline content: `'_'` all (default), `''` none, or space-separated mark names. */
+  marks?: string
+  /** Edits do not cross this node's boundary: no join, no range delete merging it with a neighbour (table cells). */
+  isolating?: boolean
 }
 
 /**
@@ -144,16 +159,20 @@ export interface NodeViewProps<D = Data, O = unknown, T = unknown, S = unknown> 
   updateData(partial: Partial<D>): boolean
   /**
    * For a non-atom node: the element the core renders the node's children into (`<div data-penline-content
-   * contenteditable="true">`, a `<span>` for an inline node). Created with the view and the same in
-   * every update. The view places it inside its own DOM, never under a `contenteditable="false"`
-   * element (see `NodeViewFactory`), and never changes it; the core owns it.
-   * Undefined for atoms.
+   * contenteditable="true">`, a `<span>` for an inline node, or the tag `NodeViewSpec.contentAs`).
+   * Created with the view and the same in every update. The view places it inside its own DOM, never
+   * under a `contenteditable="false"` element (see `NodeViewFactory`), and never changes it; the core
+   * owns it. Undefined for atoms.
    */
   contentDOM?: HTMLElement
 }
 
 export interface NodeViewInstance<D = Data, O = unknown, T = unknown, S = unknown> {
-  /** Called when the node's data, its `selected` state or the plugin's options change. */
+  /**
+   * Called when the node's data, its `selected` state or the plugin's options change. The view of a
+   * container (a non-atom block that is not a textblock, e.g. a list or a table) is also called on
+   * any other change of its node, its children's included, so it can render from them (an item count).
+   */
   update(props: NodeViewProps<D, O, T, S>): void
   /** Called once, when the node leaves the doc or the view is destroyed. */
   destroy(): void
@@ -161,9 +180,9 @@ export interface NodeViewInstance<D = Data, O = unknown, T = unknown, S = unknow
 
 /**
  * Renders a node into `container` (created by the renderer: `<div>` for a block, `<span>` for an
- * inline node; `contenteditable="false"` for an atom). Called once per element id; the container is
- * never rebuilt for a data change. Elements inside it (outside `contentDOM`) marked
- * `data-editor-ignore` are fully left to the view (events, mutations, focus and selection); the
+ * inline node, or the tag `NodeViewSpec.as`; `contenteditable="false"` for an atom). Called once per
+ * element id; the container is never rebuilt for a data change. Elements inside it (outside
+ * `contentDOM`) marked `data-editor-ignore` are fully left to the view (events, mutations, focus and selection); the
  * attribute has no effect anywhere else in the root. A non-atom node's view gets `props.contentDOM` and places it in its DOM (synchronously or
  * later, e.g. on a React commit). The elements on the path from the container down to `contentDOM`
  * must stay editable (no `contenteditable` attribute): a `contenteditable="false"` ancestor would make
@@ -177,6 +196,20 @@ export type NodeViewFactory<D = Data, O = unknown, T = unknown, S = unknown> = (
   container: HTMLElement,
   props: NodeViewProps<D, O, T, S>,
 ) => NodeViewInstance<D, O, T, S>
+
+/**
+ * A node view with the tags of the elements the renderer creates for it (`EditorOptions.nodeViews`
+ * takes a bare factory or this). The tags let a view sit where HTML expects specific elements: a
+ * table's view with `as: 'table'` and `contentAs: 'tbody'` gets its rows (`tr`) right in the `tbody`.
+ * Both are checked as tag names when the editor is created.
+ */
+export interface NodeViewSpec<D = Data, O = unknown, T = unknown, S = unknown> {
+  factory: NodeViewFactory<D, O, T, S>
+  /** The container's tag. Default `div` for a block, `span` for an inline node. */
+  as?: string
+  /** The tag of a non-atom node's `contentDOM`. Default `div` for a block, `span` for an inline node. */
+  contentAs?: string
+}
 
 export interface PluginSpec<
   Name extends string = string,

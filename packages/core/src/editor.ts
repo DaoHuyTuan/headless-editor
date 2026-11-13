@@ -2,7 +2,7 @@ import { corePlugin } from './core-plugin'
 import { historyPlugin } from './history'
 import { normalizeKeyName, type Platform } from './keymap'
 import { parseHTML } from './html/parse'
-import { serializeHTML } from './html/serialize'
+import { checkTag, serializeHTML } from './html/serialize'
 import { runInputRules } from './input-rules'
 import { coerceDoc } from './load'
 import { firstEditableCaret, isEditableRange, rehomeRanges } from './model/editable'
@@ -20,6 +20,7 @@ import type {
   DOMEventName,
   InputIntent,
   NodeViewFactory,
+  NodeViewSpec,
   PluginContext,
   StorageOf,
 } from './plugin/types'
@@ -41,10 +42,11 @@ export interface EditorOptions<P extends readonly AnyPlugin[] = readonly AnyPlug
   platform?: Platform
   /**
    * Node views keyed by node type: the renderer mounts each into a container it creates (see
-   * `NodeViewFactory`). A non-atom type's view also gets a `contentDOM` holding its children.
+   * `NodeViewFactory`). A non-atom type's view also gets a `contentDOM` holding its children. A
+   * `NodeViewSpec` in place of the factory also sets the tags of the container and the `contentDOM`.
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  nodeViews?: Record<string, NodeViewFactory<any, any, any, any>>
+  nodeViews?: Record<string, NodeViewFactory<any, any, any, any> | NodeViewSpec<any, any, any, any>>
   /**
    * Event listeners registered at the start of construction, before any plugin hook runs: unlike
    * `on`, they also see what plugins' `onCreate` hooks dispatch (or set with `setPluginOptions`).
@@ -127,7 +129,7 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
   private readonly commandFactories = new Map<string, AnyCommandFactory>()
   private readonly keymaps: { plugin: AnyPlugin; bindings: Map<string, () => boolean> }[] = []
   private readonly listeners = new Map<EditorEventName | 'options', Set<(e: any) => void>>()
-  private readonly nodeViews = new Map<string, NodeViewFactory<any, any, any, any>>()
+  private readonly nodeViews = new Map<string, NodeViewSpec<any, any, any, any>>()
   /** `editor.storage`, filled as each plugin's storage factory returns (read by `ctx.storage`). */
   private readonly storages: Record<string, unknown> = {}
   private destroyed = false
@@ -145,10 +147,13 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     }
     const plugins: AnyPlugin[] = [corePlugin, ...(options.history === false ? [] : [historyPlugin]), ...options.plugins]
     this.registry = new Registry(plugins)
-    for (const [type, factory] of Object.entries(options.nodeViews ?? {})) {
+    for (const [type, view] of Object.entries(options.nodeViews ?? {})) {
       const registered = this.registry.node(type)
       if (!registered) throw new Error(`Unknown node type "${type}" in nodeViews`)
-      this.nodeViews.set(type, factory)
+      const spec = typeof view === 'function' ? { factory: view } : view
+      if (spec.as !== undefined) checkTag(spec.as)
+      if (spec.contentAs !== undefined) checkTag(spec.contentAs)
+      this.nodeViews.set(type, spec)
     }
 
     const pluginStates = new Map<string, unknown>()
@@ -327,6 +332,11 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
 
   /** The node view factory registered for the node `type` (`EditorOptions.nodeViews`), if any. */
   nodeViewFactory(type: string): NodeViewFactory | undefined {
+    return this.nodeViews.get(type)?.factory
+  }
+
+  /** The node view registered for the node `type` with its tags (a bare factory as `{ factory }`), if any. */
+  nodeViewSpec(type: string): NodeViewSpec | undefined {
     return this.nodeViews.get(type)
   }
 
@@ -452,7 +462,9 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
 
   /**
    * True only when every selection range has it (spec §5.4). Marks: `isMarkActive`. Elements: per
-   * range, the block containing the range's start. `data` entries must deep-equal the node's; an
+   * range, true when the block containing the range's start or any of its ancestors is `type`
+   * (the innermost one is checked against `data`). Every range must pass, so a multi-range selection
+   * is active only when all of them are inside `type`. `data` entries must deep-equal the node's; an
    * `undefined` entry is ignored, like a missing key.
    */
   isActive(type: string, data?: Partial<Data>): boolean {
@@ -461,8 +473,8 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     if (!sel) return false
     return sel.ranges.every((range) => {
       const start = comparePoint(range.anchor, range.focus) <= 0 ? range.anchor : range.focus
-      const block = this.blockAt(start.path)
-      if (!block || block.type !== type) return false
+      const block = this.blockAncestorOfType(start.path, type)
+      if (!block) return false
       if (!data) return true
       return Object.entries(data).every(([k, v]) => v === undefined || (k in block.data && deepEqualJson(block.data[k] as Json, v)))
     })
@@ -706,11 +718,11 @@ export class Editor<const P extends readonly AnyPlugin[] = AnyPlugin[]> {
     return out
   }
 
-  /** The nearest block-level element on `path` (unknown element types count as blocks). */
-  private blockAt(path: number[]): DeepReadonly<ElementNode> | null {
+  /** The innermost block-level element of `type` on `path`, the textblock included (unknown element types count as blocks). */
+  private blockAncestorOfType(path: number[], type: string): DeepReadonly<ElementNode> | null {
     for (let depth = path.length - 1; depth >= 1; depth--) {
       const node = getNode(this._state.doc, path.slice(0, depth))
-      if (isElement(node) && this.registry.node(node.type)?.kind !== 'inline') return node
+      if (isElement(node) && node.type === type && this.registry.node(node.type)?.kind !== 'inline') return node
     }
     return null
   }

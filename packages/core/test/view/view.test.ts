@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mainRange, single } from '../../src/model/selection'
 import type { ElementNode, Selection } from '../../src/model/types'
-import { EditorView, Renderer, modelToDom } from '../../src/index'
+import { EditorView, Renderer, modelToDom } from '../../src/internal'
 import { definePlugin } from '../../src/plugin/define'
 import { createTestEditor, doc, txt } from '../../src/testing/index'
 import { testBold, testParagraph } from '../fixtures'
